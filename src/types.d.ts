@@ -3,3 +3,56 @@
 // whether you're running in development or production).
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string;
 declare const MAIN_WINDOW_VITE_NAME: string;
+
+declare global {
+  interface Window {
+    playwrightAPI: {
+      initialize: () => Promise<{ success: boolean; error?: string }>;
+      navigate: (url: string) => Promise<{
+        success: boolean;
+        currentUrl?: string;
+        redirectedToLogin?: boolean;
+        error?: string;
+      }>;
+      login: (credentials: { username: string; password: string }) => Promise<{
+        success: boolean;
+        currentUrl?: string;
+        redirectedToLogin?: boolean;
+        error?: string;
+      }>;
+      navigateToSGK: () => Promise<{
+        success: boolean;
+        currentUrl?: string;
+        redirectedToLogin?: boolean;
+        error?: string;
+      }>;
+      searchPrescription: (prescriptionNumber: string) => Promise<{
+        success: boolean;
+        currentUrl?: string;
+        prescriptionData?: any;
+        error?: string;
+      }>;
+      getCurrentUrl: () => Promise<{
+        success: boolean;
+        currentUrl?: string;
+        error?: string;
+      }>;
+      isReady: () => Promise<{
+        success: boolean;
+        ready: boolean;
+      }>;
+      close: () => Promise<{ success: boolean; error?: string }>;
+      setDebugMode: (enabled: boolean) => Promise<{ 
+        success: boolean; 
+        debugMode?: boolean; 
+        error?: string; 
+      }>;
+      getDebugMode: () => Promise<{ 
+        success: boolean; 
+        debugMode?: boolean; 
+        error?: string; 
+      }>;
+      restart: () => Promise<{ success: boolean; error?: string }>;
+    };
+  }
+}

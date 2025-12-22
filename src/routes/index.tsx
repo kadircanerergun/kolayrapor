@@ -1,65 +1,50 @@
-import ToggleTheme from "@/components/toggle-theme";
-import { useTranslation } from "react-i18next";
-import LangToggle from "@/components/lang-toggle";
-import { createFileRoute } from "@tanstack/react-router";
-import { SiElectron, SiReact, SiVite } from "@icons-pack/react-simple-icons";
-import NavigationMenu from "@/components/navigation-menu";
-import { getAppVersion } from "@/actions/app";
-import { useEffect, useState, useTransition } from "react";
-import ExternalLink from "@/components/external-link";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Spinner } from "@/components/ui/spinner";
+import { useEffect } from "react";
 
-/*
- * Update this page to modify your home page.
- * You can delete this file component to start from a blank page.
- */
+function LandingPage() {
+  const navigate = useNavigate();
 
-function HomePage() {
-  const iconSize = 48;
+  useEffect(() => {
+    // Check if user is already authenticated
+    const checkAuth = () => {
+      const stored = localStorage.getItem('credentials');
+      if (stored) {
+        try {
+          const creds = JSON.parse(stored);
+          if (creds.username && creds.password) {
+            navigate({ to: "/home" });
+            return;
+          }
+        } catch {
+          // Invalid credentials, continue to login
+        }
+      }
+      
+      // If no valid credentials, go to login after delay
+      setTimeout(() => {
+        navigate({ to: "/login" });
+      }, 2000);
+    };
 
-  const [appVersion, setAppVersion] = useState("0.0.0");
-  const [, startGetAppVersion] = useTransition();
-  const { t } = useTranslation();
-
-  useEffect(
-    () => startGetAppVersion(() => getAppVersion().then(setAppVersion)),
-    [],
-  );
+    checkAuth();
+  }, [navigate]);
 
   return (
-    <>
-      <NavigationMenu />
-      <div className="flex h-full flex-col">
-        <div className="flex flex-1 flex-col items-center justify-center gap-2">
-          <div className="inline-flex gap-2">
-            <SiReact size={iconSize} />
-            <SiVite size={iconSize} />
-            <SiElectron size={iconSize} />
-          </div>
-          <span>
-            <h1 className="font-mono text-4xl font-bold">{t("appName")}</h1>
-            <p
-              className="text-muted-foreground text-end text-sm uppercase"
-              data-testid="pageTitle"
-            >
-              {t("titleHomePage")}
-            </p>
-          </span>
-          <LangToggle />
-          <ToggleTheme />
-        </div>
-        <footer className="font-tomorrow text-muted-foreground flex justify-between text-[0.7rem] uppercase">
-          <ExternalLink href="https://github.com/LuanRoger">
-            {t("madeBy")}
-          </ExternalLink>
-          <p>
-            {t("version")}: v{appVersion}
-          </p>
-        </footer>
+    <div className="flex h-screen flex-col items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <h1 className="text-3xl font-bold text-center">
+          Eczane Rapor Doğrulama
+        </h1>
+        <p className="text-muted-foreground text-center">
+          Rapor doğrulama işlemi başlatılıyor...
+        </p>
+        <Spinner size="lg" />
       </div>
-    </>
+    </div>
   );
 }
 
 export const Route = createFileRoute("/")({
-  component: HomePage,
+  component: LandingPage,
 });

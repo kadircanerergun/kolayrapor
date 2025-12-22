@@ -1,5 +1,5 @@
 import BaseLayout from "@/layouts/base-layout";
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 /* import { TanStackRouterDevtools } from '@tanstack/react-router-devtools' */
 
 /*
@@ -7,10 +7,23 @@ import { Outlet, createRootRoute } from "@tanstack/react-router";
  */
 
 function Root() {
+  const location = useLocation();
+  
+  // Use minimal layout for login and landing pages
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/';
+  
+  if (isAuthPage) {
+    return (
+      <>
+        <Outlet />
+        {/* <TanStackRouterDevtools /> */}
+      </>
+    );
+  }
+  
   return (
     <BaseLayout>
       <Outlet />
-      {/* Uncomment the following line to enable the router devtools */}
       {/* <TanStackRouterDevtools /> */}
     </BaseLayout>
   );

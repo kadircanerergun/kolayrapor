@@ -8,8 +8,8 @@ export default function BaseLayout({
 }) {
   return (
     <>
-      <DragWindowRegion title="electron-shadcn" />
-      <main className="h-screen p-2 pb-20">{children}</main>
+      <DragWindowRegion title="Kolay Rapor" />
+      <main className="h-screen">{children}</main>
     </>
   );
 }

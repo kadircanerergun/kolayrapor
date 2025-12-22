@@ -8,6 +8,7 @@ import { ipcMain } from "electron/main";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS } from "./constants";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
+import { setupPlaywrightIPC } from "./ipc/playwright";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -73,7 +74,8 @@ app
   .then(createWindow)
   .then(installExtensions)
   .then(checkForUpdates)
-  .then(setupORPC);
+  .then(setupORPC)
+  .then(setupPlaywrightIPC);
 
 //osX only
 app.on("window-all-closed", () => {
