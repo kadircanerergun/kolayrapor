@@ -29,6 +29,7 @@ export default function MainLayout({
   const navigate = useNavigate();
   const location = useLocation();
   const [credentials, setCredentials] = useState<Credentials | null>(null);
+  const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
 
   useEffect(() => {
@@ -49,6 +50,28 @@ export default function MainLayout({
   useEffect(() => {
     // Initialize debug mode state from Playwright service
     playwright.getDebugMode();
+    
+    // Global console.log interception for captcha debug
+    const originalConsoleLog = console.log;
+    console.log = (...args) => {
+      if (args[0] === 'CAPTCHA_DEBUG' && args[1]) {
+        try {
+          const data = typeof args[1] === 'string' ? JSON.parse(args[1]) : args[1];
+          // Update the test captcha state for demo purposes
+          setTestCaptchaData({
+            image: data.image || null,
+            solution: data.solution || null
+          });
+        } catch (e) {
+          console.error('Failed to parse captcha debug data:', e);
+        }
+      }
+      originalConsoleLog.apply(console, args);
+    };
+
+    return () => {
+      console.log = originalConsoleLog;
+    };
   }, []);
 
   const handleDebugToggle = async (enabled: boolean) => {
@@ -163,6 +186,31 @@ export default function MainLayout({
           <SidebarFooter className="space-y-4 p-4">
             <Separator />
 
+            {/* Captcha Debug Area */}
+            {playwright.debugMode && (playwright.captchaImage || playwright.captchaSolution || testCaptchaData.image || testCaptchaData.solution) && (
+              <div className="space-y-2 p-2 bg-muted/30 rounded-lg border">
+                <div className="text-xs font-medium text-muted-foreground">Captcha Debug</div>
+                {(playwright.captchaImage || testCaptchaData.image) && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Detected Image:</div>
+                    <img 
+                      src={`data:image/png;base64,${playwright.captchaImage || testCaptchaData.image}`}
+                      alt="Captcha"
+                      className="w-full max-w-32 border rounded"
+                    />
+                  </div>
+                )}
+                {(playwright.captchaSolution || testCaptchaData.solution) && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Solution:</div>
+                    <div className="text-sm font-mono bg-background px-2 py-1 rounded border">
+                      {playwright.captchaSolution || testCaptchaData.solution}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Debug Mode Toggle */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -190,6 +238,24 @@ export default function MainLayout({
                   ? "Tarayıcı penceresi görünür olacak"
                   : "Tarayıcı arka planda çalışacak"}
               </p>
+              
+              {/* Test Captcha Button - Only in Debug Mode */}
+              {playwright.debugMode && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-8 text-xs"
+                  onClick={() => {
+                    // Simulate captcha debug data for testing
+                    console.log('CAPTCHA_DEBUG', {
+                      image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+                      solution: '12345'
+                    });
+                  }}
+                >
+                  Test Captcha Display
+                </Button>
+              )}
             </div>
 
             <Separator />

@@ -12,9 +12,7 @@ import { setupPlaywrightIPC } from "./ipc/playwright";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
-// Test immediate setup
-console.log('Testing immediate Playwright setup...');
-setupPlaywrightIPC();
+// Playwright IPC will be setup in the promise chain below
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");

@@ -33,9 +33,33 @@ export function setupPlaywrightIPC() {
     return await playwrightService.navigateTo(url);
   });
 
-  // Login with credentials
-  createHandler('playwright:login', async (credentials: { username: string; password: string }) => {
-    return await playwrightService.performLogin(credentials);
+  // Login with credentials  
+  ipcMain.handle('playwright:login', async (event, credentials: { username: string; password: string }) => {
+    // Override console.log temporarily to capture captcha debug info
+    const originalConsoleLog = console.log;
+    console.log = (...args) => {
+      if (args[0]?.includes?.('Found captcha is') || args[0]?.includes?.('Got result:')) {
+        const image = args[0].includes('Found captcha is') ? args[1] : null;
+        const solution = args[0].includes('Got result:') ? args[1]?.numbers : null;
+        
+        if (image || solution) {
+          // Send debug data to renderer
+          event.sender.executeJavaScript(`
+            console.log('CAPTCHA_DEBUG', ${JSON.stringify({ image, solution })});
+          `);
+        }
+      }
+      originalConsoleLog.apply(console, args);
+    };
+    
+    try {
+      const result = await playwrightService.performLogin(credentials);
+      console.log = originalConsoleLog; // Restore
+      return result;
+    } catch (error) {
+      console.log = originalConsoleLog; // Restore on error
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   });
 
   // Navigate to SGK portal

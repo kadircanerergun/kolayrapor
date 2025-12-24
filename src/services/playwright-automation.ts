@@ -1,5 +1,6 @@
 // Lazy import of Playwright to avoid Electron startup issues
 import type { Page, ChromiumBrowser } from 'playwright';
+import { URLS } from "@/constants/urls";
 let chromium: typeof import('playwright').chromium;
 
 interface NavigationResult {
@@ -89,12 +90,7 @@ export class PlaywrightAutomationService {
 
       // Check if redirected to login page
       const redirectedToLogin = currentUrl.includes('/login') && !url.includes('/login');
-      if (redirectedToLogin) {
-        console.log("Redirected to login page, performing login");
-        await this.page.waitForLoadState('load')
-        const pageContent = await this.page.content();
-        console.log('pageContent', pageContent);
-      }
+      // Note: Auto-login will be handled by the caller (renderer) since it has access to credentials
 
       return {
         success: true,
@@ -125,7 +121,6 @@ export class PlaywrightAutomationService {
         throw new Error('Could not find username field');
       }
 
-      await usernameField.clear();
       await usernameField.fill(credentials.username);
 
       // Fill password - specific SGK selector
@@ -134,7 +129,6 @@ export class PlaywrightAutomationService {
         throw new Error('Could not find password field');
       }
 
-      await passwordField.clear();
       await passwordField.fill(credentials.password);
 
       // Handle captcha
@@ -149,7 +143,6 @@ export class PlaywrightAutomationService {
         throw new Error('Could not find captcha field');
       }
 
-      await captchaField.clear();
       await captchaField.fill(captchaResult.solution!);
 
       // Check KVKK consent checkbox
@@ -166,10 +159,10 @@ export class PlaywrightAutomationService {
 
       // Submit form and wait for navigation
       await Promise.all([
-        this.page.waitForNavigation({ timeout: 15000 }),
         loginButton.click()
       ]);
 
+      await this.page.goto(URLS.MEDULA_HOME, { waitUntil: 'load' });
       const currentUrl = this.page.url();
       const stillOnLogin = currentUrl.includes('login.jsp');
 
@@ -201,8 +194,17 @@ export class PlaywrightAutomationService {
       }
 
       // Get image as base64
-      const imageBuffer = await captchaImage.screenshot();
+      const imageBuffer = await captchaImage.screenshot({
+        type: 'png'
+      });
       const base64Image = imageBuffer.toString('base64');
+      console.log("Found captcha is ", base64Image);
+
+      // Send captcha to renderer for debugging
+      if (this.debugMode) {
+        // We'll send this via IPC in the next step
+        console.log("Debug mode: Captcha detected");
+      }
 
       // Send to captcha solving API
       const response = await fetch('http://localhost:3000/medula/numbers', {
@@ -221,14 +223,15 @@ export class PlaywrightAutomationService {
       }
 
       const result = await response.json();
+      console.log('Got result: ', result);
 
-      if (!result.numbers) {
+      if (!result.code) {
         throw new Error('No captcha solution received from API');
       }
 
       return {
         success: true,
-        solution: result.numbers
+        solution: result.code
       };
 
     } catch (error) {
