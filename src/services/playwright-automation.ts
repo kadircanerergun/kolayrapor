@@ -1,5 +1,6 @@
 // Lazy import of Playwright to avoid Electron startup issues
-let Browser: any, Page: any, chromium: any;
+import type { Page, ChromiumBrowser } from 'playwright';
+let chromium: typeof import('playwright').chromium;
 
 interface NavigationResult {
   success: boolean;
@@ -18,8 +19,6 @@ async function loadPlaywright() {
     try {
       const pw = await import('playwright');
       chromium = pw.chromium;
-      Browser = pw.Browser;
-      Page = pw.Page;
     } catch (error) {
       throw new Error(`Failed to load Playwright: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -27,8 +26,8 @@ async function loadPlaywright() {
 }
 
 export class PlaywrightAutomationService {
-  private browser: any | null = null;
-  private page: any | null = null;
+  private browser: ChromiumBrowser | null = null;
+  private page: Page | null = null;
   private isInitialized = false;
   private debugMode: boolean = false;
 
@@ -48,7 +47,7 @@ export class PlaywrightAutomationService {
     try {
       // Load Playwright dynamically
       await loadPlaywright();
-      
+
       // If already initialized and not forcing restart, return
       if (this.isInitialized && !forceRestart) return;
 
@@ -89,9 +88,13 @@ export class PlaywrightAutomationService {
       const currentUrl = this.page.url();
 
       // Check if redirected to login page
-      const redirectedToLogin = currentUrl.includes('/login') || 
-                               currentUrl.includes('giris') || 
-                               currentUrl.includes('auth');
+      const redirectedToLogin = currentUrl.includes('/login') && !url.includes('/login');
+      if (redirectedToLogin) {
+        console.log("Redirected to login page, performing login");
+        await this.page.waitForLoadState('load')
+        const pageContent = await this.page.content();
+        console.log('pageContent', pageContent);
+      }
 
       return {
         success: true,
@@ -125,7 +128,7 @@ export class PlaywrightAutomationService {
       await usernameField.clear();
       await usernameField.fill(credentials.username);
 
-      // Fill password - specific SGK selector  
+      // Fill password - specific SGK selector
       const passwordField = await this.page.$('input[type="password"][name*="secret1"]');
       if (!passwordField) {
         throw new Error('Could not find password field');
@@ -218,7 +221,7 @@ export class PlaywrightAutomationService {
       }
 
       const result = await response.json();
-      
+
       if (!result.numbers) {
         throw new Error('No captcha solution received from API');
       }
@@ -238,10 +241,11 @@ export class PlaywrightAutomationService {
 
   async navigateToSGKPortal(): Promise<NavigationResult> {
     const sgkUrl = 'https://medeczane.sgk.gov.tr/eczane';
+    console.log('Navigating to SGK portal:', sgkUrl);
     return this.navigateTo(sgkUrl);
   }
 
-  async searchPrescription(prescriptionNumber: string): Promise<NavigationResult & { prescriptionData?: any }> {
+  async searchPrescription(prescriptionNumber: string): Promise<NavigationResult & { prescriptionData?: unknown }> {
     try {
       if (!this.page) {
         throw new Error('Playwright not initialized');
@@ -318,7 +322,7 @@ export class PlaywrightAutomationService {
     }
   }
 
-  private async extractPrescriptionData(): Promise<any> {
+  private async extractPrescriptionData(): Promise<unknown> {
     try {
       if (!this.page) {
         return { error: 'Page not available' };
@@ -330,10 +334,10 @@ export class PlaywrightAutomationService {
       // Extract any visible data from the results
       // This is a basic implementation - you can customize based on the actual SGK results structure
       const pageContent = await this.page.content();
-      
+
       // Look for common result patterns (customize based on actual SGK response)
-      const hasResults = pageContent.includes('sonuç') || 
-                        pageContent.includes('bulunamadı') || 
+      const hasResults = pageContent.includes('sonuç') ||
+                        pageContent.includes('bulunamadı') ||
                         pageContent.includes('geçerli') ||
                         pageContent.includes('geçersiz');
 

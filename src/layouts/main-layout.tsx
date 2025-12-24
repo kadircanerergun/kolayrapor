@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 import { LogOut, FileCheck, Users, Settings, Search, User2, Bug } from "lucide-react";
 import { cn } from "@/utils/tailwind";
@@ -37,7 +37,7 @@ export default function MainLayout({
       navigate({ to: "/login" });
       return;
     }
-    
+
     try {
       const creds = JSON.parse(stored);
       setCredentials(creds);
@@ -72,21 +72,21 @@ export default function MainLayout({
       description: "Ana sayfa ve rapor işlemleri"
     },
     {
-      to: "/recete-arama", 
+      to: "/recete-arama",
       icon: Search,
       label: "Reçete Arama",
       description: "SGK sisteminde reçete sorgulama"
     },
     {
       to: "/hasta-bilgileri",
-      icon: Users, 
+      icon: Users,
       label: "Hasta Bilgileri",
       description: "Hasta kayıtları ve bilgileri"
     },
     {
       to: "/ayarlar",
       icon: Settings,
-      label: "Ayarlar", 
+      label: "Ayarlar",
       description: "Uygulama ayarları"
     }
   ];
@@ -95,50 +95,55 @@ export default function MainLayout({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen bg-background">
+      <div className="bg-background flex h-screen">
         <Sidebar className="w-64 border-r shadow-sm">
-          <SidebarHeader className="p-4 space-y-4">
+          <SidebarHeader className="space-y-4 p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-lg">
                 <FileCheck className="h-4 w-4" />
               </div>
-              <div className="flex-1 min-w-0">
-                <h2 className="font-semibold text-base truncate">Kolay Rapor</h2>
-                <p className="text-xs text-muted-foreground">Eczane Yönetimi</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-semibold">
+                  Kolay Rapor
+                </h2>
+                <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
               </div>
             </div>
-            
+
             <Separator />
-            
-            <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                <User2 className="h-4 w-4 text-primary" />
+
+            <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
+              <div className="bg-primary/10 flex h-8 w-8 items-center justify-center rounded-full">
+                <User2 className="text-primary h-4 w-4" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{credentials.username}</p>
-                <p className="text-xs text-muted-foreground">Aktif Kullanıcı</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {credentials.username}
+                </p>
+                <p className="text-muted-foreground text-xs">Aktif Kullanıcı</p>
               </div>
             </div>
           </SidebarHeader>
-          
+
           <SidebarContent className="px-4">
             <div className="space-y-1">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              <h4 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
                 Ana Menü
               </h4>
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.to;
-                
+
                 return (
                   <Tooltip key={item.to}>
                     <TooltipTrigger asChild>
                       <Link to={item.to} className="block">
-                        <Button 
+                        <Button
                           variant={isActive ? "secondary" : "ghost"}
                           className={cn(
-                            "w-full justify-start h-10 px-3",
-                            isActive && "bg-secondary text-secondary-foreground font-medium"
+                            "h-10 w-full justify-start px-3",
+                            isActive &&
+                              "bg-secondary text-secondary-foreground font-medium",
                           )}
                         >
                           <Icon className="mr-3 h-4 w-4" />
@@ -154,50 +159,47 @@ export default function MainLayout({
               })}
             </div>
           </SidebarContent>
-          
-          <SidebarFooter className="p-4 space-y-4">
+
+          <SidebarFooter className="space-y-4 p-4">
             <Separator />
-            
+
             {/* Debug Mode Toggle */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bug className="h-4 w-4 text-muted-foreground" />
-                  <Label htmlFor="debug-mode" className="text-sm">Debug Modu</Label>
-                </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Switch
-                      id="debug-mode"
-                      checked={playwright.debugMode}
-                      onCheckedChange={handleDebugToggle}
-                      disabled={playwright.isLoading}
-                    />
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="debug-mode"
+                        checked={playwright.debugMode}
+                        onCheckedChange={handleDebugToggle}
+                        disabled={playwright.isLoading}
+                      />
+                      <Label htmlFor="debug-mode">Debug Modu</Label>
+                    </div>
                   </TooltipTrigger>
                   <TooltipContent side="right">
-                    {playwright.debugMode 
-                      ? "Tarayıcıyı göster (Debug açık)" 
-                      : "Tarayıcıyı gizle (Debug kapalı)"
-                    }
+                    {playwright.debugMode
+                      ? "Tarayıcıyı göster (Debug açık)"
+                      : "Tarayıcıyı gizle (Debug kapalı)"}
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {playwright.debugMode 
-                  ? "Tarayıcı penceresi görünür olacak" 
-                  : "Tarayıcı arka planda çalışacak"
-                }
+              <p className="text-muted-foreground text-xs">
+                {playwright.debugMode
+                  ? "Tarayıcı penceresi görünür olacak"
+                  : "Tarayıcı arka planda çalışacak"}
               </p>
             </div>
-            
+
             <Separator />
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full h-9"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-full"
                   onClick={handleLogout}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
@@ -208,18 +210,18 @@ export default function MainLayout({
                 Uygulamadan çıkış yap
               </TooltipContent>
             </Tooltip>
-            
+
             <div className="text-center">
-              <p className="text-xs text-muted-foreground">© 2024 Kolay Rapor</p>
-              <p className="text-xs text-muted-foreground">v1.0.0</p>
+              <p className="text-muted-foreground text-xs">
+                © 2024 Kolay Rapor
+              </p>
+              <p className="text-muted-foreground text-xs">v1.0.0</p>
             </div>
           </SidebarFooter>
         </Sidebar>
-        
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            {children}
-          </div>
+
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">{children}</div>
         </main>
       </div>
     </TooltipProvider>

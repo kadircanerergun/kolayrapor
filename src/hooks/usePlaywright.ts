@@ -26,11 +26,11 @@ export function usePlaywright() {
   }, []);
 
   const setSuccess = useCallback((result: any) => {
-    setState(prev => ({ 
-      ...prev, 
-      isLoading: false, 
-      error: null, 
-      lastResult: result 
+    setState(prev => ({
+      ...prev,
+      isLoading: false,
+      error: null,
+      lastResult: result
     }));
   }, []);
 
@@ -66,32 +66,17 @@ export function usePlaywright() {
   }, [setLoading, setError, setSuccess]);
 
   const navigateToSGK = useCallback(async () => {
+    console.log('navigateToSGK: Starting...');
     setLoading(true);
     try {
+      console.log('navigateToSGK: About to call window.playwrightAPI.navigateToSGK()');
       const result = await window.playwrightAPI.navigateToSGK();
-      
-      // If redirected to login, automatically handle it
-      if (result.redirectedToLogin) {
-        const credentials = localStorage.getItem('credentials');
-        if (credentials) {
-          try {
-            const creds = JSON.parse(credentials);
-            const loginResult = await window.playwrightAPI.login(creds);
-            setSuccess(loginResult);
-            return loginResult;
-          } catch {
-            setError('Failed to parse stored credentials');
-            return { success: false, error: 'Failed to parse stored credentials' };
-          }
-        } else {
-          setError('No credentials found for automatic login');
-          return { success: false, error: 'No credentials found for automatic login' };
-        }
-      }
-      
+      console.log('navigateToSGK: Got result:', result);
+
       setSuccess(result);
       return result;
     } catch (error) {
+      console.error('navigateToSGK: Error occurred:', error);
       const errorMessage = error instanceof Error ? error.message : 'SGK navigation failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -206,7 +191,7 @@ export function usePlaywright() {
     error: state.error,
     lastResult: state.lastResult,
     debugMode: state.debugMode,
-    
+
     // Actions
     initialize,
     navigate,

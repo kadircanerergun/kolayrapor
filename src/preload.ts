@@ -11,11 +11,22 @@ window.addEventListener("message", (event) => {
 
 // Expose Playwright API to renderer
 contextBridge.exposeInMainWorld('playwrightAPI', {
-  initialize: () => ipcRenderer.invoke('playwright:initialize'),
-  navigate: (url: string) => ipcRenderer.invoke('playwright:navigate', url),
-  login: (credentials: { username: string; password: string }) => 
-    ipcRenderer.invoke('playwright:login', credentials),
-  navigateToSGK: () => ipcRenderer.invoke('playwright:navigateToSGK'),
+  initialize: () => {
+    console.log('preload: initialize called');
+    return ipcRenderer.invoke('playwright:initialize');
+  },
+  navigate: (url: string) => {
+    console.log('preload: navigate called with', url);
+    return ipcRenderer.invoke('playwright:navigate', url);
+  },
+  login: (credentials: { username: string; password: string }) => {
+    console.log('preload: login called');
+    return ipcRenderer.invoke('playwright:login', credentials);
+  },
+  navigateToSGK: () => {
+    console.log('preload: navigateToSGK called');
+    return ipcRenderer.invoke('playwright:navigateToSGK');
+  },
   searchPrescription: (prescriptionNumber: string) => 
     ipcRenderer.invoke('playwright:searchPrescription', prescriptionNumber),
   getCurrentUrl: () => ipcRenderer.invoke('playwright:getCurrentUrl'),

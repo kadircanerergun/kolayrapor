@@ -12,22 +12,25 @@ import { setupPlaywrightIPC } from "./ipc/playwright";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
+// Test immediate setup
+console.log('Testing immediate Playwright setup...');
+setupPlaywrightIPC();
+
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1600,
+    height: 1000,
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
-
       preload: preload,
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     trafficLightPosition:
-      process.platform === "darwin" ? { x: 5, y: 5 } : undefined,
+      process.platform === "darwin" ? { x: 15, y: 5 } : undefined,
   });
   ipcContext.setMainWindow(mainWindow);
 
@@ -75,7 +78,13 @@ app
   .then(installExtensions)
   .then(checkForUpdates)
   .then(setupORPC)
-  .then(setupPlaywrightIPC);
+  .then(() => {
+    console.log('About to setup Playwright IPC...');
+    return setupPlaywrightIPC();
+  })
+  .catch((error) => {
+    console.error('App initialization error:', error);
+  });
 
 //osX only
 app.on("window-all-closed", () => {
