@@ -8,14 +8,14 @@ function HomePage() {
   return (
     <MainLayout>
       <div className="p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="mx-auto">
           <div className="mb-6">
             <h1 className="text-2xl font-bold">Hoş Geldiniz</h1>
             <p className="text-muted-foreground">
               Eczane rapor doğrulama sistemine hoş geldiniz
             </p>
           </div>
-          
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -31,7 +31,7 @@ function HomePage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
@@ -46,7 +46,7 @@ function HomePage() {
                 </p>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
@@ -62,7 +62,7 @@ function HomePage() {
               </CardContent>
             </Card>
           </div>
-          
+
           <Card className="mt-6">
             <CardHeader>
               <CardTitle>Hızlı İşlemler</CardTitle>

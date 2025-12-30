@@ -85,50 +85,6 @@ export function usePlaywright() {
       const result = await window.playwrightAPI.navigateToSGK();
       console.log('navigateToSGK: Got result:', result);
 
-      // Handle auto-login if redirected
-      if (result.redirectedToLogin) {
-        const credentials = localStorage.getItem('credentials');
-        if (credentials) {
-          try {
-            const creds = JSON.parse(credentials);
-            console.log('navigateToSGK: Auto-logging in due to redirect...');
-            // Clear any previous captcha debug data
-            clearCaptchaDebug();
-            
-            // Listen for captcha debug data during login
-            const originalConsoleLog = console.log;
-            console.log = (...args) => {
-              if (args[0] === 'CAPTCHA_DEBUG' && args[1]) {
-                try {
-                  // args[1] should be the data object directly from executeJavaScript
-                  const data = typeof args[1] === 'string' ? JSON.parse(args[1]) : args[1];
-                  setState(prev => ({ 
-                    ...prev, 
-                    captchaImage: data.image || null, 
-                    captchaSolution: data.solution || null 
-                  }));
-                } catch (e) {
-                  console.error('Failed to parse captcha debug data:', e);
-                }
-              }
-              originalConsoleLog.apply(console, args);
-            };
-            
-            const loginResult = await window.playwrightAPI.login(creds);
-            console.log = originalConsoleLog; // Restore original console.log
-            console.log('navigateToSGK: Auto-login result:', loginResult);
-            setSuccess(loginResult);
-            return loginResult;
-          } catch {
-            setError('Failed to parse stored credentials');
-            return { success: false, error: 'Failed to parse stored credentials' };
-          }
-        } else {
-          setError('No credentials found for automatic login');
-          return { success: false, error: 'No credentials found for automatic login' };
-        }
-      }
-
       setSuccess(result);
       return result;
     } catch (error) {
@@ -143,10 +99,25 @@ export function usePlaywright() {
     setLoading(true);
     try {
       const result = await window.playwrightAPI.searchPrescription(prescriptionNumber);
+      console.log('searchPrescription:', result);
       setSuccess(result);
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Prescription search failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }, [setLoading, setError, setSuccess]);
+
+  const searchByDateRange = useCallback(async (startDate: string, endDate: string) => {
+    setLoading(true);
+    try {
+      const result = await window.playwrightAPI.searchByDateRange(startDate, endDate);
+      console.log('searchByDateRange:', result);
+      setSuccess(result);
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Date range search failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -164,10 +135,10 @@ export function usePlaywright() {
           try {
             // args[1] should be the data object directly from executeJavaScript
             const data = typeof args[1] === 'string' ? JSON.parse(args[1]) : args[1];
-            setState(prev => ({ 
-              ...prev, 
-              captchaImage: data.image || null, 
-              captchaSolution: data.solution || null 
+            setState(prev => ({
+              ...prev,
+              captchaImage: data.image || null,
+              captchaSolution: data.solution || null
             }));
           } catch (e) {
             console.error('Failed to parse captcha debug data:', e);
@@ -175,7 +146,7 @@ export function usePlaywright() {
         }
         originalConsoleLog.apply(console, args);
       };
-      
+
       const result = await window.playwrightAPI.login(credentials);
       console.log = originalConsoleLog; // Restore original console.log
       setSuccess(result);
@@ -262,6 +233,52 @@ export function usePlaywright() {
     }
   }, [setLoading, setError, setSuccess]);
 
+  const setCredentials = useCallback(async (credentials: { username: string; password: string }) => {
+    try {
+      const result = await window.playwrightAPI.setCredentials(credentials);
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to set credentials';
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
+  const getStoredCredentials = useCallback(async () => {
+    try {
+      const result = await window.playwrightAPI.getStoredCredentials();
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get stored credentials';
+      return { success: false, error: errorMessage };
+    }
+  }, []);
+
+  const hasCredentials = useCallback(async () => {
+    try {
+      const result = await window.playwrightAPI.hasCredentials();
+      return result;
+    } catch (error) {
+      return { success: false, hasCredentials: false };
+    }
+  }, []);
+
+  const autoLogin = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await window.playwrightAPI.autoLogin();
+      if (result.success) {
+        setSuccess(result);
+      } else {
+        setError(result.error || 'Auto-login failed');
+      }
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Auto-login failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }, [setLoading, setError, setSuccess]);
+
   return {
     // State
     isLoading: state.isLoading,
@@ -277,12 +294,17 @@ export function usePlaywright() {
     navigate,
     navigateToSGK,
     searchPrescription,
+    searchByDateRange,
     login,
     getCurrentUrl,
     checkReady,
     close,
     setDebugMode,
     getDebugMode,
-    restart
+    restart,
+    setCredentials,
+    getStoredCredentials,
+    hasCredentials,
+    autoLogin
   };
 }

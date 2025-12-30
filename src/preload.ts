@@ -34,5 +34,9 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   close: () => ipcRenderer.invoke('playwright:close'),
   setDebugMode: (enabled: boolean) => ipcRenderer.invoke('playwright:setDebugMode', enabled),
   getDebugMode: () => ipcRenderer.invoke('playwright:getDebugMode'),
-  restart: () => ipcRenderer.invoke('playwright:restart')
+  restart: () => ipcRenderer.invoke('playwright:restart'),
+  setCredentials: (credentials: { username: string; password: string }) => ipcRenderer.invoke('playwright:setCredentials', credentials),
+  getStoredCredentials: () => ipcRenderer.invoke('playwright:getStoredCredentials'),
+  hasCredentials: () => ipcRenderer.invoke('playwright:hasCredentials'),
+  autoLogin: () => ipcRenderer.invoke('playwright:autoLogin')
 });

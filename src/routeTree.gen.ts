@@ -9,14 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ReceteAramaRouteImport } from './routes/recete-arama'
+import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IndexRouteImport } from './routes/index'
 
-const ReceteAramaRoute = ReceteAramaRouteImport.update({
-  id: '/recete-arama',
-  path: '/recete-arama',
+const SearchReportRoute = SearchReportRouteImport.update({
+  id: '/search-report',
+  path: '/search-report',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -39,43 +39,43 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
-  '/recete-arama': typeof ReceteAramaRoute
+  '/search-report': typeof SearchReportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
-  '/recete-arama': typeof ReceteAramaRoute
+  '/search-report': typeof SearchReportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
-  '/recete-arama': typeof ReceteAramaRoute
+  '/search-report': typeof SearchReportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home' | '/login' | '/recete-arama'
+  fullPaths: '/' | '/home' | '/login' | '/search-report'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home' | '/login' | '/recete-arama'
-  id: '__root__' | '/' | '/home' | '/login' | '/recete-arama'
+  to: '/' | '/home' | '/login' | '/search-report'
+  id: '__root__' | '/' | '/home' | '/login' | '/search-report'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HomeRoute: typeof HomeRoute
   LoginRoute: typeof LoginRoute
-  ReceteAramaRoute: typeof ReceteAramaRoute
+  SearchReportRoute: typeof SearchReportRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/recete-arama': {
-      id: '/recete-arama'
-      path: '/recete-arama'
-      fullPath: '/recete-arama'
-      preLoaderRoute: typeof ReceteAramaRouteImport
+    '/search-report': {
+      id: '/search-report'
+      path: '/search-report'
+      fullPath: '/search-report'
+      preLoaderRoute: typeof SearchReportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -106,7 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HomeRoute: HomeRoute,
   LoginRoute: LoginRoute,
-  ReceteAramaRoute: ReceteAramaRoute,
+  SearchReportRoute: SearchReportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

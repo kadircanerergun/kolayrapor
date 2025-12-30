@@ -101,6 +101,29 @@ export function setupPlaywrightIPC() {
     return { success: true, debugMode };
   });
 
+  // Set credentials
+  createHandler('playwright:setCredentials', async (credentials: { username: string; password: string }) => {
+    playwrightService.setCredentials(credentials);
+    return { success: true };
+  });
+
+  // Get stored credentials
+  createHandler('playwright:getStoredCredentials', async () => {
+    const credentials = playwrightService.getStoredCredentials();
+    return { success: true, credentials };
+  });
+
+  // Check if credentials are available
+  createHandler('playwright:hasCredentials', async () => {
+    const hasCredentials = playwrightService.hasCredentials();
+    return { success: true, hasCredentials };
+  });
+
+  // Perform auto-login with stored credentials
+  createHandler('playwright:autoLogin', async () => {
+    return await playwrightService.performAutoLogin();
+  });
+
   // Restart Playwright
   createHandler('playwright:restart', async () => {
     await playwrightService.close();

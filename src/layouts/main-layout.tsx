@@ -42,15 +42,29 @@ export default function MainLayout({
     try {
       const creds = JSON.parse(stored);
       setCredentials(creds);
+
+      // Also send credentials to Playwright service so they're always available
+      playwright.setCredentials(creds).catch(console.error);
     } catch {
       navigate({ to: "/login" });
     }
   }, [navigate]);
 
   useEffect(() => {
-    // Initialize debug mode state from Playwright service
-    playwright.getDebugMode();
-    
+    // Initialize debug mode from localStorage and sync with Playwright service
+    const initializeDebugMode = async () => {
+      const storedDebugMode = localStorage.getItem('debugMode');
+      if (storedDebugMode !== null) {
+        const isDebugEnabled = JSON.parse(storedDebugMode);
+        await playwright.setDebugMode(isDebugEnabled);
+      } else {
+        // Get current debug mode from Playwright service if nothing stored
+        await playwright.getDebugMode();
+      }
+    };
+
+    initializeDebugMode().catch(console.error);
+
     // Global console.log interception for captcha debug
     const originalConsoleLog = console.log;
     console.log = (...args) => {
@@ -75,6 +89,9 @@ export default function MainLayout({
   }, []);
 
   const handleDebugToggle = async (enabled: boolean) => {
+    // Save debug mode setting to localStorage for persistence
+    localStorage.setItem('debugMode', JSON.stringify(enabled));
+
     await playwright.setDebugMode(enabled);
     // If browser is already running, restart it with new mode
     if (playwright.isReady) {
@@ -84,6 +101,8 @@ export default function MainLayout({
 
   const handleLogout = () => {
     localStorage.removeItem('credentials');
+    // Optionally keep debug mode setting across logouts - comment out next line if you want to keep it
+    // localStorage.removeItem('debugMode');
     navigate({ to: "/" });
   };
 
@@ -95,16 +114,10 @@ export default function MainLayout({
       description: "Ana sayfa ve rapor işlemleri"
     },
     {
-      to: "/recete-arama",
+      to: "/search-report",
       icon: Search,
-      label: "Reçete Arama",
-      description: "SGK sisteminde reçete sorgulama"
-    },
-    {
-      to: "/hasta-bilgileri",
-      icon: Users,
-      label: "Hasta Bilgileri",
-      description: "Hasta kayıtları ve bilgileri"
+      label: "Rapor Arama",
+      description: "SGK sisteminde recete numarasi ya da tarih ile arama"
     },
     {
       to: "/ayarlar",
@@ -193,7 +206,7 @@ export default function MainLayout({
                 {(playwright.captchaImage || testCaptchaData.image) && (
                   <div className="space-y-1">
                     <div className="text-xs text-muted-foreground">Detected Image:</div>
-                    <img 
+                    <img
                       src={`data:image/png;base64,${playwright.captchaImage || testCaptchaData.image}`}
                       alt="Captcha"
                       className="w-full max-w-32 border rounded"
@@ -238,23 +251,40 @@ export default function MainLayout({
                   ? "Tarayıcı penceresi görünür olacak"
                   : "Tarayıcı arka planda çalışacak"}
               </p>
-              
+
               {/* Test Captcha Button - Only in Debug Mode */}
               {playwright.debugMode && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full h-8 text-xs"
-                  onClick={() => {
-                    // Simulate captcha debug data for testing
-                    console.log('CAPTCHA_DEBUG', {
-                      image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-                      solution: '12345'
-                    });
-                  }}
-                >
-                  Test Captcha Display
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs"
+                    onClick={() => {
+                      // Simulate captcha debug data for testing
+                      console.log('CAPTCHA_DEBUG', {
+                        image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+                        solution: '12345'
+                      });
+                    }}
+                  >
+                    Test Captcha Display
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-8 text-xs"
+                    onClick={async () => {
+                      // Test if credentials are available on Playwright side
+                      const hasCredentials = await playwright.hasCredentials();
+                      const storedCredentials = await playwright.getStoredCredentials();
+                      console.log('Playwright has credentials:', hasCredentials.hasCredentials);
+                      console.log('Stored credentials:', storedCredentials.credentials);
+                    }}
+                  >
+                    Check Credentials
+                  </Button>
+                </>
               )}
             </div>
 
