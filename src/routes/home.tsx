@@ -2,11 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileCheck, Users } from "lucide-react";
-import MainLayout from "@/layouts/main-layout";
 
 function HomePage() {
   return (
-    <MainLayout>
       <div className="p-6">
         <div className="mx-auto">
           <div className="mb-6">
@@ -83,7 +81,6 @@ function HomePage() {
           </Card>
         </div>
       </div>
-    </MainLayout>
   );
 }
 

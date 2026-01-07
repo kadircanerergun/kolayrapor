@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SearchReportRouteImport } from './routes/search-report'
+import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IndexRouteImport } from './routes/index'
@@ -17,6 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const SearchReportRoute = SearchReportRouteImport.update({
   id: '/search-report',
   path: '/search-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchByRecipeRoute = SearchByRecipeRouteImport.update({
+  id: '/search-by-recipe',
+  path: '/search-by-recipe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
+  '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
+  '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,28 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
+  '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home' | '/login' | '/search-report'
+  fullPaths: '/' | '/home' | '/login' | '/search-by-recipe' | '/search-report'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home' | '/login' | '/search-report'
-  id: '__root__' | '/' | '/home' | '/login' | '/search-report'
+  to: '/' | '/home' | '/login' | '/search-by-recipe' | '/search-report'
+  id:
+    | '__root__'
+    | '/'
+    | '/home'
+    | '/login'
+    | '/search-by-recipe'
+    | '/search-report'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HomeRoute: typeof HomeRoute
   LoginRoute: typeof LoginRoute
+  SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
 }
 
@@ -76,6 +92,13 @@ declare module '@tanstack/react-router' {
       path: '/search-report'
       fullPath: '/search-report'
       preLoaderRoute: typeof SearchReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search-by-recipe': {
+      id: '/search-by-recipe'
+      path: '/search-by-recipe'
+      fullPath: '/search-by-recipe'
+      preLoaderRoute: typeof SearchByRecipeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -106,6 +129,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HomeRoute: HomeRoute,
   LoginRoute: LoginRoute,
+  SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
 }
 export const routeTree = rootRouteImport

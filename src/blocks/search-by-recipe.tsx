@@ -11,50 +11,38 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useDialogContext } from "@/contexts/dialog-context";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
   const [recipeCode, setRecipeCode] = useState("");
+  const dialog = useDialogContext();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!recipeCode.trim()) return;
 
-    try {
-      // Initialize Playwright if not ready
-      if (!playwright.isReady) {
-        console.log("Initializing Playwright...");
-        const initResult = await playwright.initialize();
-        if (!initResult.success) {
-          alert(`Playwright başlatılırken hata: ${initResult.error}`);
-          return;
-        }
-      }
-
-      // Navigate to SGK portal (with automatic login handling)
-      console.log("Navigating to SGK portal...");
-      const navResult = await playwright.navigateToSGK();
-
-      if (!navResult.success) {
-        alert(`SGK portalına erişilirken hata: ${navResult.error}`);
+    // Initialize Playwright if not ready
+    if (!playwright.isReady) {
+      console.log("Initializing Playwright...");
+      const initResult = await playwright.initialize();
+      if (!initResult.success) {
+        alert(`Playwright başlatılırken hata: ${initResult.error}`);
         return;
       }
+    }
+    const searchResult = await playwright.searchPrescription(recipeCode);
 
-      const searchResult = await playwright.searchPrescription(recipeCode);
-
-      if (searchResult.success) {
-        alert(
-          `Reçete arama tamamlandı! Sonuç: ${JSON.stringify(searchResult.prescriptionData)}`,
-        );
-      } else {
-        alert(`Reçete arama hatası: ${searchResult.error}`);
-      }
-    } catch (error) {
-      console.error("Search error:", error);
+    if (searchResult.success) {
       alert(
-        `Beklenmeyen hata: ${error instanceof Error ? error.message : "Bilinmeyen hata"}`,
+        `Reçete arama tamamlandı! Sonuç: ${JSON.stringify(searchResult.prescriptionData)}`,
       );
+    } else {
+      dialog.showAlert({
+        title: "Hata",
+        description: `SGK portalına giderken hata: ${searchResult.error}`,
+      });
     }
   };
   return (

@@ -1,5 +1,6 @@
 import React from "react";
 import DragWindowRegion from "@/components/drag-window-region";
+import { DialogContextProvider } from "@/contexts/dialog-context";
 
 export default function BaseLayout({
   children,
@@ -9,7 +10,9 @@ export default function BaseLayout({
   return (
     <>
       <DragWindowRegion title="Kolay Rapor" />
-      <main className="h-screen">{children}</main>
+      <DialogContextProvider>
+        <main className="h-screen">{children}</main>
+      </DialogContextProvider>
     </>
   );
 }

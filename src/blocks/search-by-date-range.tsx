@@ -14,23 +14,36 @@ import { useState } from "react";
 import { DateRange } from "react-day-picker";
 import { sub } from "date-fns";
 import dayjs from "dayjs";
+import { useDialogContext } from "@/contexts/dialog-context";
 
 const SearchByDateRange = () => {
   const playwright = usePlaywright();
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
-  console.log("Selected Range:", selectedRange, playwright.isLoading);
-
+  const dialog = useDialogContext();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playwright.isReady) {
-      console.log("Initializing Playwright...");
       const initResult = await playwright.initialize();
       if (!initResult.success) {
-        alert(`Playwright başlatılırken hata: ${initResult.error}`);
+        dialog.showAlert({
+          title: "Başlatma Hatası",
+          description:
+            "Sistem başlatılamadı. Lütfen ayarlarınızı kontrol edin ve tekrar deneyin.",
+        });
         return;
       }
     }
-    const searchResult = await playwright.searchByDateRange(selectedRange);
+    const searchResult = await playwright.searchByDateRange(
+      selectedRange!.from!.toDateString(),
+      selectedRange!.to!.toDateString(),
+    );
+    if (searchResult.error) {
+      dialog.showAlert({
+        title: "Hata",
+        description:
+          "Sorgulama sirasinda bir hata oluştu: " + searchResult.error,
+      });
+    }
   };
   return (
     <Card className={"flex-1"}>
@@ -47,22 +60,27 @@ const SearchByDateRange = () => {
         <form onSubmit={handleSubmit} className="flex space-y-4">
           <div className={"flex flex-1 flex-col gap-3"}>
             <div className={"flex flex-1 flex-row gap-2"}>
-              <Calendar
-                disableNavigation={true}
-                disabled={DateBefore => DateBefore < sub(new Date() , { months: 2 })}
-                selected={selectedRange}
-                locale={tr}
-                weekStartsOn={1}
-                numberOfMonths={2}
-                endMonth={sub(new Date(), { months: 0 })}
-                mode="range"
-                onSelect={(dateRange) => {
-                  setSelectedRange(dateRange);
-                }}
-                className="w-full rounded-lg border"
-              />
+              <div className={'flex-1'}>
+                <Calendar
+                  disableNavigation={true}
+                  disabled={(DateBefore) =>
+                    DateBefore < sub(new Date(), { months: 2 })
+                  }
+                  selected={selectedRange}
+                  locale={tr}
+                  weekStartsOn={1}
+                  numberOfMonths={2}
+                  endMonth={sub(new Date(), { months: 0 })}
+                  mode="range"
+                  onSelect={(dateRange) => {
+                    setSelectedRange(dateRange);
+                  }}
+                  className="w-full rounded-lg border"
+                />
+              </div>
               <div className={"flex flex-col gap-2"}>
                 <Button
+                  type={"button"}
                   variant={"outline"}
                   onClick={() => {
                     setSelectedRange({
@@ -74,6 +92,7 @@ const SearchByDateRange = () => {
                   Bu Hafta
                 </Button>
                 <Button
+                  type={"button"}
                   variant={"outline"}
                   onClick={() => {
                     setSelectedRange({
@@ -88,6 +107,7 @@ const SearchByDateRange = () => {
                   Geçen Hafta
                 </Button>
                 <Button
+                  type={"button"}
                   variant={"outline"}
                   onClick={() => {
                     setSelectedRange({
@@ -99,6 +119,7 @@ const SearchByDateRange = () => {
                   Bu Ay
                 </Button>
                 <Button
+                  type={"button"}
                   onClick={() => {
                     setSelectedRange({
                       from: dayjs()

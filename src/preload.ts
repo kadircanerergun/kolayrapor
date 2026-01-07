@@ -12,11 +12,9 @@ window.addEventListener("message", (event) => {
 // Expose Playwright API to renderer
 contextBridge.exposeInMainWorld('playwrightAPI', {
   initialize: () => {
-    console.log('preload: initialize called');
     return ipcRenderer.invoke('playwright:initialize');
   },
   navigate: (url: string) => {
-    console.log('preload: navigate called with', url);
     return ipcRenderer.invoke('playwright:navigate', url);
   },
   login: (credentials: { username: string; password: string }) => {
@@ -27,8 +25,12 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
     console.log('preload: navigateToSGK called');
     return ipcRenderer.invoke('playwright:navigateToSGK');
   },
-  searchPrescription: (prescriptionNumber: string) => 
+  searchPrescription: (prescriptionNumber: string) =>
     ipcRenderer.invoke('playwright:searchPrescription', prescriptionNumber),
+
+  searchByDateRange: (startDate: string, endDate: string) =>
+    ipcRenderer.invoke('playwright:searchByDateRange', startDate, endDate),
+
   getCurrentUrl: () => ipcRenderer.invoke('playwright:getCurrentUrl'),
   isReady: () => ipcRenderer.invoke('playwright:isReady'),
   close: () => ipcRenderer.invoke('playwright:close'),

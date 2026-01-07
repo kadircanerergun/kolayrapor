@@ -1,4 +1,5 @@
 import BaseLayout from "@/layouts/base-layout";
+import MainLayout from "@/layouts/main-layout";
 import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 /* import { TanStackRouterDevtools } from '@tanstack/react-router-devtools' */
 
@@ -23,8 +24,10 @@ function Root() {
   
   return (
     <BaseLayout>
-      <Outlet />
-      {/* <TanStackRouterDevtools /> */}
+      <MainLayout>
+        <Outlet />
+        {/* <TanStackRouterDevtools /> */}
+      </MainLayout>
     </BaseLayout>
   );
 }

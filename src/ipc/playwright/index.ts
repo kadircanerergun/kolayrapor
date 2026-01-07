@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { playwrightService } from '../../services/playwright-automation';
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function createHandler(channel: string, handler: Function) {
   return ipcMain.handle(channel, async (event, ...args) => {
     // Send log to renderer since main process console is suppressed
@@ -10,7 +11,9 @@ function createHandler(channel: string, handler: Function) {
       event.sender.executeJavaScript(`console.log('[MAIN] ${channel} result:', ${JSON.stringify(result)})`);
       return result;
     } catch (error) {
-      event.sender.executeJavaScript(`console.error('[MAIN] ${channel} error:', ${JSON.stringify(error.message)})`);
+      event.sender.executeJavaScript(
+        `console.error('[MAIN] ${channel} error:', ${JSON.stringify(error instanceof Error ? error.message : String(error))})`,
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -21,7 +24,7 @@ function createHandler(channel: string, handler: Function) {
 
 export function setupPlaywrightIPC() {
   console.log('Setting up Playwright IPC handlers...');
-  
+
   // Initialize Playwright
   createHandler('playwright:initialize', async () => {
     await playwrightService.initialize();
@@ -33,31 +36,13 @@ export function setupPlaywrightIPC() {
     return await playwrightService.navigateTo(url);
   });
 
-  // Login with credentials  
+  // Login with credentials
   ipcMain.handle('playwright:login', async (event, credentials: { username: string; password: string }) => {
     // Override console.log temporarily to capture captcha debug info
-    const originalConsoleLog = console.log;
-    console.log = (...args) => {
-      if (args[0]?.includes?.('Found captcha is') || args[0]?.includes?.('Got result:')) {
-        const image = args[0].includes('Found captcha is') ? args[1] : null;
-        const solution = args[0].includes('Got result:') ? args[1]?.numbers : null;
-        
-        if (image || solution) {
-          // Send debug data to renderer
-          event.sender.executeJavaScript(`
-            console.log('CAPTCHA_DEBUG', ${JSON.stringify({ image, solution })});
-          `);
-        }
-      }
-      originalConsoleLog.apply(console, args);
-    };
-    
+
     try {
-      const result = await playwrightService.performLogin(credentials);
-      console.log = originalConsoleLog; // Restore
-      return result;
+      return await playwrightService.performLogin(credentials);
     } catch (error) {
-      console.log = originalConsoleLog; // Restore on error
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
@@ -70,6 +55,10 @@ export function setupPlaywrightIPC() {
   // Search prescription
   createHandler('playwright:searchPrescription', async (prescriptionNumber: string) => {
     return await playwrightService.searchPrescription(prescriptionNumber);
+  });
+
+  createHandler('playwright:searchByDateRange', async (startDate: string, endDate: string) => {
+    return await playwrightService.searchByDateRange(startDate, endDate);
   });
 
   // Get current URL

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getPlaywrightAPI } from '../utils/playwright-api-loader';
 
 interface PlaywrightState {
   isLoading: boolean;
@@ -49,7 +50,8 @@ export function usePlaywright() {
   const initialize = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.initialize();
+      const api = getPlaywrightAPI();
+      const result = await api.initialize();
       if (result.success) {
         setState(prev => ({ ...prev, isReady: true, isLoading: false }));
         setSuccess(result);
@@ -67,7 +69,8 @@ export function usePlaywright() {
   const navigate = useCallback(async (url: string) => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.navigate(url);
+      const api = getPlaywrightAPI();
+      const result = await api.navigate(url);
       setSuccess(result);
       return result;
     } catch (error) {
@@ -81,8 +84,8 @@ export function usePlaywright() {
     console.log('navigateToSGK: Starting...');
     setLoading(true);
     try {
-      console.log('navigateToSGK: About to call window.playwrightAPI.navigateToSGK()');
-      const result = await window.playwrightAPI.navigateToSGK();
+      console.log('navigateToSGK: About to call getPlaywrightAPI().navigateToSGK()');
+      const result = await getPlaywrightAPI().navigateToSGK();
       console.log('navigateToSGK: Got result:', result);
 
       setSuccess(result);
@@ -98,7 +101,7 @@ export function usePlaywright() {
   const searchPrescription = useCallback(async (prescriptionNumber: string) => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.searchPrescription(prescriptionNumber);
+      const result = await getPlaywrightAPI().searchPrescription(prescriptionNumber);
       console.log('searchPrescription:', result);
       setSuccess(result);
       return result;
@@ -112,12 +115,13 @@ export function usePlaywright() {
   const searchByDateRange = useCallback(async (startDate: string, endDate: string) => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.searchByDateRange(startDate, endDate);
-      console.log('searchByDateRange:', result);
+      const result = await getPlaywrightAPI().searchByDateRange(startDate, endDate);
+      console.log('usePlaywright.searchByDateRange:', result);
       setSuccess(result);
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Date range search failed';
+      console.log(errorMessage);
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -147,7 +151,7 @@ export function usePlaywright() {
         originalConsoleLog.apply(console, args);
       };
 
-      const result = await window.playwrightAPI.login(credentials);
+      const result = await getPlaywrightAPI().login(credentials);
       console.log = originalConsoleLog; // Restore original console.log
       setSuccess(result);
       return result;
@@ -160,7 +164,7 @@ export function usePlaywright() {
 
   const getCurrentUrl = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.getCurrentUrl();
+      const result = await getPlaywrightAPI().getCurrentUrl();
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get current URL';
@@ -170,17 +174,17 @@ export function usePlaywright() {
 
   const checkReady = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.isReady();
-      setState(prev => ({ ...prev, isReady: result.ready }));
+      const result = await getPlaywrightAPI().isReady();
+      setState(prev => ({ ...prev, isReady: result }));
       return result;
     } catch (error) {
-      return { success: false, ready: false };
+      return { success: false, ready: false, error: error };
     }
   }, []);
 
   const close = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.close();
+      const result = await getPlaywrightAPI().close();
       setState(prev => ({ ...prev, isReady: false }));
       return result;
     } catch (error) {
@@ -191,11 +195,9 @@ export function usePlaywright() {
 
   const setDebugMode = useCallback(async (enabled: boolean) => {
     try {
-      const result = await window.playwrightAPI.setDebugMode(enabled);
-      if (result.success) {
-        setState(prev => ({ ...prev, debugMode: enabled }));
-      }
-      return result;
+      await getPlaywrightAPI().setDebugMode(enabled);
+      setState(prev => ({ ...prev, debugMode: enabled }));
+      return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to set debug mode';
       return { success: false, error: errorMessage };
@@ -204,10 +206,8 @@ export function usePlaywright() {
 
   const getDebugMode = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.getDebugMode();
-      if (result.success && typeof result.debugMode === 'boolean') {
-        setState(prev => ({ ...prev, debugMode: result.debugMode! }));
-      }
+      const result = await getPlaywrightAPI().getDebugMode();
+      setState(prev => ({ ...prev, debugMode: result.debugMode }));
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get debug mode';
@@ -218,25 +218,20 @@ export function usePlaywright() {
   const restart = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.restart();
-      if (result.success) {
-        setState(prev => ({ ...prev, isReady: true, isLoading: false }));
-        setSuccess(result);
-      } else {
-        setError(result.error || 'Restart failed');
-      }
-      return result;
+      await getPlaywrightAPI().restart();
+      setState(prev => ({ ...prev, isReady: true, isLoading: false }));
+      return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Restart failed';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, [setLoading, setError, setSuccess]);
+  }, [setLoading, setError]);
 
   const setCredentials = useCallback(async (credentials: { username: string; password: string }) => {
     try {
-      const result = await window.playwrightAPI.setCredentials(credentials);
-      return result;
+      await getPlaywrightAPI().setCredentials(credentials);
+      return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to set credentials';
       return { success: false, error: errorMessage };
@@ -245,7 +240,7 @@ export function usePlaywright() {
 
   const getStoredCredentials = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.getStoredCredentials();
+      const result = await getPlaywrightAPI().getStoredCredentials();
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get stored credentials';
@@ -255,7 +250,7 @@ export function usePlaywright() {
 
   const hasCredentials = useCallback(async () => {
     try {
-      const result = await window.playwrightAPI.hasCredentials();
+      const result = await getPlaywrightAPI().hasCredentials();
       return result;
     } catch (error) {
       return { success: false, hasCredentials: false };
@@ -265,7 +260,7 @@ export function usePlaywright() {
   const autoLogin = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await window.playwrightAPI.autoLogin();
+      const result = await getPlaywrightAPI().autoLogin();
       if (result.success) {
         setSuccess(result);
       } else {

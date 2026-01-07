@@ -9,5 +9,11 @@ export const IPC_CHANNELS = {
 
 
 export const ELEMENT_SELECTORS = {
-  MENU: '#form1\\:menu',
+  SOL_MENU_SELECTOR: "#form1\\:menu",
+  RECETE_LISTESI_FATURA_TIPI_SELECTOR: "select[name='form1:menu1']",
+  RECETE_LISTESI_PERIOD_SELECTOR: "select[name='form1:menu2']",
+  RECETE_LISTESI_SORGULA_BUTTON_SELECTOR:
+    "input[name='form1:buttonSonlandirilmamisReceteler']",
+  RECETE_LISTESI_TABLE_SELECTOR: "#form1\\:tableExReceteList",
+  RECETE_DETAY_GERI_DON_BUTTON_SELECTOR: "input[name='f:buttonGeriDon']",
 };

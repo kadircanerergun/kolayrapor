@@ -11,7 +11,16 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip";
-import { LogOut, FileCheck, Users, Settings, Search, User2, Bug } from "lucide-react";
+import {
+  LogOut,
+  FileCheck,
+  Users,
+  Settings,
+  Search,
+  User2,
+  Bug,
+  CalendarIcon,
+} from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
 
@@ -114,10 +123,16 @@ export default function MainLayout({
       description: "Ana sayfa ve rapor işlemleri"
     },
     {
-      to: "/search-report",
+      to: "/search-by-recipe",
       icon: Search,
-      label: "Rapor Arama",
-      description: "SGK sisteminde recete numarasi ya da tarih ile arama"
+      label: "Reçete Numarası ile Arama",
+      description: "Reçete numarası ile rapor arama"
+    },
+    {
+      to: "/search-report",
+      icon: CalendarIcon,
+      label: "Tarih ile Arama",
+      description: "Tarih aralığı ile rapor arama"
     },
     {
       to: "/ayarlar",
