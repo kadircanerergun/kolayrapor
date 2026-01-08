@@ -35,9 +35,7 @@ const SearchByRecipe = () => {
     const searchResult = await playwright.searchPrescription(recipeCode);
 
     if (searchResult.success) {
-      alert(
-        `Reçete arama tamamlandı! Sonuç: ${JSON.stringify(searchResult.prescriptionData)}`,
-      );
+
     } else {
       dialog.showAlert({
         title: "Hata",

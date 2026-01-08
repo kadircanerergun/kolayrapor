@@ -458,7 +458,7 @@ export class PlaywrightAutomationService {
       // Parse recete from current page
       const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
       await this.ilaclaraRaporEkle(recete);
-      console.log("Parsed prescription data: ", recete);
+      console.log("Parsed prescription data: ", JSON.stringify(recete));
       return {
         success: true,
         currentUrl: this.page.url(),
