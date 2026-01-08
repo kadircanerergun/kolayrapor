@@ -18,4 +18,5 @@ export const ELEMENT_SELECTORS = {
   RECETE_DETAY_GERI_DON_BUTTON_SELECTOR: "input[name='f:buttonGeriDon']",
   RECETE_DETAY_DOKTOR_BRANS_SELECTOR: "span#f\\t45",
   RECETE_DETAY_TESIS_KODU_SELECTOR: "input[name='f:t33']",
+  ILAC_BILGI_BUTTON_SELECTOR: "input[name='f:buttonIlacBilgiGorme']",
 };

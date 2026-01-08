@@ -5,14 +5,26 @@ import dayjs from "dayjs";
 import { WrongIpException } from "@/exceptions/wrong-ip.exception";
 import { WrongCaptchaException } from "@/exceptions/wrong-captcha.exception";
 import { InvalidLoginException } from "@/exceptions/invalid-login.exception";
-import {
-  PlaywrightErrorCode,
-  PlaywrightException,
-} from "@/exceptions/playwright.exception";
+import { PlaywrightErrorCode, PlaywrightException, } from "@/exceptions/playwright.exception";
 import { URLS } from "@/constants/urls";
 import { UnsuccessfulLoginException } from "@/exceptions/unsuccessful-login.exception";
-import { IlacOzet, Recete, ReceteOzet } from "@/types/recete";
-import { Locator } from "@playwright/test";
+import {
+  EsdegerBilgi,
+  IlacBilgi,
+  IlacMesaj,
+  IlacOzet,
+  OzelDurum,
+  RaporAciklama,
+  RaporDoktor,
+  RaporEtkenMadde,
+  RaporHasta,
+  RaporTani,
+  Recete,
+  ReceteIlac,
+  ReceteOzet,
+  ReceteRapor,
+} from "@/types/recete";
+import { isEmpty } from "lodash";
 
 let chromium: typeof import("playwright").chromium;
 
@@ -411,65 +423,103 @@ export class PlaywrightAutomationService {
 
   async searchPrescription(
     prescriptionNumber: string,
-  ): Promise<NavigationResult & { prescriptionData?: unknown }> {
+  ): Promise<NavigationResult & { prescriptionData?: Recete }> {
+    try {
+      if (!this.page) {
+        throw new Error("System is not ready.");
+      }
+      await this.navigateToSGKPortal();
+      await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+      const menu = this.page
+        .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
+        .nth(5);
+      await menu.click();
+      await this.page.waitForSelector('input[name="form1:text2"]', {
+        timeout: 3000,
+      });
+
+      const prescriptionField = await this.page.$('input[name="form1:text2"]');
+      if (!prescriptionField) {
+        throw new Error("Could not find prescription number field");
+      }
+      await prescriptionField.fill(prescriptionNumber);
+
+      // Click the search button
+      const searchButton = await this.page.$(
+        'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
+      );
+      if (!searchButton) {
+        throw new Error("Could not find search button");
+      }
+
+      await searchButton.click();
+      await this.page.waitForLoadState("load");
+
+      // Parse recete from current page
+      const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
+      await this.ilaclaraRaporEkle(recete);
+      console.log("Parsed prescription data: ", recete);
+      return {
+        success: true,
+        currentUrl: this.page.url(),
+        prescriptionData: recete,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Prescription search failed",
+      };
+    }
+  }
+
+  async ilaclaraRaporEkle(recete: Recete): Promise<void> {
     if (!this.page) {
-      throw new Error("System is not ready.");
+      throw new Error("Page is not available");
     }
-    await this.navigateToSGKPortal();
-    await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
-    const menu = this.page
-      .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
-      .nth(5);
-    await menu.click();
-    await this.page.waitForSelector('input[name="form1:text2"]', {
-      timeout: 3000,
-    });
-
-    const prescriptionField = await this.page.$('input[name="form1:text2"]');
-    if (!prescriptionField) {
-      throw new Error("Could not find prescription number field");
+    for (let i = 0; i < (recete.ilaclar?.length || 0); i++) {
+      const ilac = recete.ilaclar![i];
+      if (ilac.raporluMu) {
+        ilac.rapor = await this.getReportForMedicine(i);
+        ilac.detay = await this.getIlacBilgiForMedicine(i);
+      }
     }
-    await prescriptionField.fill(prescriptionNumber);
+  }
 
-    // Click the search button
-    const searchButton = await this.page.$(
-      'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
-    );
-    if (!searchButton) {
-      throw new Error("Could not find search button");
+  async parseReceteFromCurrentPage(
+    prescriptionNumber: string,
+  ): Promise<Recete> {
+    if (!this.page) {
+      throw new Error("Page is not available");
     }
 
-    await searchButton.click();
-    await this.page.waitForLoadState("load");
-    const doktorBransSpan = this.page.locator(
-      ELEMENT_SELECTORS.RECETE_DETAY_DOKTOR_BRANS_SELECTOR,
-    );
-    const tesisKoduInput = this.page.locator('input[name="f:t45"]');
-    const doktorBrans = await doktorBransSpan.textContent();
-    const tesisKodu = await tesisKoduInput?.inputValue() ?? "";
+    // Temel reçete bilgilerini çıkar
+    const receteNoElement = this.page.locator("#f\\:t13");
+    const tesisKoduElement = this.page.locator("#f\\:t33");
+    const receteTarihiElement = this.page.locator("#f\\:t29");
+    const sonIslemTarihiElement = this.page.locator("#f\\:t31");
+    const doktorBransElement = this.page.locator("#f\\:t45");
+
+    const receteNo =
+      (await receteNoElement.textContent()) || prescriptionNumber;
+    const tesisKodu = (await tesisKoduElement.inputValue()) || "";
+    const receteTarihi = (await receteTarihiElement.inputValue()) || "";
+    const sonIslemTarihi = (await sonIslemTarihiElement.inputValue()) || "";
+    const doktorBrans = (await doktorBransElement.textContent()) || "";
+
+    // İlaç listesini getIlacOzetFromDetailPage kullanarak çıkar
+    const ilaclar = (await this.getIlacOzetFromDetailPage()) as ReceteIlac[];
+
     const recete: Recete = {
-      receteNo: prescriptionNumber,
-      receteTarihi:
+      receteNo: receteNo.trim(),
+      receteTarihi,
+      sonIslemTarihi,
+      tesisKodu,
+      doktorBrans: doktorBrans.trim(),
+      ilaclar,
+    };
 
-    }
-
-    //   return {
-    //     success: true,
-    //     currentUrl: this.page.url(),
-    //     prescriptionData: {
-    //       number: prescriptionNumber,
-    //       searchResults: prescriptionMedicines,
-    //       timestamp: new Date().toISOString(),
-    //     },
-    //   };
-    // } catch (error) {
-    //   return {
-    //     success: false,
-    //     error:
-    //       error instanceof Error ? error.message : "Prescription search failed",
-    //   };
-    // }
-    return { success: false, error: "Not implemented yet" };
+    return recete;
   }
 
   async searchByDateRange(
@@ -654,7 +704,9 @@ export class PlaywrightAutomationService {
       const verilebilecegiText = (await verilebilecegi.count())
         ? await verilebilecegi.textContent()
         : "";
-
+      const raportText = (await rapor.count())
+        ? this.normalizeText(await rapor.textContent())
+        : undefined;
       const ilac: IlacOzet = {
         ad: this.normalizeText(adValue),
         barkod: this.normalizeText(barkodValue),
@@ -665,14 +717,13 @@ export class PlaywrightAutomationService {
             : "",
         doz: dozValue && doz2Value ? `${dozValue} x ${doz2Value}` : "",
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
-        rapor: (await rapor.count())
-          ? this.normalizeText(await rapor.textContent())
-          : undefined,
+        rapor: raportText,
+        raporluMu: !isEmpty(raportText?.trim()),
       };
-      ilaclar.push(ilac);
+      if (!isEmpty(ilac.ad)) {
+        ilaclar.push(ilac);
+      }
     }
-    // return back
-
     return ilaclar;
   }
   async close(): Promise<void> {
@@ -753,6 +804,9 @@ export class PlaywrightAutomationService {
         ? await verilebilecegi.textContent()
         : "";
 
+      const raportText = (await rapor.count())
+        ? this.normalizeText(await rapor.textContent())
+        : undefined;
       const ilac: IlacOzet = {
         ad: this.normalizeText(adValue),
         barkod: this.normalizeText(barkodValue),
@@ -763,9 +817,8 @@ export class PlaywrightAutomationService {
             : "",
         doz: dozValue && doz2Value ? `${dozValue} x ${doz2Value}` : "",
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
-        rapor: (await rapor.count())
-          ? this.normalizeText(await rapor.textContent())
-          : undefined,
+        rapor: raportText,
+        raporluMu: !isEmpty(raportText?.trim()),
       };
       result.push(ilac);
     }
@@ -787,7 +840,7 @@ export class PlaywrightAutomationService {
     // Rapor butonu
   }
 
-  async getReportForMedicine(rowIndex: number): Promise<Record<string, any>> {
+  async getReportForMedicine(rowIndex: number): Promise<ReceteRapor> {
     const page = this.page;
     const table = page?.locator("table#f\\:tbl1");
     const row = table?.locator(`tr`).filter({
@@ -807,176 +860,282 @@ export class PlaywrightAutomationService {
     return data;
   }
 
-  async scrapeRaporPage(page: Page): Promise<RaporData> {
+  async getIlacBilgiForMedicine(rowIndex: number): Promise<IlacBilgi> {
+    const page = this.page;
+    const table = page?.locator("table#f\\:tbl1");
+    const row = table?.locator(`tr`).filter({
+      has: page!.locator(`input[id="f:tbl1:${rowIndex}:t1"]`),
+    });
+    const checkbox = row?.locator(`input[id="f:tbl1:${rowIndex}:checkbox7"]`);
+    await checkbox?.check();
+    const ilacBilgiButton = page?.locator(
+      ELEMENT_SELECTORS.ILAC_BILGI_BUTTON_SELECTOR,
+    );
+    await ilacBilgiButton?.waitFor({ state: "visible" });
+    await ilacBilgiButton?.click();
+    const closeButton = page?.locator("input[name='form1:buttonGeriDon']");
+    await closeButton?.waitFor({ state: "visible" });
+    const bilgi: IlacBilgi = await this.scrapeIlacBilgiPage(page!);
+    closeButton?.click();
+    return bilgi;
+  }
+
+  async scrapeIlacBilgiPage(page: Page): Promise<IlacBilgi> {
+    // İlaç Bilgileri başlığının geldiğinden emin ol
+    await page.waitForSelector('td.menuHeader:has-text("İlaç Bilgileri")', {
+      timeout: 15000,
+    });
+
+    // Helper fonksiyonlar
+    const getTextContent = async (selector: string): Promise<string> => {
+      try {
+        const element = page.locator(selector).first();
+        return (await element.textContent()) || "";
+      } catch {
+        return "";
+      }
+    };
+
+    // Temel ilaç bilgilerini çıkar
+    const ilacAdi = await getTextContent("#form1\\:text13");
+    const ambalajMiktari =
+      (await getTextContent("#form1\\:text14")) +
+      " " +
+      (await getTextContent("#form1\\:text25"));
+    const tekDozMiktari =
+      (await getTextContent("#form1\\:text79")) +
+      " " +
+      (await getTextContent("#form1\\:text80"));
+    const cinsiyeti = await getTextContent("#form1\\:text40");
+    const etkinMaddeKod = await getTextContent("#form1\\:text2");
+    const etkinMaddeAd = await getTextContent("#form1\\:text35");
+    const etkinMadde =
+      etkinMaddeKod && etkinMaddeAd ? `${etkinMaddeKod} - ${etkinMaddeAd}` : "";
+
+    // SUT bilgilerini çıkar
+    // const sutElements = await page
+    //   .locator("#form1\\:tableEx1 > tr.rowClass1")
+    //   .all();
+    const sutBilgileri: any[] = [];
+
+    // Özel durum bilgilerini çıkar
+    const ozelDurumElements = await page
+      .locator(
+        "#form1\\:tableExOzelDurumList tr.rowClass1, #form1\\:tableExOzelDurumList tr.rowClass2",
+      )
+      .all();
+    const ozelDurumlar: OzelDurum[] = [];
+
+    for (const row of ozelDurumElements) {
+      const cells = await row.locator("td").all();
+      const durumText = await cells?.[0]?.textContent();
+      if (durumText && durumText.trim()) {
+        const kod = durumText.split("-")[0].trim();
+        const aciklama = durumText.split("-").slice(1).join("-").trim();
+        ozelDurumlar.push({
+          kod,
+          mesaj: aciklama,
+        });
+      }
+    }
+
+    // Eşdeğer bilgilerini çıkar
+    const esdegerElements = await page
+      .locator("#form1\\:tableExIlacEsdeger tr.rowClass1")
+      .all();
+    const esdegerBilgileri: EsdegerBilgi[] = [];
+    for (const element of esdegerElements) {
+      const cells = await element.locator("td").all();
+      const baslangicTarihi = await cells?.[0]?.textContent();
+      const bitisTarihi = await cells?.[1]?.textContent();
+      const uyariKodu = await cells?.[2]?.textContent();
+      const esdegerKodu = await cells?.[3]?.textContent();
+      esdegerBilgileri.push({
+        baslangicTarihi: baslangicTarihi?.trim() || "",
+        bitisTarihi: bitisTarihi?.trim() || "",
+        uyariKodu: uyariKodu?.trim() || "",
+        esdegerKodu: esdegerKodu?.trim() || "",
+      });
+      //form1:tableExIlacMesajListesi
+    }
+    const mesajlarElements = await page
+      .locator(
+        "#form1\\:tableExIlacMesajListesi tr.rowClass1, #form1\\:tableExIlacMesajListesi tr.rowClass2",
+      )
+      .all();
+    const mesajlar: IlacMesaj[] = [];
+    for (const msgRow of mesajlarElements) {
+      const msgCells = await msgRow.locator("td").all();
+      const msgText = await msgCells?.[1]?.textContent();
+      const mesaj: IlacMesaj = {
+        baslik: msgText?.trim() || "",
+        mesaj: "",
+      };
+      await msgCells[1]?.click();
+      await page.waitForSelector("div#form1\\:dialog1");
+      const dialogElement = page.locator("div#form1\\:dialog1");
+      const textAreaElement = dialogElement.locator(
+        "textarea[name='form1:textarea1']",
+      );
+      const detayText = await textAreaElement.textContent();
+      mesaj.mesaj = detayText?.trim() || "";
+      mesajlar.push(mesaj);
+      const closeDialogButton = dialogElement.locator(
+        "input[name='form1\\:buttonKapat']",
+      );
+      await closeDialogButton.click();
+    }
+
+    const ilacBilgi: IlacBilgi = {
+      ilacAdi: this.normalizeText(ilacAdi),
+      ambalajMiktari: this.normalizeText(ambalajMiktari),
+      tekDozMiktari: this.normalizeText(tekDozMiktari),
+      cinsiyeti: this.normalizeText(cinsiyeti),
+      etkinMadde: this.normalizeText(etkinMadde),
+      sutBilgi: sutBilgileri[0] || undefined,
+      ozelDurumlar: ozelDurumlar.length > 0 ? ozelDurumlar : undefined,
+      esdegerBilgi: esdegerBilgileri[0] || undefined,
+      mesajlar: mesajlar,
+    };
+
+    return ilacBilgi;
+  }
+
+  async scrapeRaporPage(page: Page): Promise<ReceteRapor> {
     // Page header "Rapor Görme" gelene kadar bekleyelim
     await page.waitForSelector('td.menuHeader:has-text("Rapor Görme")', {
       timeout: 15000,
     });
 
-    // Helpers
-    const textById = async (id: string) =>
-      this.normalizeText(
-        await page.locator(`#${id.replace(/:/g, "\\:")}`).textContent(),
-      );
-
-    // --- Hak Sahibi (PII hariç) ---
-    // PII: form1:text5 (tc), form1:text7 + form1:text58 (ad/soyad) => özellikle çekmiyoruz.
-    const cinsiyet = await textById("form1:text3");
-    const dogumTarihi = await textById("form1:text1");
-
-    // --- Rapor Bilgileri ---
-    const raporNumarasi = await textById("form1:text2");
-    const raporTarihi = await textById("form1:text10");
-    const protokolNo = await textById("form1:text4");
-    const duzenlemeTuru = await textById("form1:text12");
-    const aciklama = await textById("form1:text8");
-    const kayitSekli = await textById("form1:text15");
-    const tesisKodu = await textById("form1:text9");
-    const raporTakipNo = await textById("form1:text74");
-    const tesisUnvani = await textById("form1:text92");
-    const kullaniciAdi = await textById("form1:text436");
-
-    // Açıklamalar tablosu: form1:tableEx2
-    const aciklamaRows = page.locator(
-      "table#form1\\:tableEx2 tr.rowClass1, table#form1\\:tableEx2 tr.rowClass2",
-    );
-    const aciklamaCount = await aciklamaRows.count();
-    const aciklamalar: Array<{ aciklama: string; eklenmeZamani: string }> = [];
-
-    for (let i = 0; i < aciklamaCount; i++) {
-      const row = aciklamaRows.nth(i);
-      const aciklamaTxt = this.normalizeText(
-        await row.locator('span[id$=":text43"]').textContent(),
-      );
-      const zamanTxt = this.normalizeText(
-        await row.locator('span[id$=":text891"]').textContent(),
-      );
-      if (aciklamaTxt || zamanTxt)
-        aciklamalar.push({ aciklama: aciklamaTxt, eklenmeZamani: zamanTxt });
-    }
-
-    // --- Tanı Bilgileri ---
-    const taniRows = page.locator(
-      "table#form1\\:tableExRaporTeshisList > tbody tr.rowClass1, table#form1\\:tableExRaporTeshisList > tbody tr.rowClass2",
-    );
-    const taniCount = await taniRows.count();
-    const taniBilgileri: RaporData["taniBilgileri"] = [];
-
-    for (let r = 0; r < taniCount; r++) {
-      const row = taniRows.nth(r);
-
-      const grupBasligi = this.normalizeText(
-        await row.locator('span[id$=":text77"]').first().textContent(),
-      );
-      const baslangic = this.normalizeText(
-        await row.locator("td").nth(2).textContent(),
-      ); // 3. kolon
-      const bitis = this.normalizeText(
-        await row.locator("td").nth(3).textContent(),
-      ); // 4. kolon
-
-      // nested ICD rows: ...:tableEx4 içinde text78 (icd), text82 (tanim)
-      const icdRows = row.locator('table[id$=":tableEx4"] > tbody > tr');
-      const icdCount = await icdRows.count();
-      const kodlar: Array<{ icd10: string; tanim: string }> = [];
-
-      for (let j = 0; j < icdCount; j++) {
-        const icdRow = icdRows.nth(j);
-        const icd10 = this.normalizeText(
-          await icdRow.locator('span[id$=":text78"]').textContent(),
-        );
-        const tanim = this.normalizeText(
-          await icdRow.locator('span[id$=":text82"]').textContent(),
-        );
-        if (icd10 || tanim) kodlar.push({ icd10, tanim });
+    const getTextContent = async (selector: string): Promise<string> => {
+      try {
+        const element = page.locator(selector).first();
+        return (await element.textContent()) || "";
+      } catch {
+        return "";
       }
-
-      if (grupBasligi || kodlar.length || baslangic || bitis) {
-        taniBilgileri.push({ grupBasligi, kodlar, baslangic, bitis });
-      }
-    }
-
-    // --- Doktor Bilgileri ---
-    const doktorRows = page.locator(
-      "table#form1\\:tableExRaporDoktorList tr.rowClass1, table#form1\\:tableExRaporDoktorList tr.rowClass2",
-    );
-    const doktorCount = await doktorRows.count();
-    const doktorBilgileri: RaporData["doktorBilgileri"] = [];
-
-    for (let i = 0; i < doktorCount; i++) {
-      const row = doktorRows.nth(i);
-      doktorBilgileri.push({
-        diplomaNo: this.normalizeText(
-          await row.locator('span[id$=":text26"]').textContent(),
-        ),
-        diplomaTescilNo: this.normalizeText(
-          await row.locator('span[id$=":text97"]').textContent(),
-        ),
-        brans: this.normalizeText(
-          await row.locator('span[id$=":text96"]').textContent(),
-        ),
-        adi: this.normalizeText(
-          await row.locator('span[id$=":text95"]').textContent(),
-        ),
-        soyadi: this.normalizeText(
-          await row.locator('span[id$=":text94"]').textContent(),
-        ),
-      });
-    }
-
-    // --- Etkin Madde Bilgileri ---
-    const emRows = page.locator(
-      "table#form1\\:tableEx1 tr.rowClass1, table#form1\\:tableEx1 tr.rowClass2",
-    );
-    const emCount = await emRows.count();
-    const etkinMaddeBilgileri: RaporData["etkinMaddeBilgileri"] = [];
-
-    for (let i = 0; i < emCount; i++) {
-      const row = emRows.nth(i);
-      etkinMaddeBilgileri.push({
-        kodu: this.normalizeText(
-          await row.locator('span[id$=":text62"]').textContent(),
-        ),
-        adi: this.normalizeText(
-          await row.locator('span[id$=":text63"]').textContent(),
-        ),
-        form: this.normalizeText(
-          await row.locator('span[id$=":text65"]').textContent(),
-        ),
-        tedaviSema: this.normalizeText(
-          await row.locator('span[id$=":text76"]').textContent(),
-        ),
-        adetMiktar: this.normalizeText(
-          await row.locator('span[id$=":text66"]').textContent(),
-        ),
-        icerikMiktari: this.normalizeText(
-          await row.locator('span[id$=":text64"]').textContent(),
-        ),
-        eklenmeZamani: this.normalizeText(
-          await row.locator('span[id$=":text24"]').textContent(),
-        ),
-      });
-    }
-
-    return {
-      hakSahibi: { cinsiyet, dogumTarihi },
-      raporBilgileri: {
-        raporNumarasi,
-        raporTarihi,
-        protokolNo,
-        duzenlemeTuru,
-        aciklama,
-        kayitSekli,
-        tesisKodu,
-        raporTakipNo,
-        tesisUnvani,
-        kullaniciAdi,
-        aciklamalar,
-      },
-      taniBilgileri,
-      doktorBilgileri,
-      etkinMaddeBilgileri,
     };
+
+    const raporNo = await getTextContent("#form1\\:text2");
+    const raporTarihi = await getTextContent("#form1\\:text10");
+    const protokolNo = await getTextContent("#form1\\:text4");
+    const duzenlemeTuru = await getTextContent("#form1\\:text12");
+    const kayitSekli = await getTextContent("#form1\\:text15");
+    const aciklama = await getTextContent("#form1\\:text8");
+    const tesisKodu = await getTextContent("#form1\\:text9");
+    const raporTakipNo = await getTextContent("#form1\\:text74");
+    const tesisUnvan = await getTextContent("#form1\\:text92");
+
+    // Hak sahibi (hasta) bilgilerini çıkar
+    const hastaBilgileri: RaporHasta = {
+      cinsiyet: await getTextContent("#form1\\:text3"),
+      dogumTarihi: await getTextContent("#form1\\:text1"),
+    };
+
+    // Doktor bilgilerini çıkar
+    const doktorRows = await page
+      .locator(
+        "#form1\\:tableExRaporDoktorList tr.rowClass1, #form1\\:tableExRaporDoktorList tr.rowClass2",
+      )
+      .all();
+    const doktorlar: RaporDoktor[] = [];
+    for (const row of doktorRows) {
+      const cells = await row.locator("td").all();
+      const doktorBrans =
+        (await cells?.[2]?.locator("span")?.textContent()) ?? "";
+      const doktor = {
+        brans: this.normalizeText(doktorBrans),
+      };
+      doktorlar.push(doktor);
+    }
+
+    // Tanı bilgilerini çıkar
+    const taniRows = await page
+      .locator(
+        "#form1\\:tableExRaporTeshisList tr.rowClass1, #form1\\:tableExRaporTeshisList tr.rowClass2",
+      )
+      .all();
+    const tanilar: RaporTani[] = [];
+
+    for (const row of taniRows) {
+      const cells = await row.locator("td").all();
+      const taniKodu = await cells?.[0]?.textContent();
+      const baslangicTarihi = await cells?.[1]?.textContent();
+      const bitisTarihi = await cells?.[2]?.textContent();
+      if (taniKodu && taniKodu.trim()) {
+        tanilar.push({
+          tani: taniKodu.trim(),
+          baslangicTarihi: baslangicTarihi?.trim() || "",
+          bitisTarihi: bitisTarihi?.trim() || "",
+        });
+      }
+    }
+
+    // Etkin madde bilgilerini çıkar
+    const etkenMaddeRows = await page
+      .locator("#form1\\:tableEx1 tr.rowClass1, #form1\\:tableEx1 tr.rowClass2")
+      .all();
+    const etkenMaddeler: RaporEtkenMadde[] = [];
+
+    for (const row of etkenMaddeRows) {
+      const cells = await row.locator("td").all();
+      const etkenMaddeKodu = await cells?.[0]?.textContent();
+      const etkenMaddeAd = await cells?.[1]?.textContent();
+      const form = await cells?.[2]?.textContent();
+      const tedaviSemasi = await cells?.[3]?.textContent();
+      const adetMiktar = await cells?.[4]?.textContent();
+      const icerikMiktar = await cells?.[5]?.textContent();
+      const eklenmeTarihi = await cells?.[6]?.textContent();
+
+      if (etkenMaddeKodu && etkenMaddeKodu.trim()) {
+        etkenMaddeler.push({
+          kod: etkenMaddeKodu.trim(),
+          ad: etkenMaddeAd?.trim() || "",
+          form: form?.trim() || "",
+          tedaviSema: tedaviSemasi?.trim() || "",
+          adet: Number(adetMiktar?.trim()) || 0,
+          icerikMiktari: icerikMiktar?.trim() || "",
+          eklenmeZamani: eklenmeTarihi?.trim() || "",
+        });
+      }
+    }
+
+    // Açıklama bilgilerini çıkar
+    const aciklamaRows = await page
+      .locator("#form1\\:tableEx2 tr.rowClass1, #form1\\:tableEx2 tr.rowClass2")
+      .all();
+    const aciklamalar: RaporAciklama[] = [];
+
+    for (const row of aciklamaRows) {
+      const cells = await row.locator("td").all();
+      const aciklama = await cells?.[0]?.textContent();
+      const eklenmeZamani = await cells?.[1]?.textContent();
+      if (aciklama && aciklama.trim()) {
+        aciklamalar.push({
+          aciklama: aciklama.trim(),
+          eklenmeTarihi: eklenmeZamani?.trim() || "",
+        });
+      }
+    }
+
+    const rapor: ReceteRapor = {
+      raporNo: this.normalizeText(raporNo),
+      raporTarihi: this.normalizeText(raporTarihi),
+      protokolNo: this.normalizeText(protokolNo),
+      duzenlemeTuru: this.normalizeText(duzenlemeTuru),
+      kayitSekli: this.normalizeText(kayitSekli),
+      aciklama: this.normalizeText(aciklama),
+      tesisKodu: this.normalizeText(tesisKodu),
+      raporTakipNo: this.normalizeText(raporTakipNo),
+      tesisUnvan: this.normalizeText(tesisUnvan),
+      tanilar: tanilar,
+      doktorlar: doktorlar,
+      etkenMaddeler: etkenMaddeler,
+      aciklamalar: aciklamalar,
+      hastaBilgileri,
+    };
+
+    return rapor;
   }
 
   private checkPageError = async (page: Page) => {

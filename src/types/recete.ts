@@ -6,6 +6,7 @@ type IlacOzet = {
   adet: number;
   periyot: string;
   doz: string;
+  raporluMu: boolean;
 };
 type ReceteOzet = {
   receteNo: string;
@@ -42,7 +43,7 @@ type RaporHasta = {
   cinsiyet: string;
   dogumTarihi: string;
 };
-type Rapor = {
+type ReceteRapor = {
   raporNo: string;
   raporTarihi: string;
   protokolNo: string;
@@ -53,7 +54,7 @@ type Rapor = {
   raporTakipNo: string;
   tesisUnvan: string;
   tanilar?: RaporTani[];
-  doktor?: RaporDoktor;
+  doktorlar?: RaporDoktor[];
   etkenMaddeler?: RaporEtkenMadde[];
   aciklamalar?: RaporAciklama[];
   hastaBilgileri?: RaporHasta;
@@ -143,7 +144,7 @@ type ReceteTani = {
 }
 
 type ReceteIlac = Omit<IlacOzet, 'rapor'> &{
-  rapor?: Rapor;
+  rapor?: ReceteRapor;
   detay?: IlacBilgi;
 };
 
@@ -160,4 +161,23 @@ type RecipeByDateResponse = {
   receteler: ReceteOzet[];
 }
 
-export { Recete, ReceteIlac, ReceteOzet, RecipeByDateResponse, IlacOzet };
+export {
+  Recete,
+  ReceteIlac,
+  ReceteOzet,
+  RecipeByDateResponse,
+  IlacOzet,
+  ReceteRapor,
+  IlacBilgi,
+  ReceteTani,
+  RaporDoktor,
+  RaporTani,
+  RaporAciklama,
+  RaporHasta,
+  RaporEtkenMadde,
+  SutBilgi,
+  SutDetay,
+  OzelDurum,
+  IlacMesaj,
+  EsdegerBilgi,
+};
