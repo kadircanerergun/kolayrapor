@@ -12,11 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useDialogContext } from "@/contexts/dialog-context";
+import { useModal } from "@/hooks/useModal";
+import { ModalProvider } from "@/components/modal-provider";
+import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
+import { Recete } from "@/types/recete";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
   const [recipeCode, setRecipeCode] = useState("");
   const dialog = useDialogContext();
+  const modal = useModal();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,8 +39,21 @@ const SearchByRecipe = () => {
     }
     const searchResult = await playwright.searchPrescription(recipeCode);
 
-    if (searchResult.success) {
+    if (searchResult.success && searchResult.prescriptionData) {
+      const prescriptionData = searchResult.prescriptionData as Recete;
 
+      modal.openModal(
+        <PrescriptionMedicinesModal
+          prescriptionData={prescriptionData}
+          onQueryMedicine={(medicine) => {
+            console.log('Querying medicine:', medicine);
+          }}
+        />,
+        {
+          title: "Reçete Detayları",
+          size: "6xl",
+        }
+      );
     } else {
       dialog.showAlert({
         title: "Hata",
@@ -44,7 +62,8 @@ const SearchByRecipe = () => {
     }
   };
   return (
-    <Card className={"flex-1"}>
+    <>
+      <Card className={"flex-1"}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Search className="h-5 w-5" />
@@ -87,6 +106,9 @@ const SearchByRecipe = () => {
         </form>
       </CardContent>
     </Card>
+
+    <ModalProvider modal={modal.modal} onClose={modal.closeModal} />
+    </>
   );
 };
 

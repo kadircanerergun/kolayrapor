@@ -2,7 +2,7 @@ import { useState, useCallback, ReactNode } from 'react';
 
 export interface ModalOptions {
   title?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | '7xl' | 'full';
   closeOnEscape?: boolean;
   closeOnOutsideClick?: boolean;
   showCloseButton?: boolean;
