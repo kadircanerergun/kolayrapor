@@ -15,12 +15,19 @@ import { DateRange } from "react-day-picker";
 import { sub } from "date-fns";
 import dayjs from "dayjs";
 import { useDialogContext } from "@/contexts/dialog-context";
+import { ReceteOzet } from "@/types/recete";
 
-const SearchByDateRange = () => {
+type SearchByDateRangeProps = {
+  onSearchComplete?: (results: ReceteOzet[]) => void;
+  onSearchStart?: () => void;
+  onError?: (error: string) => void;
+};
+const SearchByDateRange = (props: SearchByDateRangeProps) => {
   const playwright = usePlaywright();
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
   const dialog = useDialogContext();
   const handleSubmit = async (e: React.FormEvent) => {
+    props.onSearchStart?.();
     e.preventDefault();
     if (!playwright.isReady) {
       const initResult = await playwright.initialize();
@@ -43,6 +50,17 @@ const SearchByDateRange = () => {
         description:
           "Sorgulama sirasinda bir hata oluştu: " + searchResult.error,
       });
+      props.onError?.(searchResult.error);
+    }
+    if (searchResult.success) {
+      if (!searchResult.prescriptions?.length) {
+        dialog.showAlert({
+          title: "Sonuç Bulunamadı",
+          description:
+            "Belirtilen tarih aralığında herhangi bir reçete bulunamadı.",
+        });
+      }
+      props.onSearchComplete?.(searchResult.prescriptions);
     }
   };
   return (

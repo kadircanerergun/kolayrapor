@@ -1,4 +1,21 @@
-import { string } from "zod";
+type IlacOzet = {
+  barkod: string;
+  ad: string;
+  rapor?: string;
+  verilebilecegiTarih: string;
+  adet: number;
+  periyot: string;
+  doz: string;
+};
+type ReceteOzet = {
+  receteNo: string;
+  sonIslemTarihi: string;
+  receteTarihi: string;
+  ad: string;
+  soyad: string;
+  kapsam: string;
+  ilaclar?: IlacOzet[];
+};
 
 type RaporAciklama = {
   aciklama: string;
@@ -120,13 +137,14 @@ type IlacBilgi = {
   esdegerBilgi?: EsdegerBilgi;
 };
 
-type ReceteIlac = {
-  barkod: string;
-  ad: string;
-  raporText: string;
-  verilebilecegiTarih: string;
-  rapor: Rapor;
-  detay: IlacBilgi;
+type ReceteTani = {
+  icd10Kod: string;
+  tani: string;
+}
+
+type ReceteIlac = Omit<IlacOzet, 'rapor'> &{
+  rapor?: Rapor;
+  detay?: IlacBilgi;
 };
 
 type Recete = {
@@ -134,25 +152,8 @@ type Recete = {
   receteTarihi: string;
   sonIslemTarihi: string;
   ilaclar?: ReceteIlac[];
-};
-
-type IlacOzet = {
-  barkod: string;
-  ad: string;
-  rapor?: string;
-  verilebilecegiTarih: string;
-  adet: number;
-  periyot: string;
-  doz: string;
-};
-type ReceteOzet = {
-  receteNo: string;
-  sonIslemTarihi: string;
-  receteTarihi: string;
-  ad: string;
-  soyad: string;
-  kapsam: string;
-  ilaclar?: IlacOzet[];
+  tesisKodu: string;
+  doktorBrans: string;
 };
 
 type RecipeByDateResponse = {

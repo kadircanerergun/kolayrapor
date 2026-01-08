@@ -11,7 +11,7 @@ import {
 } from "@/exceptions/playwright.exception";
 import { URLS } from "@/constants/urls";
 import { UnsuccessfulLoginException } from "@/exceptions/unsuccessful-login.exception";
-import { IlacOzet, ReceteOzet } from "@/types/recete";
+import { IlacOzet, Recete, ReceteOzet } from "@/types/recete";
 import { Locator } from "@playwright/test";
 
 let chromium: typeof import("playwright").chromium;
@@ -31,7 +31,7 @@ interface LoginResult {
 }
 
 interface SearchByDateResult {
-  prescriptions?: string[];
+  prescriptions?: ReceteOzet[];
   success: boolean;
   currentUrl?: string;
   error?: string;
@@ -325,6 +325,7 @@ export class PlaywrightAutomationService {
         throw new UnsuccessfulLoginException();
       }
       await this.page.context().clearCookies();
+      await this.page.goto(URLS.MEDULA_HOME);
       return await this.performLogin(credentials);
     }
     this.loginCounter = 0;
@@ -411,56 +412,47 @@ export class PlaywrightAutomationService {
   async searchPrescription(
     prescriptionNumber: string,
   ): Promise<NavigationResult & { prescriptionData?: unknown }> {
-    return new Promise(async (resolve, reject) => {
-      resolve({ success: false, error: "Not implemented yet"});
+    if (!this.page) {
+      throw new Error("System is not ready.");
+    }
+    await this.navigateToSGKPortal();
+    await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+    const menu = this.page
+      .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
+      .nth(5);
+    await menu.click();
+    await this.page.waitForSelector('input[name="form1:text2"]', {
+      timeout: 3000,
     });
-    // try {
-    //   if (!this.page) {
-    //     throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
-    //   }
-    //   // First navigate to main portal URL
-    //   await this.navigateToSGKPortal();
-    //   await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
-    //   const menu = this.page
-    //     .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
-    //     .nth(5);
-    //   await menu.click();
-    //   // Wait for the prescription number form
-    //   await this.page.waitForSelector('input[name="form1:text2"]', {
-    //     timeout: 10000,
-    //   });
-    //
-    //   // Fill the prescription number
-    //   const prescriptionField = await this.page.$('input[name="form1:text2"]');
-    //   if (!prescriptionField) {
-    //     throw new Error("Could not find prescription number field");
-    //   }
-    //   await prescriptionField.fill(prescriptionNumber);
-    //
-    //   // Click the search button
-    //   const searchButton = await this.page.$(
-    //     'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
-    //   );
-    //   if (!searchButton) {
-    //     throw new Error("Could not find search button");
-    //   }
-    //
-    //   // Submit the form and wait for results
-    //   await Promise.all([
-    //     this.page.waitForNavigation({ timeout: 15000 }).catch(() => {
-    //       // Sometimes the page doesn't navigate, just updates content
-    //       console.log(
-    //         "No navigation occurred, content might be updated in place",
-    //       );
-    //     }),
-    //     searchButton.click(),
-    //   ]);
-    //   await this.page.waitForLoadState("load");
-    //
-    //   const prescriptionMedicines = await this.scrapeIlacListesi(this.page);
-    //   await this.addReportsToMedicines(prescriptionMedicines);
-    //   console.log("Extracted prescription data:", prescriptionMedicines);
-    //
+
+    const prescriptionField = await this.page.$('input[name="form1:text2"]');
+    if (!prescriptionField) {
+      throw new Error("Could not find prescription number field");
+    }
+    await prescriptionField.fill(prescriptionNumber);
+
+    // Click the search button
+    const searchButton = await this.page.$(
+      'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
+    );
+    if (!searchButton) {
+      throw new Error("Could not find search button");
+    }
+
+    await searchButton.click();
+    await this.page.waitForLoadState("load");
+    const doktorBransSpan = this.page.locator(
+      ELEMENT_SELECTORS.RECETE_DETAY_DOKTOR_BRANS_SELECTOR,
+    );
+    const tesisKoduInput = this.page.locator('input[name="f:t45"]');
+    const doktorBrans = await doktorBransSpan.textContent();
+    const tesisKodu = await tesisKoduInput?.inputValue() ?? "";
+    const recete: Recete = {
+      receteNo: prescriptionNumber,
+      receteTarihi:
+
+    }
+
     //   return {
     //     success: true,
     //     currentUrl: this.page.url(),
@@ -477,6 +469,7 @@ export class PlaywrightAutomationService {
     //       error instanceof Error ? error.message : "Prescription search failed",
     //   };
     // }
+    return { success: false, error: "Not implemented yet" };
   }
 
   async searchByDateRange(
@@ -502,10 +495,10 @@ export class PlaywrightAutomationService {
       const result = await this.getRecipesByPeriod(period);
       recipes.push(...result);
     }
-    console.log("Recipes by date range:", recipes);
     return {
       success: true,
-    }
+      prescriptions: recipes,
+    };
   }
 
   async getRecipesByPeriod(period: string): Promise<ReceteOzet[]> {
@@ -536,11 +529,13 @@ export class PlaywrightAutomationService {
     await this.page.waitForLoadState("load");
     const checkListError = async () => {
       const errorSpan = this.page!.locator("td.message > span.outputText");
-      const errorText = await errorSpan.textContent({
-        timeout: 500
-      })?.catch(() => {
-        return ''
-      });
+      const errorText = await errorSpan
+        .textContent({
+          timeout: 500,
+        })
+        ?.catch(() => {
+          return "";
+        });
       return !!(errorText && errorText.trim().length > 0);
     };
     const hasError = await checkListError();
@@ -559,24 +554,28 @@ export class PlaywrightAutomationService {
     const pageCount = Number(splitParts[1]);
 
     const receteler: ReceteOzet[] = [];
-    console.log('pageCount', pageCount);
 
     for (let p = 1; p <= pageCount; p++) {
       const rows = recipeTable.locator(
         "tbody > tr.rowClass1, tbody > tr.rowClass2",
       );
       const rowCount = await rows.count();
-      console.log('rowCount', rowCount);
 
-      for (let i = 0; i < rowCount; i++) {
+      for (let i = 0; i < 10; i++) {
         const row = rows.nth(i);
-        const columns = await row.locator('td');
-        const receteNo = await columns.nth(1).locator('span').textContent();
-        const sonIslemTarihi = await columns.nth(2).locator('span').textContent();
-        const recepteTarihi = await columns.nth(3).locator('span').textContent();
-        const ad = await columns.nth(4).locator('span').textContent();
-        const soyad = await columns.nth(5).locator('span').textContent();
-        const kapsam = await columns.nth(6).locator('span').textContent();
+        const columns = await row.locator("td");
+        const receteNo = await columns.nth(1).locator("span").textContent();
+        const sonIslemTarihi = await columns
+          .nth(2)
+          .locator("span")
+          .textContent();
+        const recepteTarihi = await columns
+          .nth(3)
+          .locator("span")
+          .textContent();
+        const ad = await columns.nth(4).locator("span").textContent();
+        const soyad = await columns.nth(5).locator("span").textContent();
+        const kapsam = await columns.nth(6).locator("span").textContent();
 
         const recete: ReceteOzet = {
           receteNo: this.normalizeText(receteNo),
@@ -586,17 +585,20 @@ export class PlaywrightAutomationService {
           soyad: this.normalizeText(soyad),
           kapsam: this.normalizeText(kapsam),
         };
-        recete.ilaclar = await this.getMedicinesForRow(row);
+        await row.click();
+        recete.ilaclar = await this.getIlacOzetFromDetailPage();
         receteler.push(recete);
+        await this.page!.locator(
+          ELEMENT_SELECTORS.RECETE_DETAY_GERI_DON_BUTTON_SELECTOR,
+        ).click();
       }
     }
 
     return receteler;
   }
 
-  async getMedicinesForRow(row: Locator): Promise<IlacOzet[]> {
+  async getIlacOzetFromDetailPage(): Promise<IlacOzet[]> {
     const ilaclar: IlacOzet[] = [];
-    await row.click();
     const page = this.page!;
 
     // The Medula JSF table can render multiple <tbody> sections (and sometimes nested tables),
@@ -607,8 +609,6 @@ export class PlaywrightAutomationService {
     // Data rows are marked with rowClass1/rowClass2.
     const dataRows = table.locator("tr.rowClass1, tr.rowClass2");
     const rowCount = await dataRows.count();
-
-    const result: IlacOzet[] = [];
 
     for (let r = 0; r < rowCount; r++) {
       const row = dataRows.nth(r);
@@ -643,25 +643,36 @@ export class PlaywrightAutomationService {
         : "";
       const adValue = await adi.textContent();
       const barkodValue = await barkodInput.first().inputValue();
-      const adetValue = Number((await adet.count() ? await adet.inputValue() : "0"));
-      const periyotSayiValue = (await periyotSayi.count()) ? await periyotSayi.inputValue() : "";
+      const adetValue = Number(
+        (await adet.count()) ? await adet.inputValue() : "0",
+      );
+      const periyotSayiValue = (await periyotSayi.count())
+        ? await periyotSayi.inputValue()
+        : "";
       const dozValue = (await doz.count()) ? await doz.inputValue() : "";
       const doz2Value = (await doz2.count()) ? await doz2.inputValue() : "";
-      const verilebilecegiText = (await verilebilecegi.count()) ? await verilebilecegi.textContent() : "";
+      const verilebilecegiText = (await verilebilecegi.count())
+        ? await verilebilecegi.textContent()
+        : "";
 
       const ilac: IlacOzet = {
         ad: this.normalizeText(adValue),
         barkod: this.normalizeText(barkodValue),
         adet: isNaN(adetValue) ? 0 : adetValue,
-        periyot: periyotSayiValue && periyotValue ? `${periyotSayiValue} ${periyotValue}` : "",
+        periyot:
+          periyotSayiValue && periyotValue
+            ? `${periyotSayiValue} ${periyotValue}`
+            : "",
         doz: dozValue && doz2Value ? `${dozValue} x ${doz2Value}` : "",
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
-        rapor: (await rapor.count()) ? this.normalizeText(await rapor.textContent()) : undefined
-      }
+        rapor: (await rapor.count())
+          ? this.normalizeText(await rapor.textContent())
+          : undefined,
+      };
       ilaclar.push(ilac);
     }
     // return back
-    await this.page!.locator(ELEMENT_SELECTORS.RECETE_DETAY_GERI_DON_BUTTON_SELECTOR).click()
+
     return ilaclar;
   }
   async close(): Promise<void> {
@@ -730,21 +741,32 @@ export class PlaywrightAutomationService {
         : "";
       const adValue = await adi.textContent();
       const barkodValue = await barkodInput.first().inputValue();
-      const adetValue = Number((await adet.count() ? await adet.inputValue() : "0"));
-      const periyotSayiValue = (await periyotSayi.count()) ? await periyotSayi.inputValue() : "";
+      const adetValue = Number(
+        (await adet.count()) ? await adet.inputValue() : "0",
+      );
+      const periyotSayiValue = (await periyotSayi.count())
+        ? await periyotSayi.inputValue()
+        : "";
       const dozValue = (await doz.count()) ? await doz.inputValue() : "";
       const doz2Value = (await doz2.count()) ? await doz2.inputValue() : "";
-      const verilebilecegiText = (await verilebilecegi.count()) ? await verilebilecegi.textContent() : "";
+      const verilebilecegiText = (await verilebilecegi.count())
+        ? await verilebilecegi.textContent()
+        : "";
 
       const ilac: IlacOzet = {
         ad: this.normalizeText(adValue),
         barkod: this.normalizeText(barkodValue),
         adet: isNaN(adetValue) ? 0 : adetValue,
-        periyot: periyotSayiValue && periyotValue ? `${periyotSayiValue} ${periyotValue}` : "",
+        periyot:
+          periyotSayiValue && periyotValue
+            ? `${periyotSayiValue} ${periyotValue}`
+            : "",
         doz: dozValue && doz2Value ? `${dozValue} x ${doz2Value}` : "",
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
-        rapor: (await rapor.count()) ? this.normalizeText(await rapor.textContent()) : undefined
-      }
+        rapor: (await rapor.count())
+          ? this.normalizeText(await rapor.textContent())
+          : undefined,
+      };
       result.push(ilac);
     }
     return result;
