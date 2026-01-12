@@ -65,9 +65,12 @@ const ReportResultModal: React.FC<ReportResultModalProps> = ({
 
         {/* Report Summary */}
         <div className="space-y-2">
-          <h3 className="font-semibold">Rapor Özeti</h3>
+          <h3 className="font-semibold">Rapor Detayları</h3>
           <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-sm">{reportData.reportEvolutionDetails}</p>
+            <div 
+              className="text-sm prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: reportData.reportEvolutionDetails }}
+            />
           </div>
         </div>
 

@@ -986,7 +986,7 @@ export class PlaywrightAutomationService {
       await closeDialogButton.click();
     }
 
-    const ilacBilgi: IlacBilgi = {
+    return {
       ilacAdi: this.normalizeText(ilacAdi),
       ambalajMiktari: this.normalizeText(ambalajMiktari),
       tekDozMiktari: this.normalizeText(tekDozMiktari),
@@ -994,11 +994,9 @@ export class PlaywrightAutomationService {
       etkinMadde: this.normalizeText(etkinMadde),
       sutBilgi: sutBilgileri[0] || undefined,
       ozelDurumlar: ozelDurumlar.length > 0 ? ozelDurumlar : undefined,
-      esdegerBilgi: esdegerBilgileri[0] || undefined,
+      esdegerBilgi: esdegerBilgileri,
       mesajlar: mesajlar,
     };
-
-    return ilacBilgi;
   }
 
   async scrapeRaporPage(page: Page): Promise<ReceteRapor> {

@@ -135,7 +135,7 @@ type IlacBilgi = {
   sutBilgi?: SutBilgi;
   ozelDurumlar?: OzelDurum[];
   mesajlar?: IlacMesaj[];
-  esdegerBilgi?: EsdegerBilgi;
+  esdegerBilgi?: EsdegerBilgi[];
 };
 
 type ReceteTani = {
