@@ -1,6 +1,7 @@
-import { apiClient } from '@/lib/axios';
-import { Recete, ReceteIlac } from '@/types/recete';
+import { apiClient } from "@/lib/axios";
+import { Recete } from "@/types/recete";
 
+const apiUrl = import.meta.env.VITE_API_URL;
 export interface GenerateReportRequest {
   barkod: string;
   recete: Recete;
@@ -21,27 +22,33 @@ export interface ReceteReportResponse {
 }
 
 class ReportApiService {
-  private baseUrl = 'http://localhost:3000';
+  private baseUrl = apiUrl;
 
   async generateReport(barkod: string, recete: Recete): Promise<ReportResult> {
     try {
       const requestData: GenerateReportRequest = {
         barkod,
-        recete
+        recete,
       };
 
-      const response = await apiClient.post(`${this.baseUrl}/report/generate`, requestData);
+      const response = await apiClient.post(
+        `${this.baseUrl}/report/generate`,
+        requestData,
+      );
 
       return {
         success: true,
         data: response.data as ReceteReportResponse,
       };
     } catch (error: any) {
-      console.error('Report generation failed:', error);
+      console.error("Report generation failed:", error);
 
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Report generation failed',
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          "Report generation failed",
       };
     }
   }

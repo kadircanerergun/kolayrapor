@@ -9,12 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as AyarlarRouteImport } from './routes/ayarlar'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SubscriptionRoute = SubscriptionRouteImport.update({
+  id: '/subscription',
+  path: '/subscription',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchReportRoute = SearchReportRouteImport.update({
   id: '/search-report',
   path: '/search-report',
@@ -35,6 +42,11 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AyarlarRoute = AyarlarRouteImport.update({
+  id: '/ayarlar',
+  path: '/ayarlar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,50 +55,81 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/subscription': typeof SubscriptionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/subscription': typeof SubscriptionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
   '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/subscription': typeof SubscriptionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home' | '/login' | '/search-by-recipe' | '/search-report'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home' | '/login' | '/search-by-recipe' | '/search-report'
-  id:
-    | '__root__'
+  fullPaths:
     | '/'
+    | '/ayarlar'
     | '/home'
     | '/login'
     | '/search-by-recipe'
     | '/search-report'
+    | '/subscription'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/ayarlar'
+    | '/home'
+    | '/login'
+    | '/search-by-recipe'
+    | '/search-report'
+    | '/subscription'
+  id:
+    | '__root__'
+    | '/'
+    | '/ayarlar'
+    | '/home'
+    | '/login'
+    | '/search-by-recipe'
+    | '/search-report'
+    | '/subscription'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AyarlarRoute: typeof AyarlarRoute
   HomeRoute: typeof HomeRoute
   LoginRoute: typeof LoginRoute
   SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
+  SubscriptionRoute: typeof SubscriptionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/subscription': {
+      id: '/subscription'
+      path: '/subscription'
+      fullPath: '/subscription'
+      preLoaderRoute: typeof SubscriptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search-report': {
       id: '/search-report'
       path: '/search-report'
@@ -115,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ayarlar': {
+      id: '/ayarlar'
+      path: '/ayarlar'
+      fullPath: '/ayarlar'
+      preLoaderRoute: typeof AyarlarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -127,10 +177,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AyarlarRoute: AyarlarRoute,
   HomeRoute: HomeRoute,
   LoginRoute: LoginRoute,
   SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
+  SubscriptionRoute: SubscriptionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

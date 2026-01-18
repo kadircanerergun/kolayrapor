@@ -91,6 +91,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
+    "dotenv": "^17.2.3",
     "electron-squirrel-startup": "^1.0.1",
     "i18next": "^25.7.2",
     "lodash": "^4.17.21",

@@ -381,7 +381,7 @@ export class PlaywrightAutomationService {
       }
 
       // Send to captcha solving API
-      const response = await fetch("http://localhost:3000/medula/numbers", {
+      const response = await fetch(`${process.env.VITE_API_URL}/medula/numbers`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

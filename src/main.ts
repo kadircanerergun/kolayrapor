@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { app, BrowserWindow } from "electron";
 import path from "path";
 import {
@@ -11,7 +12,8 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { setupPlaywrightIPC } from "./ipc/playwright";
 
 const inDevelopment = process.env.NODE_ENV === "development";
-
+const apiUrl = process.env.VITE_API_URL || "http://localhost:3000";
+console.log('API URL:', apiUrl);
 // Playwright IPC will be setup in the promise chain below
 
 function createWindow() {
