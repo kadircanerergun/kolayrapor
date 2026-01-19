@@ -3,6 +3,8 @@ import { playwrightService } from '../../services/playwright-automation';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function createHandler(channel: string, handler: Function) {
+  // Remove existing handler if present (prevents duplicate handler errors during hot reload)
+  ipcMain.removeHandler(channel);
   return ipcMain.handle(channel, async (event, ...args) => {
     // Send log to renderer since main process console is suppressed
     event.sender.executeJavaScript(`console.log('[MAIN] ${channel}:', ${JSON.stringify(args)})`);
@@ -37,14 +39,8 @@ export function setupPlaywrightIPC() {
   });
 
   // Login with credentials
-  ipcMain.handle('playwright:login', async (event, credentials: { username: string; password: string }) => {
-    // Override console.log temporarily to capture captcha debug info
-
-    try {
-      return await playwrightService.performLogin(credentials);
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
+  createHandler('playwright:login', async (credentials: { username: string; password: string }) => {
+    return await playwrightService.performLogin(credentials);
   });
 
   // Navigate to SGK portal

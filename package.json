@@ -7,8 +7,10 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "playwright:install": "npx cross-env PLAYWRIGHT_BROWSERS_PATH=./playwright-browsers npx playwright install chromium",
+    "prebuild": "npm run playwright:install",
+    "package": "npm run playwright:install && electron-forge package",
+    "make": "npm run playwright:install && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -22,6 +24,7 @@
   "author": "ROG <luan.roger.2003@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "cross-env": "^7.0.3",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",

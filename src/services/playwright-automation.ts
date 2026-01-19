@@ -8,6 +8,8 @@ import { InvalidLoginException } from "@/exceptions/invalid-login.exception";
 import { PlaywrightErrorCode, PlaywrightException, } from "@/exceptions/playwright.exception";
 import { URLS } from "@/constants/urls";
 import { UnsuccessfulLoginException } from "@/exceptions/unsuccessful-login.exception";
+import { app } from "electron";
+import path from "path";
 import {
   EsdegerBilgi,
   IlacBilgi,
@@ -131,6 +133,18 @@ async function loadPlaywright() {
   }
 }
 
+function getBrowsersPath(): string | undefined {
+  const inDevelopment = process.env.NODE_ENV === "development";
+
+  if (inDevelopment) {
+    // In development, use the local playwright-browsers folder if it exists
+    return path.join(process.cwd(), "playwright-browsers");
+  } else {
+    // In production, use the bundled browsers from resources
+    return path.join(process.resourcesPath, "playwright-browsers");
+  }
+}
+
 export class PlaywrightAutomationService {
   private browser: ChromiumBrowser | null = null;
   private page: Page | null = null;
@@ -185,6 +199,13 @@ export class PlaywrightAutomationService {
 
   async initialize(forceRestart: boolean = false): Promise<void> {
     try {
+      // Set Playwright browsers path before loading
+      const browsersPath = getBrowsersPath();
+      if (browsersPath) {
+        process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
+        console.log("Using Playwright browsers path:", browsersPath);
+      }
+
       // Load Playwright dynamically
       await loadPlaywright();
 
