@@ -10,6 +10,8 @@ import { URLS } from "@/constants/urls";
 import { UnsuccessfulLoginException } from "@/exceptions/unsuccessful-login.exception";
 import { app } from "electron";
 import path from "path";
+import fs from "fs";
+import { spawn } from "child_process";
 import {
   EsdegerBilgi,
   IlacBilgi,
@@ -133,16 +135,150 @@ async function loadPlaywright() {
   }
 }
 
-function getBrowsersPath(): string | undefined {
+function getBrowsersPath(): string {
   const inDevelopment = process.env.NODE_ENV === "development";
 
   if (inDevelopment) {
     // In development, use the local playwright-browsers folder if it exists
     return path.join(process.cwd(), "playwright-browsers");
   } else {
-    // In production, use the bundled browsers from resources
-    return path.join(process.resourcesPath, "playwright-browsers");
+    // In production, use the app's userData folder for browsers
+    return path.join(app.getPath("userData"), "playwright-browsers");
   }
+}
+
+function checkBrowsersExist(): boolean {
+  const browsersPath = getBrowsersPath();
+
+  if (!fs.existsSync(browsersPath)) {
+    return false;
+  }
+
+  // Check if chromium folder exists inside browsers path
+  const chromiumDirs = fs.readdirSync(browsersPath).filter(dir =>
+    dir.startsWith("chromium")
+  );
+
+  return chromiumDirs.length > 0;
+}
+
+export interface BrowserInstallProgress {
+  status: "checking" | "installing" | "done" | "error";
+  message: string;
+  progress?: number;
+}
+
+export type ProgressCallback = (progress: BrowserInstallProgress) => void;
+
+async function installBrowsers(onProgress?: ProgressCallback): Promise<void> {
+  const browsersPath = getBrowsersPath();
+
+  // Ensure the browsers directory exists
+  if (!fs.existsSync(browsersPath)) {
+    fs.mkdirSync(browsersPath, { recursive: true });
+  }
+
+  onProgress?.({
+    status: "installing",
+    message: "Tarayıcı indiriliyor...",
+    progress: 0
+  });
+
+  return new Promise((resolve, reject) => {
+    // Get the path to npx or playwright CLI
+    const isWindows = process.platform === "win32";
+    const npxCmd = isWindows ? "npx.cmd" : "npx";
+
+    const installProcess = spawn(npxCmd, ["playwright", "install", "chromium"], {
+      env: {
+        ...process.env,
+        PLAYWRIGHT_BROWSERS_PATH: browsersPath
+      },
+      shell: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+
+    let lastProgress = 0;
+
+    installProcess.stdout?.on("data", (data: Buffer) => {
+      const output = data.toString();
+      console.log("Playwright install:", output);
+
+      // Try to parse progress from output
+      const progressMatch = output.match(/(\d+)%/);
+      if (progressMatch) {
+        lastProgress = parseInt(progressMatch[1], 10);
+      }
+
+      onProgress?.({
+        status: "installing",
+        message: output.trim() || "Tarayıcı indiriliyor...",
+        progress: lastProgress
+      });
+    });
+
+    installProcess.stderr?.on("data", (data: Buffer) => {
+      const output = data.toString();
+      console.log("Playwright install stderr:", output);
+
+      // Playwright often outputs progress to stderr
+      const progressMatch = output.match(/(\d+)%/);
+      if (progressMatch) {
+        lastProgress = parseInt(progressMatch[1], 10);
+      }
+
+      onProgress?.({
+        status: "installing",
+        message: output.trim() || "Tarayıcı indiriliyor...",
+        progress: lastProgress
+      });
+    });
+
+    installProcess.on("close", (code) => {
+      if (code === 0) {
+        onProgress?.({
+          status: "done",
+          message: "Tarayıcı kurulumu tamamlandı",
+          progress: 100
+        });
+        resolve();
+      } else {
+        const error = `Browser installation failed with code ${code}`;
+        onProgress?.({
+          status: "error",
+          message: error
+        });
+        reject(new Error(error));
+      }
+    });
+
+    installProcess.on("error", (err) => {
+      onProgress?.({
+        status: "error",
+        message: err.message
+      });
+      reject(err);
+    });
+  });
+}
+
+export async function ensureBrowsersInstalled(onProgress?: ProgressCallback): Promise<void> {
+  onProgress?.({
+    status: "checking",
+    message: "Tarayıcı kontrol ediliyor..."
+  });
+
+  if (checkBrowsersExist()) {
+    onProgress?.({
+      status: "done",
+      message: "Tarayıcı hazır",
+      progress: 100
+    });
+    return;
+  }
+
+  console.log("Browsers not found, installing...");
+  await installBrowsers(onProgress);
 }
 
 export class PlaywrightAutomationService {
@@ -197,14 +333,15 @@ export class PlaywrightAutomationService {
     return this.performLogin(this.storedCredentials!);
   }
 
-  async initialize(forceRestart: boolean = false): Promise<void> {
+  async initialize(forceRestart: boolean = false, onProgress?: ProgressCallback): Promise<void> {
     try {
       // Set Playwright browsers path before loading
       const browsersPath = getBrowsersPath();
-      if (browsersPath) {
-        process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
-        console.log("Using Playwright browsers path:", browsersPath);
-      }
+      process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
+      console.log("Using Playwright browsers path:", browsersPath);
+
+      // Ensure browsers are installed before proceeding
+      await ensureBrowsersInstalled(onProgress);
 
       // Load Playwright dynamically
       await loadPlaywright();

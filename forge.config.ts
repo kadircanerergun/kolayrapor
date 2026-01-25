@@ -10,11 +10,8 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{playwright,playwright-core}/**/*'
+      unpack: '{**/node_modules/playwright/**,**/node_modules/playwright-core/**,**/*.node,**/node_modules/.bin/**}'
     },
-    extraResource: [
-      './playwright-browsers'
-    ],
   },
   rebuildConfig: {},
   makers: [

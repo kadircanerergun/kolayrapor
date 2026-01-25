@@ -1,5 +1,5 @@
-import { ipcMain } from 'electron';
-import { playwrightService } from '../../services/playwright-automation';
+import { ipcMain, BrowserWindow } from 'electron';
+import { playwrightService, ensureBrowsersInstalled, BrowserInstallProgress } from '../../services/playwright-automation';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function createHandler(channel: string, handler: Function) {
@@ -27,9 +27,31 @@ function createHandler(channel: string, handler: Function) {
 export function setupPlaywrightIPC() {
   console.log('Setting up Playwright IPC handlers...');
 
+  // Ensure browsers are installed (called from splash screen)
+  createHandler('playwright:ensureBrowsers', async () => {
+    const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+
+    await ensureBrowsersInstalled((progress: BrowserInstallProgress) => {
+      // Send progress to renderer
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('playwright:browserInstallProgress', progress);
+      }
+    });
+
+    return { success: true };
+  });
+
   // Initialize Playwright
   createHandler('playwright:initialize', async () => {
-    await playwrightService.initialize();
+    const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+
+    await playwrightService.initialize(false, (progress: BrowserInstallProgress) => {
+      // Send progress to renderer
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('playwright:browserInstallProgress', progress);
+      }
+    });
+
     return { success: true };
   });
 

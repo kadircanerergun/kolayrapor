@@ -55,10 +55,18 @@ interface PlaywrightDebugResult {
   debugMode: boolean;
 }
 
+interface BrowserInstallProgress {
+  status: "checking" | "installing" | "done" | "error";
+  message: string;
+  progress?: number;
+}
+
 declare global {
   interface Window {
     playwrightAPI: {
       initialize: () => Promise<PlaywrightInitializeResult>;
+      ensureBrowsers: () => Promise<PlaywrightInitializeResult>;
+      onBrowserInstallProgress: (callback: (progress: BrowserInstallProgress) => void) => () => void;
       navigate: (url: string) => Promise<PlaywrightNavigationResult>;
       login: (credentials: PlaywrightCredentials) => Promise<PlaywrightLoginResult>;
       navigateToSGK: () => Promise<PlaywrightNavigationResult>;

@@ -102,3 +102,4 @@ out/
 
 # Tanstack
 .tanstack/
+/playwright-browsers/

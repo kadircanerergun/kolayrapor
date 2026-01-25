@@ -14,6 +14,19 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   initialize: () => {
     return ipcRenderer.invoke('playwright:initialize');
   },
+  ensureBrowsers: () => {
+    return ipcRenderer.invoke('playwright:ensureBrowsers');
+  },
+  onBrowserInstallProgress: (callback: (progress: { status: string; message: string; progress?: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: { status: string; message: string; progress?: number }) => {
+      callback(progress);
+    };
+    ipcRenderer.on('playwright:browserInstallProgress', handler);
+    // Return cleanup function
+    return () => {
+      ipcRenderer.removeListener('playwright:browserInstallProgress', handler);
+    };
+  },
   navigate: (url: string) => {
     return ipcRenderer.invoke('playwright:navigate', url);
   },

@@ -12,7 +12,8 @@ export default defineConfig({
     rollupOptions: {
       external: [
         'playwright',
-        'playwright-core'
+        'playwright-core',
+        /^playwright.*/
       ]
     }
   }
