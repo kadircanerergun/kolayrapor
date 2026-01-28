@@ -59,26 +59,8 @@ function LandingPage() {
   useEffect(() => {
     if (!isReady) return;
 
-    // Check if user is already authenticated
-    const checkAuth = () => {
-      const stored = localStorage.getItem("credentials");
-      if (stored) {
-        try {
-          const creds = JSON.parse(stored);
-          if (creds.username && creds.password) {
-            navigate({ to: "/home" });
-            return;
-          }
-        } catch {
-          // Invalid credentials, continue to login
-        }
-      }
-
-      // If no valid credentials, go to login
-      navigate({ to: "/login" });
-    };
-
-    checkAuth();
+    // Go directly to home - credentials can be set in Settings when needed
+    navigate({ to: "/home" });
   }, [isReady, navigate]);
 
   return (

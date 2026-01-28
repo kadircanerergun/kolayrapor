@@ -10,10 +10,10 @@ import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 function Root() {
   const location = useLocation();
   
-  // Use minimal layout for login and landing pages
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/';
+  // Use minimal layout for landing page only
+  const isLandingPage = location.pathname === '/';
   
-  if (isAuthPage) {
+  if (isLandingPage) {
     return (
       <>
         <Outlet />

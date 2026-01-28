@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -12,52 +12,31 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip";
 import {
-  LogOut,
   FileCheck,
-  Users,
   Settings,
   Search,
   User2,
-  Bug,
   CalendarIcon,
+  Shield,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
-
-interface Credentials {
-  username: string;
-  password: string;
-  loginTime: string;
-}
+import { useCredentials } from "@/contexts/credentials-context";
 
 export default function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const navigate = useNavigate();
   const location = useLocation();
-  const [credentials, setCredentials] = useState<Credentials | null>(null);
+  const { credentials } = useCredentials();
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
 
-  useEffect(() => {
-    const stored = localStorage.getItem('credentials');
-    if (!stored) {
-      navigate({ to: "/login" });
-      return;
-    }
-
-    try {
-      const creds = JSON.parse(stored);
-      setCredentials(creds);
-
-      // Also send credentials to Playwright service so they're always available
-      playwright.setCredentials(creds).catch(console.error);
-    } catch {
-      navigate({ to: "/login" });
-    }
-  }, [navigate]);
+  // License and credit placeholders (will be connected to data source later)
+  const [activeLicense, setActiveLicense] = useState<string | null>(null);
+  const [remainingCredit, setRemainingCredit] = useState<number | null>(null);
 
   useEffect(() => {
     // Initialize debug mode from localStorage and sync with Playwright service
@@ -108,12 +87,6 @@ export default function MainLayout({
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('credentials');
-    // Optionally keep debug mode setting across logouts - comment out next line if you want to keep it
-    // localStorage.removeItem('debugMode');
-    navigate({ to: "/" });
-  };
 
   const menuItems = [
     {
@@ -142,7 +115,6 @@ export default function MainLayout({
     }
   ];
 
-  if (!credentials) return null;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -169,9 +141,33 @@ export default function MainLayout({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
-                  {credentials.username}
+                  {credentials?.username || 'Kullanıcı Yok'}
                 </p>
-                <p className="text-muted-foreground text-xs">Aktif Kullanıcı</p>
+                <p className="text-muted-foreground text-xs">
+                  {credentials ? 'Aktif Kullanıcı' : 'Ayarlardan giriş yapın'}
+                </p>
+              </div>
+            </div>
+
+            {/* License and Credit Info */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-muted/50 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs text-muted-foreground">Aktif Lisans</span>
+                </div>
+                <p className="text-sm font-medium truncate">
+                  {activeLicense || '—'}
+                </p>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Coins className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs text-muted-foreground">Kalan Kredi</span>
+                </div>
+                <p className="text-sm font-medium">
+                  {remainingCredit !== null ? remainingCredit : '—'}
+                </p>
               </div>
             </div>
           </SidebarHeader>
@@ -304,23 +300,6 @@ export default function MainLayout({
             </div>
 
             <Separator />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-full"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Çıkış Yap
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                Uygulamadan çıkış yap
-              </TooltipContent>
-            </Tooltip>
 
             <div className="text-center">
               <p className="text-muted-foreground text-xs">

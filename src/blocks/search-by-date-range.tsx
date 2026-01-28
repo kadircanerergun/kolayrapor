@@ -16,6 +16,7 @@ import { sub } from "date-fns";
 import dayjs from "dayjs";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { ReceteOzet } from "@/types/recete";
+import { useNavigate } from "@tanstack/react-router";
 
 type SearchByDateRangeProps = {
   onSearchComplete?: (results: ReceteOzet[]) => void;
@@ -26,9 +27,55 @@ const SearchByDateRange = (props: SearchByDateRangeProps) => {
   const playwright = usePlaywright();
   const [selectedRange, setSelectedRange] = useState<DateRange | undefined>();
   const dialog = useDialogContext();
+  const navigate = useNavigate();
+
+  const checkCredentials = (): boolean => {
+    const stored = localStorage.getItem('credentials');
+    if (!stored) {
+      dialog.showConfirmDialog({
+        title: "Kimlik Bilgileri Gerekli",
+        description: "SGK portalına giriş için kimlik bilgilerinizi ayarlamalısınız. Ayarlar sayfasına gitmek ister misiniz?",
+        confirmText: "Ayarlara Git",
+        cancelText: "İptal",
+        onConfirm: () => navigate({ to: "/ayarlar" }),
+      });
+      return false;
+    }
+
+    try {
+      const creds = JSON.parse(stored);
+      if (!creds.username || !creds.password) {
+        dialog.showConfirmDialog({
+          title: "Kimlik Bilgileri Eksik",
+          description: "SGK portalına giriş için kullanıcı adı ve şifre gereklidir. Ayarlar sayfasına gitmek ister misiniz?",
+          confirmText: "Ayarlara Git",
+          cancelText: "İptal",
+          onConfirm: () => navigate({ to: "/ayarlar" }),
+        });
+        return false;
+      }
+    } catch {
+      dialog.showConfirmDialog({
+        title: "Kimlik Bilgileri Hatalı",
+        description: "Kayıtlı kimlik bilgilerinde bir sorun var. Ayarlar sayfasına gidip tekrar kaydetmek ister misiniz?",
+        confirmText: "Ayarlara Git",
+        cancelText: "İptal",
+        onConfirm: () => navigate({ to: "/ayarlar" }),
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
-    props.onSearchStart?.();
     e.preventDefault();
+
+    // Check if credentials are set
+    if (!checkCredentials()) return;
+
+    props.onSearchStart?.();
+
     if (!playwright.isReady) {
       const initResult = await playwright.initialize();
       if (!initResult.success) {
@@ -37,6 +84,7 @@ const SearchByDateRange = (props: SearchByDateRangeProps) => {
           description:
             "Sistem başlatılamadı. Lütfen ayarlarınızı kontrol edin ve tekrar deneyin.",
         });
+        props.onError?.("Sistem başlatılamadı");
         return;
       }
     }

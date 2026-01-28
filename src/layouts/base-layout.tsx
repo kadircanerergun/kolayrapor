@@ -1,6 +1,7 @@
 import React from "react";
 import DragWindowRegion from "@/components/drag-window-region";
 import { DialogContextProvider } from "@/contexts/dialog-context";
+import { CredentialsProvider } from "@/contexts/credentials-context";
 
 export default function BaseLayout({
   children,
@@ -10,9 +11,11 @@ export default function BaseLayout({
   return (
     <>
       <DragWindowRegion title="Kolay Rapor" />
-      <DialogContextProvider>
-        <main className="h-screen">{children}</main>
-      </DialogContextProvider>
+      <CredentialsProvider>
+        <DialogContextProvider>
+          <main className="h-screen">{children}</main>
+        </DialogContextProvider>
+      </CredentialsProvider>
     </>
   );
 }

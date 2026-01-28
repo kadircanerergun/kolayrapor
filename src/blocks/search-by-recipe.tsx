@@ -16,17 +16,61 @@ import { useModal } from "@/hooks/useModal";
 import { ModalProvider } from "@/components/modal-provider";
 import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
 import { Recete } from "@/types/recete";
+import { useNavigate } from "@tanstack/react-router";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
   const [recipeCode, setRecipeCode] = useState("");
   const dialog = useDialogContext();
   const modal = useModal();
+  const navigate = useNavigate();
+
+  const checkCredentials = (): boolean => {
+    const stored = localStorage.getItem('credentials');
+    if (!stored) {
+      dialog.showConfirmDialog({
+        title: "Kimlik Bilgileri Gerekli",
+        description: "SGK portalına giriş için kimlik bilgilerinizi ayarlamalısınız. Ayarlar sayfasına gitmek ister misiniz?",
+        confirmText: "Ayarlara Git",
+        cancelText: "İptal",
+        onConfirm: () => navigate({ to: "/ayarlar" }),
+      });
+      return false;
+    }
+
+    try {
+      const creds = JSON.parse(stored);
+      if (!creds.username || !creds.password) {
+        dialog.showConfirmDialog({
+          title: "Kimlik Bilgileri Eksik",
+          description: "SGK portalına giriş için kullanıcı adı ve şifre gereklidir. Ayarlar sayfasına gitmek ister misiniz?",
+          confirmText: "Ayarlara Git",
+          cancelText: "İptal",
+          onConfirm: () => navigate({ to: "/ayarlar" }),
+        });
+        return false;
+      }
+    } catch {
+      dialog.showConfirmDialog({
+        title: "Kimlik Bilgileri Hatalı",
+        description: "Kayıtlı kimlik bilgilerinde bir sorun var. Ayarlar sayfasına gidip tekrar kaydetmek ister misiniz?",
+        confirmText: "Ayarlara Git",
+        cancelText: "İptal",
+        onConfirm: () => navigate({ to: "/ayarlar" }),
+      });
+      return false;
+    }
+
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!recipeCode.trim()) return;
+
+    // Check if credentials are set
+    if (!checkCredentials()) return;
 
     // Initialize Playwright if not ready
     if (!playwright.isReady) {

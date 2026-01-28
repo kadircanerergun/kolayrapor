@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as AyarlarRouteImport } from './routes/ayarlar'
 import { Route as IndexRouteImport } from './routes/index'
@@ -30,11 +29,6 @@ const SearchReportRoute = SearchReportRouteImport.update({
 const SearchByRecipeRoute = SearchByRecipeRouteImport.update({
   id: '/search-by-recipe',
   path: '/search-by-recipe',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -57,7 +51,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
-  '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/subscription': typeof SubscriptionRoute
@@ -66,7 +59,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
-  '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/subscription': typeof SubscriptionRoute
@@ -76,7 +68,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
   '/home': typeof HomeRoute
-  '/login': typeof LoginRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/subscription': typeof SubscriptionRoute
@@ -87,7 +78,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ayarlar'
     | '/home'
-    | '/login'
     | '/search-by-recipe'
     | '/search-report'
     | '/subscription'
@@ -96,7 +86,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ayarlar'
     | '/home'
-    | '/login'
     | '/search-by-recipe'
     | '/search-report'
     | '/subscription'
@@ -105,7 +94,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ayarlar'
     | '/home'
-    | '/login'
     | '/search-by-recipe'
     | '/search-report'
     | '/subscription'
@@ -115,7 +103,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AyarlarRoute: typeof AyarlarRoute
   HomeRoute: typeof HomeRoute
-  LoginRoute: typeof LoginRoute
   SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
   SubscriptionRoute: typeof SubscriptionRoute
@@ -142,13 +129,6 @@ declare module '@tanstack/react-router' {
       path: '/search-by-recipe'
       fullPath: '/search-by-recipe'
       preLoaderRoute: typeof SearchByRecipeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -179,7 +159,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AyarlarRoute: AyarlarRoute,
   HomeRoute: HomeRoute,
-  LoginRoute: LoginRoute,
   SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
   SubscriptionRoute: SubscriptionRoute,
