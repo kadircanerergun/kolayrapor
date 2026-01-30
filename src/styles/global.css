@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-day-picker/style.css";
 
 @plugin "tailwindcss-animate";
 
@@ -199,6 +200,33 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+.rdp-root {
+  --rdp-accent-color: hsl(var(--primary));
+  --rdp-accent-background-color: hsl(var(--accent));
+  --rdp-day-height: 2rem;
+  --rdp-day-width: 100%;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-border-radius: var(--radius);
+  --rdp-day_button-border: none;
+  --rdp-selected-border: none;
+  --rdp-today-color: hsl(var(--accent-foreground));
+  --rdp-range_start-color: hsl(var(--primary-foreground));
+  --rdp-range_start-date-background-color: hsl(var(--primary));
+  --rdp-range_end-color: hsl(var(--primary-foreground));
+  --rdp-range_end-date-background-color: hsl(var(--primary));
+  --rdp-range_middle-background-color: hsl(var(--accent));
+  --rdp-range_middle-color: hsl(var(--accent-foreground));
+  --rdp-outside-opacity: 0.5;
+  --rdp-nav-height: 2rem;
+  --rdp-nav_button-height: 2rem;
+  --rdp-nav_button-width: 2rem;
+
+  .rdp-day {
+    display: flex;
+    justify-content: center;
   }
 }
 

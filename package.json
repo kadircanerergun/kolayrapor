@@ -24,7 +24,6 @@
   "author": "ROG <luan.roger.2003@gmail.com>",
   "license": "MIT",
   "devDependencies": {
-    "cross-env": "^7.0.3",
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
@@ -51,6 +50,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
     "babel-plugin-react-compiler": "1.0.0",
+    "cross-env": "^7.0.3",
     "electron": "^39.2.6",
     "electron-devtools-installer": "^4.0.0",
     "electron-playwright-helpers": "^2.0.1",
@@ -79,6 +79,7 @@
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-navigation-menu": "^1.2.14",
     "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
