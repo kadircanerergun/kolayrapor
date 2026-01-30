@@ -15,7 +15,7 @@ type ReceteOzet = {
   ad: string;
   soyad: string;
   kapsam: string;
-  ilaclar?: IlacOzet[];
+  //ilaclar?: IlacOzet[];
 };
 
 type RaporAciklama = {

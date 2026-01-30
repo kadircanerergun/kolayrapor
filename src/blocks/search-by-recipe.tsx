@@ -17,6 +17,7 @@ import { ModalProvider } from "@/components/modal-provider";
 import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
 import { Recete } from "@/types/recete";
 import { useNavigate } from "@tanstack/react-router";
+import { useCredentials } from "@/contexts/credentials-context";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
@@ -24,10 +25,10 @@ const SearchByRecipe = () => {
   const dialog = useDialogContext();
   const modal = useModal();
   const navigate = useNavigate();
+  const { credentials } = useCredentials();
 
   const checkCredentials = (): boolean => {
-    const stored = localStorage.getItem('credentials');
-    if (!stored) {
+    if (!credentials || !credentials.username || !credentials.password) {
       dialog.showConfirmDialog({
         title: "Kimlik Bilgileri Gerekli",
         description: "SGK portalına giriş için kimlik bilgilerinizi ayarlamalısınız. Ayarlar sayfasına gitmek ister misiniz?",
@@ -37,30 +38,6 @@ const SearchByRecipe = () => {
       });
       return false;
     }
-
-    try {
-      const creds = JSON.parse(stored);
-      if (!creds.username || !creds.password) {
-        dialog.showConfirmDialog({
-          title: "Kimlik Bilgileri Eksik",
-          description: "SGK portalına giriş için kullanıcı adı ve şifre gereklidir. Ayarlar sayfasına gitmek ister misiniz?",
-          confirmText: "Ayarlara Git",
-          cancelText: "İptal",
-          onConfirm: () => navigate({ to: "/ayarlar" }),
-        });
-        return false;
-      }
-    } catch {
-      dialog.showConfirmDialog({
-        title: "Kimlik Bilgileri Hatalı",
-        description: "Kayıtlı kimlik bilgilerinde bir sorun var. Ayarlar sayfasına gidip tekrar kaydetmek ister misiniz?",
-        confirmText: "Ayarlara Git",
-        cancelText: "İptal",
-        onConfirm: () => navigate({ to: "/ayarlar" }),
-      });
-      return false;
-    }
-
     return true;
   };
 

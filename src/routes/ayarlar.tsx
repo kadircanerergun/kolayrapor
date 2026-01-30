@@ -80,8 +80,8 @@ function SettingsPage() {
     }
   };
 
-  const handleClearCredentials = () => {
-    clearCredentials();
+  const handleClearCredentials = async () => {
+    await clearCredentials();
     setUsername('');
     setPassword('');
     setCredentialsSaved(false);

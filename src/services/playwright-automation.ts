@@ -11,6 +11,9 @@ import { UnsuccessfulLoginException } from "@/exceptions/unsuccessful-login.exce
 import { app } from "electron";
 import path from "path";
 import fs from "fs";
+import customParseFormat from "dayjs/plugin/customParseFormat";
+
+dayjs.extend(customParseFormat);
 import { spawn } from "child_process";
 import {
   EsdegerBilgi,
@@ -703,9 +706,21 @@ export class PlaywrightAutomationService {
       const result = await this.getRecipesByPeriod(period);
       recipes.push(...result);
     }
+    const filteredRecipes = recipes.filter((recete) => {
+      console.log('---', recete.receteTarihi);
+      const receteDate = dayjs(recete.receteTarihi, "DD/MM/YYYY");
+      console.log(
+        receteDate
+      );
+      return (
+        receteDate.isSame(startDateObj, 'date') ||
+        receteDate.isSame(endDateObj, 'date') ||
+        (receteDate.isAfter(startDateObj, 'date') && receteDate.isBefore(endDateObj, 'date'))
+      );
+    });
     return {
       success: true,
-      prescriptions: recipes,
+      prescriptions: filteredRecipes,
     };
   }
 
@@ -764,12 +779,22 @@ export class PlaywrightAutomationService {
     const receteler: ReceteOzet[] = [];
 
     for (let p = 1; p <= pageCount; p++) {
+      if (p > 1) {
+        const pageInput = this.page.locator('input[name="form1:text34"]');
+        await pageInput.clear();
+        await pageInput.fill(p.toString());
+        const goButton = this.page.locator('input[name="form1:buttonSayfayaGit"]');
+        await Promise.all([
+          goButton.click(),
+          this.page.waitForLoadState("load"),
+        ]);
+      }
       const rows = recipeTable.locator(
         "tbody > tr.rowClass1, tbody > tr.rowClass2",
       );
       const rowCount = await rows.count();
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < rowCount; i++) {
         const row = rows.nth(i);
         const columns = await row.locator("td");
         const receteNo = await columns.nth(1).locator("span").textContent();
@@ -793,12 +818,12 @@ export class PlaywrightAutomationService {
           soyad: this.normalizeText(soyad),
           kapsam: this.normalizeText(kapsam),
         };
-        await row.click();
-        recete.ilaclar = await this.getIlacOzetFromDetailPage();
+        //await row.click();
+        //recete.ilaclar = await this.getIlacOzetFromDetailPage();
         receteler.push(recete);
-        await this.page!.locator(
-          ELEMENT_SELECTORS.RECETE_DETAY_GERI_DON_BUTTON_SELECTOR,
-        ).click();
+        // await this.page!.locator(
+        //   ELEMENT_SELECTORS.RECETE_DETAY_GERI_DON_BUTTON_SELECTOR,
+        // ).click();
       }
     }
 

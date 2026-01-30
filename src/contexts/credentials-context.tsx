@@ -10,53 +10,59 @@ interface Credentials {
 interface CredentialsContextType {
   credentials: Credentials | null;
   setCredentials: (creds: Credentials | null) => Promise<void>;
-  clearCredentials: () => void;
+  clearCredentials: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const CredentialsContext = createContext<CredentialsContextType | null>(null);
 
-// Load initial credentials from localStorage
-function getInitialCredentials(): Credentials | null {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem('credentials');
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
 export function CredentialsProvider({ children }: { children: ReactNode }) {
-  const [credentials, setCredentialsState] = useState<Credentials | null>(getInitialCredentials);
+  const [credentials, setCredentialsState] = useState<Credentials | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const playwright = usePlaywright();
 
-  // Sync credentials to Playwright service on mount
+  // Load credentials from secure storage on mount
   useEffect(() => {
-    if (credentials) {
-      playwright.setCredentials(credentials).catch(console.error);
-    }
+    const loadCredentials = async () => {
+      try {
+        const result = await window.secureStorage.getCredentials();
+        if (result.success && result.credentials) {
+          setCredentialsState(result.credentials);
+          // Also sync to Playwright service
+          await playwright.setCredentials(result.credentials);
+        }
+      } catch (error) {
+        console.error('Failed to load credentials:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCredentials();
   }, []);
 
   const setCredentials = async (creds: Credentials | null) => {
     if (creds) {
-      localStorage.setItem('credentials', JSON.stringify(creds));
-      await playwright.setCredentials(creds);
+      const result = await window.secureStorage.setCredentials(creds);
+      if (result.success) {
+        await playwright.setCredentials(creds);
+        setCredentialsState(creds);
+      } else {
+        throw new Error(result.error || 'Failed to save credentials');
+      }
     } else {
-      localStorage.removeItem('credentials');
+      await window.secureStorage.clearCredentials();
+      setCredentialsState(null);
     }
-    setCredentialsState(creds);
   };
 
-  const clearCredentials = () => {
-    localStorage.removeItem('credentials');
+  const clearCredentials = async () => {
+    await window.secureStorage.clearCredentials();
     setCredentialsState(null);
   };
 
   return (
-    <CredentialsContext.Provider value={{ credentials, setCredentials, clearCredentials }}>
+    <CredentialsContext.Provider value={{ credentials, setCredentials, clearCredentials, isLoading }}>
       {children}
     </CredentialsContext.Provider>
   );

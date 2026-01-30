@@ -61,6 +61,28 @@ interface BrowserInstallProgress {
   progress?: number;
 }
 
+interface SecureStorageCredentials {
+  username: string;
+  password: string;
+  loginTime: string;
+}
+
+interface SecureStorageResult {
+  success: boolean;
+  error?: string;
+}
+
+interface SecureStorageGetResult {
+  success: boolean;
+  credentials: SecureStorageCredentials | null;
+  error?: string;
+}
+
+interface SecureStorageHasResult {
+  success: boolean;
+  hasCredentials: boolean;
+}
+
 declare global {
   interface Window {
     playwrightAPI: {
@@ -82,6 +104,13 @@ declare global {
       getStoredCredentials: () => Promise<PlaywrightCredentialsResult>;
       hasCredentials: () => Promise<PlaywrightHasCredentialsResult>;
       autoLogin: () => Promise<PlaywrightLoginResult>;
+    };
+    secureStorage: {
+      isAvailable: () => Promise<boolean>;
+      setCredentials: (credentials: SecureStorageCredentials) => Promise<SecureStorageResult>;
+      getCredentials: () => Promise<SecureStorageGetResult>;
+      clearCredentials: () => Promise<SecureStorageResult>;
+      hasCredentials: () => Promise<SecureStorageHasResult>;
     };
   }
 }

@@ -10,6 +10,7 @@ import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS } from "./constants";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { setupPlaywrightIPC } from "./ipc/playwright";
+import { setupSecureStorageIPC } from "./ipc/secure-storage";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 const apiUrl = process.env.VITE_API_URL || "http://localhost:3000";
@@ -80,6 +81,7 @@ app
   .then(setupORPC)
   .then(() => {
     console.log('About to setup Playwright IPC...');
+    setupSecureStorageIPC();
     return setupPlaywrightIPC();
   })
   .catch((error) => {

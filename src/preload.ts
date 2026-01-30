@@ -55,3 +55,13 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   hasCredentials: () => ipcRenderer.invoke('playwright:hasCredentials'),
   autoLogin: () => ipcRenderer.invoke('playwright:autoLogin')
 });
+
+// Expose Secure Storage API to renderer
+contextBridge.exposeInMainWorld('secureStorage', {
+  isAvailable: () => ipcRenderer.invoke('secureStorage:isAvailable'),
+  setCredentials: (credentials: { username: string; password: string; loginTime: string }) =>
+    ipcRenderer.invoke('secureStorage:setCredentials', credentials),
+  getCredentials: () => ipcRenderer.invoke('secureStorage:getCredentials'),
+  clearCredentials: () => ipcRenderer.invoke('secureStorage:clearCredentials'),
+  hasCredentials: () => ipcRenderer.invoke('secureStorage:hasCredentials'),
+});
