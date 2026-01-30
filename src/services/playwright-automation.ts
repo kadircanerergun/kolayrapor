@@ -15,6 +15,7 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 
 dayjs.extend(customParseFormat);
 import { spawn } from "child_process";
+import { createRequire } from "module";
 import {
   EsdegerBilgi,
   IlacBilgi,
@@ -125,12 +126,30 @@ type RaporData = {
   }>;
 };
 
+function getPlaywrightPath(): string {
+  const inDevelopment = process.env.NODE_ENV === "development";
+
+  if (inDevelopment) {
+    return "playwright-core";
+  } else {
+    // In production, playwright-core is in resources folder (via extraResource)
+    return path.join(process.resourcesPath, "playwright-core");
+  }
+}
+
 async function loadPlaywright() {
   if (!chromium) {
     try {
-      const pw = await import("playwright");
+      const playwrightPath = getPlaywrightPath();
+      console.log("Loading Playwright from:", playwrightPath);
+
+      // Use createRequire to bypass Vite's module transformation
+      // This allows loading modules from dynamic paths at runtime
+      const nodeRequire = createRequire(import.meta.url);
+      const pw = nodeRequire(playwrightPath);
       chromium = pw.chromium;
     } catch (error) {
+      console.error("Playwright load error:", error);
       throw new Error(
         `Failed to load Playwright: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -145,7 +164,12 @@ function getBrowsersPath(): string {
     // In development, use the local playwright-browsers folder if it exists
     return path.join(process.cwd(), "playwright-browsers");
   } else {
-    // In production, use the app's userData folder for browsers
+    // In production, first check if browsers are bundled in resources (via extraResource)
+    const bundledPath = path.join(process.resourcesPath, "playwright-browsers");
+    if (fs.existsSync(bundledPath)) {
+      return bundledPath;
+    }
+    // Fallback to userData folder for runtime-installed browsers
     return path.join(app.getPath("userData"), "playwright-browsers");
   }
 }
@@ -542,7 +566,7 @@ export class PlaywrightAutomationService {
       }
 
       // Send to captcha solving API
-      const response = await fetch(`${process.env.VITE_API_URL}/medula/numbers`, {
+      const response = await fetch(`https://kolay-rapor-api-8503f0bb8557.herokuapp.com/medula/numbers`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

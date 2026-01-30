@@ -1,7 +1,7 @@
 import { apiClient } from "@/lib/axios";
 import { Recete } from "@/types/recete";
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 export interface GenerateReportRequest {
   barkod: string;
   recete: Recete;

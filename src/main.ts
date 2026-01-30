@@ -13,7 +13,7 @@ import { setupPlaywrightIPC } from "./ipc/playwright";
 import { setupSecureStorageIPC } from "./ipc/secure-storage";
 
 const inDevelopment = process.env.NODE_ENV === "development";
-const apiUrl = process.env.VITE_API_URL || "http://localhost:3000";
+const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 console.log('API URL:', apiUrl);
 // Playwright IPC will be setup in the promise chain below
 
@@ -53,14 +53,6 @@ async function installExtensions() {
   }
 }
 
-function checkForUpdates() {
-  updateElectronApp({
-    updateSource: {
-      type: UpdateSourceType.ElectronPublicUpdateService,
-      repo: "LuanRoger/electron-shadcn",
-    },
-  });
-}
 
 async function setupORPC() {
   const { rpcHandler } = await import("./ipc/handler");
@@ -76,8 +68,6 @@ async function setupORPC() {
 app
   .whenReady()
   .then(createWindow)
-  .then(installExtensions)
-  .then(checkForUpdates)
   .then(setupORPC)
   .then(() => {
     console.log('About to setup Playwright IPC...');

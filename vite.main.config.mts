@@ -13,7 +13,8 @@ export default defineConfig({
       external: [
         'playwright',
         'playwright-core',
-        /^playwright.*/
+        /^playwright.*/,
+        'module',
       ]
     }
   }
