@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchByDateRange } from "@/blocks/search-by-date-range";
-import { useMemo, useState } from "react";
-import { Recete, ReceteOzet } from "@/types/recete";
+import { useMemo } from "react";
+import { Recete } from "@/types/recete";
 import {
   Table,
   TableBody,
@@ -14,84 +14,89 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
-import { usePlaywright } from "@/hooks/usePlaywright";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { useModal } from "@/hooks/useModal";
 import { ModalProvider } from "@/components/modal-provider";
+import { useAppDispatch, useAppSelector } from "@/store";
+import {
+  setCurrentPage,
+  toggleReceteSelection,
+  selectAllRecetes,
+  clearReceteSelection,
+} from "@/store/slices/receteSlice";
+import { searchPrescriptionDetail } from "@/store/slices/playwrightSlice";
 
 function SearchReport() {
-  const [receteler, setReceteler] = useState<ReceteOzet[]>()
-  const [loading, setLoading] = useState(false);
-  const [selectedRecetes, setSelectedRecetes] = useState<Set<string>>(new Set());
-  const [currentPage, setCurrentPage] = useState(1);
-  const [loadingRecete, setLoadingRecete] = useState<string | null>(null);
-  const pageSize = 10;
-  const playwright = usePlaywright();
+  const dispatch = useAppDispatch();
+  const {
+    receteler,
+    currentPage,
+    selectedRecetes,
+    loadingRecete,
+  } = useAppSelector((s) => s.recete);
   const dialog = useDialogContext();
   const modal = useModal();
-  const totalPages = receteler ? Math.ceil(receteler.length / pageSize) : 0;
+  const pageSize = 10;
+  const totalPages = receteler.length ? Math.ceil(receteler.length / pageSize) : 0;
   const paginatedReceteler = useMemo(() => {
-    if (!receteler) return [];
+    if (!receteler.length) return [];
     const start = (currentPage - 1) * pageSize;
     return receteler.slice(start, start + pageSize);
   }, [receteler, currentPage]);
 
   const handleSelectRecete = (receteNo: string, checked: boolean) => {
-    const newSelected = new Set(selectedRecetes);
     if (checked) {
-      newSelected.add(receteNo);
+      if (!selectedRecetes.includes(receteNo)) {
+        dispatch(toggleReceteSelection(receteNo));
+      }
     } else {
-      newSelected.delete(receteNo);
+      if (selectedRecetes.includes(receteNo)) {
+        dispatch(toggleReceteSelection(receteNo));
+      }
     }
-    setSelectedRecetes(newSelected);
   };
 
   const handleSelectAll = (checked: boolean) => {
-    if (checked && receteler) {
-      setSelectedRecetes(new Set(receteler.map(r => r.receteNo)));
+    if (checked) {
+      dispatch(selectAllRecetes());
     } else {
-      setSelectedRecetes(new Set());
+      dispatch(clearReceteSelection());
     }
   };
 
   const handleSorgula = async (receteNo: string) => {
-    setLoadingRecete(receteNo);
-    try {
-      const searchResult = await playwright.searchPrescription(receteNo);
+    const result = await dispatch(searchPrescriptionDetail(receteNo));
 
-      if (searchResult.success && searchResult.prescriptionData) {
-        const prescriptionData = searchResult.prescriptionData as Recete;
+    if (searchPrescriptionDetail.fulfilled.match(result)) {
+      const prescriptionData = result.payload as Recete;
 
-        modal.openModal(
-          <PrescriptionMedicinesModal
-            prescriptionData={prescriptionData}
-            onQueryMedicine={(medicine) => {
-              console.log("Querying medicine:", medicine);
-            }}
-          />,
-          {
-            title: "Reçete Detayları",
-            size: "6xl",
-          },
-        );
-      } else {
-        dialog.showAlert({
-          title: "Hata",
-          description: `SGK portalına giderken hata: ${searchResult.error}`,
-        });
-      }
-    } finally {
-      setLoadingRecete(null);
+      modal.openModal(
+        <PrescriptionMedicinesModal
+          prescriptionData={prescriptionData}
+          onQueryMedicine={(medicine) => {
+            console.log("Querying medicine:", medicine);
+          }}
+        />,
+        {
+          title: "Reçete Detayları",
+          size: "6xl",
+        },
+      );
+    } else {
+      dialog.showAlert({
+        title: "Hata",
+        description: `SGK portalına giderken hata: ${result.error?.message || "Bilinmeyen hata"}`,
+      });
     }
   };
 
   const handleBulkProcess = () => {
-    console.log("Toplu işlem:", Array.from(selectedRecetes));
+    console.log("Toplu işlem:", selectedRecetes);
     // TODO: Implement bulk processing logic
   };
 
-  const isAllSelected = receteler && selectedRecetes.size === receteler.length;
-  const isSomeSelected = selectedRecetes.size > 0 && selectedRecetes.size < (receteler?.length || 0);
+  const isAllSelected = receteler.length > 0 && selectedRecetes.length === receteler.length;
+  const isSomeSelected = selectedRecetes.length > 0 && selectedRecetes.length < receteler.length;
 
   return (
     <div className="p-6">
@@ -103,21 +108,7 @@ function SearchReport() {
           </p>
         </div>
         <div className={"flex flex-row gap-3 overflow-y-hidden"}>
-          <SearchByDateRange
-            onSearchStart={() => {
-              setLoading(true);
-              setReceteler(undefined);
-              setSelectedRecetes(new Set());
-            }}
-            onSearchComplete={(results) => {
-              setReceteler(results);
-              setCurrentPage(1);
-              setLoading(false);
-            }}
-            onError={() => {
-              setLoading(false);
-            }}
-          />
+          <SearchByDateRange />
         </div>
         {totalPages > 1 && (
           <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
@@ -130,7 +121,7 @@ function SearchReport() {
                 variant="outline"
                 size="sm"
                 disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
+                onClick={() => dispatch(setCurrentPage(currentPage - 1))}
               >
                 <ChevronLeft className="h-4 w-4" />
                 Onceki
@@ -142,7 +133,7 @@ function SearchReport() {
                 variant="outline"
                 size="sm"
                 disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
+                onClick={() => dispatch(setCurrentPage(currentPage + 1))}
               >
                 Sonraki
                 <ChevronRight className="h-4 w-4" />
@@ -150,15 +141,15 @@ function SearchReport() {
             </div>
           </div>
         )}
-        {receteler && receteler.length > 0 && (
+        {receteler.length > 0 && (
           <div className="mt-6">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">
                 Bulunan Reçeteler ({receteler.length})
               </h2>
-              {selectedRecetes.size > 0 && (
+              {selectedRecetes.length > 0 && (
                 <Button onClick={handleBulkProcess} variant="outline">
-                  Toplu İşlem ({selectedRecetes.size})
+                  Toplu İşlem ({selectedRecetes.length})
                 </Button>
               )}
             </div>
@@ -190,7 +181,7 @@ function SearchReport() {
                   <TableRow key={recete.receteNo}>
                     <TableCell>
                       <Checkbox
-                        checked={selectedRecetes.has(recete.receteNo)}
+                        checked={selectedRecetes.includes(recete.receteNo)}
                         onCheckedChange={(checked) =>
                           handleSelectRecete(recete.receteNo, !!checked)
                         }
@@ -237,7 +228,7 @@ function SearchReport() {
                     variant="outline"
                     size="sm"
                     disabled={currentPage === 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
+                    onClick={() => dispatch(setCurrentPage(currentPage - 1))}
                   >
                     <ChevronLeft className="h-4 w-4" />
                     Onceki
@@ -249,7 +240,7 @@ function SearchReport() {
                     variant="outline"
                     size="sm"
                     disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage((p) => p + 1)}
+                    onClick={() => dispatch(setCurrentPage(currentPage + 1))}
                   >
                     Sonraki
                     <ChevronRight className="h-4 w-4" />

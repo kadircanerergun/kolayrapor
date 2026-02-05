@@ -8,21 +8,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CalendarIcon, Loader2, Search } from "lucide-react";
-import { usePlaywright } from "@/hooks/usePlaywright";
 import { useState } from "react";
 import { useDialogContext } from "@/contexts/dialog-context";
-import { ReceteOzet } from "@/types/recete";
 import { useNavigate } from "@tanstack/react-router";
 import { useCredentials } from "@/contexts/credentials-context";
+import { useAppDispatch, useAppSelector } from "@/store";
+import { searchByDateRange } from "@/store/slices/playwrightSlice";
 
-type SearchByDateRangeProps = {
-  onSearchComplete?: (results: ReceteOzet[]) => void;
-  onSearchStart?: () => void;
-  onError?: (error: string) => void;
-};
-
-const SearchByDateRange = (props: SearchByDateRangeProps) => {
-  const playwright = usePlaywright();
+const SearchByDateRange = () => {
+  const dispatch = useAppDispatch();
+  const { isLoading, isReady } = useAppSelector((s) => s.playwright);
   const [dateRange, setDateRange] = useState<{
     from: Date;
     to: Date | undefined;
@@ -50,41 +45,29 @@ const SearchByDateRange = (props: SearchByDateRangeProps) => {
 
     if (!checkCredentials()) return;
 
-    props.onSearchStart?.();
-
-    if (!playwright.isReady) {
-      const initResult = await playwright.initialize();
-      if (!initResult.success) {
-        dialog.showAlert({
-          title: "Başlatma Hatası",
-          description:
-            "Sistem başlatılamadı. Lütfen ayarlarınızı kontrol edin ve tekrar deneyin.",
-        });
-        props.onError?.("Sistem başlatılamadı");
-        return;
-      }
-    }
-    const searchResult = await playwright.searchByDateRange(
-      dateRange!.from.toDateString(),
-      dateRange!.to!.toDateString(),
+    const result = await dispatch(
+      searchByDateRange({
+        startDate: dateRange!.from.toDateString(),
+        endDate: dateRange!.to!.toDateString(),
+      }),
     );
-    if (searchResult.error) {
+
+    if (searchByDateRange.rejected.match(result)) {
       dialog.showAlert({
         title: "Hata",
         description:
-          "Sorgulama sirasinda bir hata oluştu: " + searchResult.error,
+          "Sorgulama sirasinda bir hata oluştu: " + (result.error.message || "Bilinmeyen hata"),
       });
-      props.onError?.(searchResult.error);
     }
-    if (searchResult.success) {
-      if (!searchResult.prescriptions?.length) {
+
+    if (searchByDateRange.fulfilled.match(result)) {
+      if (!result.payload?.prescriptions?.length) {
         dialog.showAlert({
           title: "Sonuç Bulunamadı",
           description:
             "Belirtilen tarih aralığında herhangi bir reçete bulunamadı.",
         });
       }
-      props.onSearchComplete?.(searchResult.prescriptions);
     }
   };
 
@@ -111,15 +94,15 @@ const SearchByDateRange = (props: SearchByDateRangeProps) => {
           <Button
             type="submit"
             disabled={
-              playwright.isLoading ||
+              isLoading ||
               !dateRange?.from ||
               !dateRange?.to
             }
           >
-            {playwright.isLoading ? (
+            {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {playwright.isReady ? "Aranıyor..." : "Başlatılıyor..."}
+                {isReady ? "Aranıyor..." : "Başlatılıyor..."}
               </>
             ) : (
               <>

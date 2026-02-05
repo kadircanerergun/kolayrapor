@@ -4,6 +4,8 @@ import { syncWithLocalTheme } from "./actions/theme";
 import { useTranslation } from "react-i18next";
 import { updateAppLanguage } from "./actions/language";
 import { RouterProvider } from "@tanstack/react-router";
+import { Provider } from "react-redux";
+import { store } from "./store";
 import { router } from "./utils/routes";
 import "./localization/i18n";
 
@@ -15,7 +17,11 @@ export default function App() {
     updateAppLanguage(i18n);
   }, [i18n]);
 
-  return <RouterProvider router={router} />;
+  return (
+    <Provider store={store}>
+      <RouterProvider router={router} />
+    </Provider>
+  );
 }
 
 const root = createRoot(document.getElementById("app")!);

@@ -4,6 +4,7 @@ import path from "path";
 import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
+  REDUX_DEVTOOLS,
 } from "electron-devtools-installer";
 import { ipcMain } from "electron/main";
 import { ipcContext } from "@/ipc/context";
@@ -11,6 +12,11 @@ import { IPC_CHANNELS } from "./constants";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { setupPlaywrightIPC } from "./ipc/playwright";
 import { setupSecureStorageIPC } from "./ipc/secure-storage";
+
+// Handle Squirrel events (install, uninstall, update) on Windows.
+// This must be at the top before any other logic runs.
+import electronSquirrelStartup from "electron-squirrel-startup";
+if (electronSquirrelStartup) app.quit();
 
 const inDevelopment = process.env.NODE_ENV === "development";
 const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
@@ -46,8 +52,10 @@ function createWindow() {
 
 async function installExtensions() {
   try {
-    const result = await installExtension(REACT_DEVELOPER_TOOLS);
-    console.log(`Extensions installed successfully: ${result.name}`);
+    const react = await installExtension(REACT_DEVELOPER_TOOLS);
+    console.log(`Extension installed: ${react.name}`);
+    const redux = await installExtension(REDUX_DEVTOOLS);
+    console.log(`Extension installed: ${redux.name}`);
   } catch {
     console.error("Failed to install extensions");
   }
@@ -67,6 +75,7 @@ async function setupORPC() {
 
 app
   .whenReady()
+  .then(installExtensions)
   .then(createWindow)
   .then(setupORPC)
   .then(() => {

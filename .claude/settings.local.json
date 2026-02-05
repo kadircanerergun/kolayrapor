@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx asar:*)"
+      "Bash(npx asar:*)",
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build:*)",
+      "Bash(npx electron-vite build:*)",
+      "Bash(npx electron-forge build:*)"
     ]
   }
 }
