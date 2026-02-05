@@ -1,10 +1,14 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { ReceteOzet } from "@/types/recete";
+import { Recete, ReceteOzet } from "@/types/recete";
+import type { ReceteReportResponse } from "@/services/report-api";
 
 interface SearchParams {
   startDate: string;
   endDate: string;
 }
+
+// receteNo → barkod → analysis result
+type AnalizSonuclari = Record<string, Record<string, ReceteReportResponse>>;
 
 interface SearchState {
   receteler: ReceteOzet[];
@@ -14,6 +18,9 @@ interface SearchState {
   selectedRecetes: string[];
   lastSearchParams: SearchParams | null;
   loadingRecete: string | null;
+  detaylar: Record<string, Recete>;
+  analizSonuclari: AnalizSonuclari;
+  analyzingRecete: string | null;
 }
 
 const initialState: SearchState = {
@@ -24,6 +31,9 @@ const initialState: SearchState = {
   selectedRecetes: [],
   lastSearchParams: null,
   loadingRecete: null,
+  detaylar: {},
+  analizSonuclari: {},
+  analyzingRecete: null,
 };
 
 const receteSlice = createSlice({
@@ -68,6 +78,35 @@ const receteSlice = createSlice({
     setLoadingRecete(state, action: PayloadAction<string | null>) {
       state.loadingRecete = action.payload;
     },
+    detaylarLoaded(state, action: PayloadAction<Record<string, Recete>>) {
+      state.detaylar = { ...state.detaylar, ...action.payload };
+    },
+    detayFetched(state, action: PayloadAction<Recete>) {
+      state.detaylar[action.payload.receteNo] = action.payload;
+    },
+    setAnalyzingRecete(state, action: PayloadAction<string | null>) {
+      state.analyzingRecete = action.payload;
+    },
+    analizCompleted(
+      state,
+      action: PayloadAction<{
+        receteNo: string;
+        sonuclar: Record<string, ReceteReportResponse>;
+      }>,
+    ) {
+      state.analizSonuclari[action.payload.receteNo] = action.payload.sonuclar;
+    },
+    analizSonuclariLoaded(
+      state,
+      action: PayloadAction<Record<string, Record<string, ReceteReportResponse>>>,
+    ) {
+      for (const [receteNo, sonuclar] of Object.entries(action.payload)) {
+        state.analizSonuclari[receteNo] = {
+          ...state.analizSonuclari[receteNo],
+          ...sonuclar,
+        };
+      }
+    },
     resetSearch() {
       return initialState;
     },
@@ -83,6 +122,11 @@ export const {
   selectAllRecetes,
   clearReceteSelection,
   setLoadingRecete,
+  detaylarLoaded,
+  detayFetched,
+  setAnalyzingRecete,
+  analizCompleted,
+  analizSonuclariLoaded,
   resetSearch,
 } = receteSlice.actions;
 
