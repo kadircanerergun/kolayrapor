@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, BrowserWindow } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog } from "electron";
 import path from "path";
 import {
   installExtension,
@@ -9,7 +9,6 @@ import {
 import { ipcMain } from "electron/main";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS } from "./constants";
-import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import { setupPlaywrightIPC } from "./ipc/playwright";
 import { setupSecureStorageIPC } from "./ipc/secure-storage";
 
@@ -21,7 +20,89 @@ if (electronSquirrelStartup) app.quit();
 const inDevelopment = process.env.NODE_ENV === "development";
 const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 console.log('API URL:', apiUrl);
-// Playwright IPC will be setup in the promise chain below
+
+// --- Auto-Update ---
+
+const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
+
+function setupAutoUpdater() {
+  // Don't check updates on first install — Squirrel holds a lock
+  if (process.argv.includes("--squirrel-firstrun")) return;
+
+  // Never auto-update in development
+  if (inDevelopment) {
+    console.log("Auto-updater disabled in development mode.");
+    return;
+  }
+
+  // Feed URL: S3/R2 directory containing RELEASES + .nupkg files
+  // Squirrel appends /RELEASES automatically
+  // Set UPDATE_FEED_URL env var at build time, or fall back to a default
+  const feedURL = process.env.UPDATE_FEED_URL;
+  if (!feedURL) {
+    console.log("UPDATE_FEED_URL not set, auto-updater disabled.");
+    return;
+  }
+
+  try {
+    autoUpdater.setFeedURL({ url: feedURL });
+  } catch (err) {
+    console.error("Failed to set auto-update feed URL:", err);
+    return;
+  }
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("Checking for update...");
+  });
+
+  autoUpdater.on("update-available", () => {
+    console.log("Update available, downloading...");
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("App is up to date.");
+  });
+
+  autoUpdater.on("update-downloaded", (_event, releaseNotes, releaseName) => {
+    console.log(`Update downloaded: ${releaseName}`);
+
+    const mainWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (!mainWindow) {
+      // No window available, install on next restart
+      return;
+    }
+
+    dialog
+      .showMessageBox(mainWindow, {
+        type: "info",
+        title: "Güncelleme Hazır",
+        message: `Yeni sürüm ${releaseName ? `(${releaseName}) ` : ""}indirildi.`,
+        detail:
+          "Uygulamayı şimdi yeniden başlatarak güncellemek ister misiniz?",
+        buttons: ["Şimdi Güncelle", "Daha Sonra"],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("Auto-update error:", err);
+    // Silently fail — don't block the user
+  });
+
+  // Check now, then periodically
+  autoUpdater.checkForUpdates();
+  setInterval(() => {
+    autoUpdater.checkForUpdates();
+  }, UPDATE_CHECK_INTERVAL);
+}
+
+// --- Window ---
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
@@ -91,6 +172,7 @@ app
     setupSecureStorageIPC();
     return setupPlaywrightIPC();
   })
+  .then(setupAutoUpdater)
   .catch((error) => {
     console.error('App initialization error:', error);
   });

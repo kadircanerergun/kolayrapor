@@ -32,7 +32,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron-forge/plugin-vite": "^7.10.2",
-    "@electron-forge/publisher-github": "^7.10.2",
+    "@electron-forge/publisher-s3": "^7.11.1",
     "@electron-forge/shared-types": "^7.8.1",
     "@electron/fuses": "~1.8.0",
     "@eslint/compat": "^2.0.0",
@@ -113,7 +113,6 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "update-electron-app": "^3.1.2",
     "zod": "^4.2.0"
   }
 }

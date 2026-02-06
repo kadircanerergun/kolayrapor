@@ -8,14 +8,20 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    // Inject update feed URL at build time so it survives Vite bundling
+    "process.env.UPDATE_FEED_URL": JSON.stringify(
+      process.env.UPDATE_FEED_URL || ""
+    ),
+  },
   build: {
     rollupOptions: {
       external: [
-        'playwright',
-        'playwright-core',
+        "playwright",
+        "playwright-core",
         /^playwright.*/,
-        'module',
-      ]
-    }
-  }
+        "module",
+      ],
+    },
+  },
 });

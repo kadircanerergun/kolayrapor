@@ -6,13 +6,14 @@ import { MakerRpm } from "@electron-forge/maker-rpm";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { PublisherS3 } from "@electron-forge/publisher-s3";
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     extraResource: [
-      './playwright-browsers',
-      './node_modules/playwright-core',
+      "./playwright-browsers",
+      "./node_modules/playwright-core",
     ],
   },
   rebuildConfig: {},
@@ -26,21 +27,18 @@ const config: ForgeConfig = {
     new MakerDeb({}),
   ],
   publishers: [
-    {
-      /*
-       * Publish release on GitHub as draft.
-       * Remember to manually publish it on GitHub website after verifying everything is correct.
-       */
-      name: "@electron-forge/publisher-github",
-      config: {
-        repository: {
-          owner: "LuanRoger",
-          name: "electron-shadcn",
-        },
-        draft: true,
-        prerelease: false,
-      },
-    },
+    new PublisherS3({
+      bucket: process.env.S3_BUCKET || "kolay-rapor-releases",
+      region: process.env.S3_REGION || "auto",
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      folder: "releases/win32/x64",
+      public: true,
+      // R2 doesn't support ACLs — set omitAcl to true for Cloudflare R2
+      // For AWS S3, set to false or remove
+      omitAcl: true,
+      // Prevent CDN/browser caching of the RELEASES manifest
+      releaseFileCacheControlMaxAge: 0,
+    }),
   ],
   plugins: [
     new VitePlugin({
