@@ -1,6 +1,7 @@
 import BaseLayout from "@/layouts/base-layout";
 import MainLayout from "@/layouts/main-layout";
 import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 /* import { TanStackRouterDevtools } from '@tanstack/react-router-devtools' */
 
 /*
@@ -28,6 +29,7 @@ function Root() {
         <Outlet />
         {/* <TanStackRouterDevtools /> */}
       </MainLayout>
+      <Toaster position="bottom-right" richColors closeButton />
     </BaseLayout>
   );
 }

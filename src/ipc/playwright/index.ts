@@ -138,5 +138,27 @@ export function setupPlaywrightIPC() {
     return { success: true };
   });
 
+  // Solve captcha via API (used by webview-based browse mode)
+  createHandler('captcha:solve', async (base64Image: string) => {
+    const response = await fetch('https://kolay-rapor-api-8503f0bb8557.herokuapp.com/medula/numbers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ image: base64Image }),
+    });
+
+    if (!response.ok) {
+      return { success: false, code: null, error: `API request failed: ${response.status}` };
+    }
+
+    const result = await response.json();
+    return {
+      success: !!result.code,
+      code: result.code || null,
+    };
+  });
+
   console.log('Playwright IPC handlers registered');
 }

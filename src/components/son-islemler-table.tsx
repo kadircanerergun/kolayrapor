@@ -55,6 +55,7 @@ import {
   type CachedRecete,
   getAllCachedReceteler,
   getAllCachedAnalysis,
+  getLatestAnalysisTimestamps,
   clearCache,
 } from "@/lib/db";
 
@@ -80,6 +81,7 @@ export function SonIslemlerTable({
   const [localAnalizSonuclari, setLocalAnalizSonuclari] = useState<
     Record<string, Record<string, ReceteReportResponse>>
   >({});
+  const [analysisTimestamps, setAnalysisTimestamps] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const pageSize = 10;
@@ -97,19 +99,21 @@ export function SonIslemlerTable({
     | "verilerAlindi"
     | "analizEdildi";
   type SortDir = "asc" | "desc";
-  const [sortKey, setSortKey] = useState<SortKey>("cachedAt");
+  const [sortKey, setSortKey] = useState<SortKey>("sonIslemTarihi");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   // Load data from Dexie on mount
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      const [receteler, analiz] = await Promise.all([
+      const [receteler, analiz, timestamps] = await Promise.all([
         getAllCachedReceteler(),
         getAllCachedAnalysis(),
+        getLatestAnalysisTimestamps(),
       ]);
       setCachedReceteler(receteler);
       setLocalAnalizSonuclari(analiz);
+      setAnalysisTimestamps(timestamps);
 
       // Also hydrate Redux state so re-analyze/re-fetch work properly
       for (const r of receteler) {
@@ -161,17 +165,35 @@ export function SonIslemlerTable({
     [sortKey],
   );
 
+  const parseDateStr = useCallback((dateStr: string | undefined): number => {
+    if (!dateStr) return 0;
+    if (dateStr.includes(".") || dateStr.includes("/")) {
+      const [d, m, y] = dateStr.split(/[./]/);
+      return new Date(Number(y), Number(m) - 1, Number(d)).getTime() || 0;
+    }
+    return new Date(dateStr).getTime() || 0;
+  }, []);
+
+  /** Last action = max(detail cachedAt, latest analysis cachedAt) */
+  const getLastActionAt = useCallback((receteNo: string, cachedAt: number): number => {
+    const analysisCachedAt = analysisTimestamps[receteNo] ?? 0;
+    return Math.max(cachedAt, analysisCachedAt);
+  }, [analysisTimestamps]);
+
   const sortedReceteler = useMemo(() => {
     return [...cachedReceteler].sort((a, b) => {
       let aVal: string | number;
       let bVal: string | number;
 
-      if (sortKey === "cachedAt") {
+      if (sortKey === "cachedAt" || sortKey === "verilerAlindi") {
         aVal = a.cachedAt;
         bVal = b.cachedAt;
-      } else if (sortKey === "verilerAlindi") {
-        aVal = a.cachedAt;
-        bVal = b.cachedAt;
+      } else if (sortKey === "sonIslemTarihi") {
+        aVal = getLastActionAt(a.receteNo, a.cachedAt);
+        bVal = getLastActionAt(b.receteNo, b.cachedAt);
+      } else if (sortKey === "receteTarihi") {
+        aVal = parseDateStr(a[sortKey]);
+        bVal = parseDateStr(b[sortKey]);
       } else if (sortKey === "analizEdildi") {
         const aAnalyzed = Object.keys(
           mergedAnalizSonuclari[a.receteNo] ?? {},
@@ -194,7 +216,7 @@ export function SonIslemlerTable({
       if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-  }, [cachedReceteler, sortKey, sortDir, mergedAnalizSonuclari]);
+  }, [cachedReceteler, sortKey, sortDir, mergedAnalizSonuclari, parseDateStr, getLastActionAt]);
 
   const totalPages = sortedReceteler.length
     ? Math.ceil(sortedReceteler.length / pageSize)
@@ -245,8 +267,12 @@ export function SonIslemlerTable({
       analyzePrescription({ receteNo, force: true }),
     );
     if (analyzePrescription.fulfilled.match(result)) {
-      const updatedAnaliz = await getAllCachedAnalysis();
+      const [updatedAnaliz, updatedTimestamps] = await Promise.all([
+        getAllCachedAnalysis(),
+        getLatestAnalysisTimestamps(),
+      ]);
       setLocalAnalizSonuclari(updatedAnaliz);
+      setAnalysisTimestamps(updatedTimestamps);
     } else {
       dialog.showAlert({
         title: "Hata",
@@ -403,7 +429,13 @@ export function SonIslemlerTable({
                       {recete.receteNo}
                     </TableCell>
                     <TableCell>{recete.receteTarihi}</TableCell>
-                    <TableCell>{recete.sonIslemTarihi}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {(() => {
+                        const ts = getLastActionAt(recete.receteNo, recete.cachedAt);
+                        const d = new Date(ts);
+                        return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
+                      })()}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span>{recete.ilaclar?.length ?? 0}</span>

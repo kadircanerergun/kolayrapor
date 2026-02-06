@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, BrowserWindow, webContents } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "path";
 import {
   installExtension,

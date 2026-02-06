@@ -18,6 +18,7 @@ import {
   User2,
   CalendarIcon,
   History,
+  Globe,
   Shield,
   Coins,
 } from "lucide-react";
@@ -94,32 +95,39 @@ export default function MainLayout({
       to: "/home",
       icon: FileCheck,
       label: "Kontrol Merkezi",
-      description: "Özet bilgiler ve son işlemler"
+      description: "Özet bilgiler ve son işlemler",
+    },
+    {
+      to: "/gezinti",
+      icon: Globe,
+      label: "Gezinti Modu",
+      description: "SGK Medula portalında doğrudan gezinin",
     },
     {
       to: "/search-by-recipe",
       icon: Search,
       label: "Reçete Numarası ile Arama",
-      description: "Reçete numarası ile rapor arama"
+      description: "Reçete numarası ile rapor arama",
     },
     {
       to: "/search-report",
       icon: CalendarIcon,
       label: "Tarih ile Arama",
-      description: "Tarih aralığı ile rapor arama"
+      description: "Tarih aralığı ile rapor arama",
     },
     {
       to: "/son-islemler",
       icon: History,
       label: "Son İşlemler",
-      description: "Daha önce sorgulanan reçeteler"
+      description: "Daha önce sorgulanan reçeteler",
     },
+
     {
       to: "/ayarlar",
       icon: Settings,
       label: "Ayarlar",
-      description: "Uygulama ayarları"
-    }
+      description: "Uygulama ayarları",
+    },
   ];
 
 

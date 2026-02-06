@@ -56,6 +56,11 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   autoLogin: () => ipcRenderer.invoke('playwright:autoLogin')
 });
 
+// Expose Captcha API to renderer (used by webview browse mode)
+contextBridge.exposeInMainWorld('captchaAPI', {
+  solve: (base64Image: string) => ipcRenderer.invoke('captcha:solve', base64Image),
+});
+
 // Expose Secure Storage API to renderer
 contextBridge.exposeInMainWorld('secureStorage', {
   isAvailable: () => ipcRenderer.invoke('secureStorage:isAvailable'),

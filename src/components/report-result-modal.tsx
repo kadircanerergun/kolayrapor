@@ -1,19 +1,23 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle, Clock, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, RefreshCw, Loader2 } from 'lucide-react';
 import { ReceteReportResponse } from '@/services/report-api';
 
 interface ReportResultModalProps {
   reportData: ReceteReportResponse;
   medicineName: string;
   onBack: () => void;
+  onReAnalyze?: () => void;
+  isReAnalyzing?: boolean;
 }
 
 const ReportResultModal: React.FC<ReportResultModalProps> = ({
   reportData,
   medicineName,
-  onBack
+  onBack,
+  onReAnalyze,
+  isReAnalyzing,
 }) => {
   const getValidityColor = (isValid: boolean, score: number) => {
     if (isValid && score >= 80) return 'bg-green-100 text-green-800 border-green-200';
@@ -30,19 +34,23 @@ const ReportResultModal: React.FC<ReportResultModalProps> = ({
   return (
     <div className="flex flex-col space-y-6 min-h-0">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Rapor Sonuçları</h2>
-          <p className="text-muted-foreground text-sm">{medicineName}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onBack}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Geri Dön
-        </Button>
+        <p className="text-muted-foreground text-sm">{medicineName}</p>
+        {onReAnalyze && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReAnalyze}
+            disabled={isReAnalyzing}
+            className="flex items-center gap-2"
+          >
+            {isReAnalyzing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {isReAnalyzing ? "Analiz ediliyor..." : "Yeniden Analiz Et"}
+          </Button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">

@@ -93,6 +93,18 @@ export async function getAllCachedReceteler(): Promise<CachedRecete[]> {
   return db.receteDetaylar.orderBy("receteNo").reverse().toArray();
 }
 
+/** Get the latest analysis cachedAt per receteNo */
+export async function getLatestAnalysisTimestamps(): Promise<Record<string, number>> {
+  const rows = await db.analizSonuclari.toArray();
+  const map: Record<string, number> = {};
+  for (const row of rows) {
+    if (!map[row.receteNo] || row.cachedAt > map[row.receteNo]) {
+      map[row.receteNo] = row.cachedAt;
+    }
+  }
+  return map;
+}
+
 export async function getAllCachedAnalysis(): Promise<Record<string, Record<string, ReceteReportResponse>>> {
   const rows = await db.analizSonuclari.toArray();
   const map: Record<string, Record<string, ReceteReportResponse>> = {};

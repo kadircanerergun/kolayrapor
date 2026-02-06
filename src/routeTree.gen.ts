@@ -14,6 +14,7 @@ import { Route as SonIslemlerRouteImport } from './routes/son-islemler'
 import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as GezintiRouteImport } from './routes/gezinti'
 import { Route as AyarlarRouteImport } from './routes/ayarlar'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -42,6 +43,11 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GezintiRoute = GezintiRouteImport.update({
+  id: '/gezinti',
+  path: '/gezinti',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AyarlarRoute = AyarlarRouteImport.update({
   id: '/ayarlar',
   path: '/ayarlar',
@@ -56,6 +62,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ayarlar'
+    | '/gezinti'
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ayarlar'
+    | '/gezinti'
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/ayarlar'
+    | '/gezinti'
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AyarlarRoute: typeof AyarlarRoute
+  GezintiRoute: typeof GezintiRoute
   HomeRoute: typeof HomeRoute
   SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gezinti': {
+      id: '/gezinti'
+      path: '/gezinti'
+      fullPath: '/gezinti'
+      preLoaderRoute: typeof GezintiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ayarlar': {
       id: '/ayarlar'
       path: '/ayarlar'
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AyarlarRoute: AyarlarRoute,
+  GezintiRoute: GezintiRoute,
   HomeRoute: HomeRoute,
   SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
