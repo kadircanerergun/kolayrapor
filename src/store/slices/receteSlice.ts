@@ -10,6 +10,13 @@ interface SearchParams {
 // receteNo → barkod → analysis result
 type AnalizSonuclari = Record<string, Record<string, ReceteReportResponse>>;
 
+interface BulkProgress {
+  type: "verileriAl" | "analizEt";
+  current: number;
+  total: number;
+  currentReceteNo: string;
+}
+
 interface SearchState {
   receteler: ReceteOzet[];
   loading: boolean;
@@ -21,6 +28,7 @@ interface SearchState {
   detaylar: Record<string, Recete>;
   analizSonuclari: AnalizSonuclari;
   analyzingRecete: string | null;
+  bulkProgress: BulkProgress | null;
 }
 
 const initialState: SearchState = {
@@ -34,6 +42,7 @@ const initialState: SearchState = {
   detaylar: {},
   analizSonuclari: {},
   analyzingRecete: null,
+  bulkProgress: null,
 };
 
 const receteSlice = createSlice({
@@ -107,6 +116,9 @@ const receteSlice = createSlice({
         };
       }
     },
+    setBulkProgress(state, action: PayloadAction<BulkProgress | null>) {
+      state.bulkProgress = action.payload;
+    },
     resetSearch() {
       return initialState;
     },
@@ -127,6 +139,7 @@ export const {
   setAnalyzingRecete,
   analizCompleted,
   analizSonuclariLoaded,
+  setBulkProgress,
   resetSearch,
 } = receteSlice.actions;
 
