@@ -63,8 +63,8 @@ export function ModalProvider({ modal, onClose }: ModalProviderProps) {
           </DialogHeader>
         )}
         <div className={cn(
-          'flex-1',
-          modal.size === 'full' && 'overflow-auto h-full'
+          'flex-1 min-h-0 overflow-auto',
+          modal.size === 'full' && 'h-full'
         )}>
           {modal.content}
         </div>

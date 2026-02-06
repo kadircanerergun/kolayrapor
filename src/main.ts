@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, webContents } from "electron";
 import path from "path";
 import {
   installExtension,
@@ -34,12 +34,20 @@ function createWindow() {
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
       preload: preload,
+      webviewTag: true,
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     trafficLightPosition:
       process.platform === "darwin" ? { x: 15, y: 5 } : undefined,
   });
   ipcContext.setMainWindow(mainWindow);
+
+  // Security: restrict webview capabilities
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
+    // Disable node integration in webview for security
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);

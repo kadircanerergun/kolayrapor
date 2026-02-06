@@ -18,9 +18,13 @@ import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-
 import { Recete } from "@/types/recete";
 import { useNavigate } from "@tanstack/react-router";
 import { useCredentials } from "@/contexts/credentials-context";
+import { cacheDetail } from "@/lib/db";
+import { useAppDispatch } from "@/store";
+import { detayFetched } from "@/store/slices/receteSlice";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
+  const dispatch = useAppDispatch();
   const [recipeCode, setRecipeCode] = useState("");
   const dialog = useDialogContext();
   const modal = useModal();
@@ -62,6 +66,10 @@ const SearchByRecipe = () => {
 
     if (searchResult.success && searchResult.prescriptionData) {
       const prescriptionData = searchResult.prescriptionData as Recete;
+
+      // Save to Dexie cache and Redux
+      await cacheDetail(prescriptionData);
+      dispatch(detayFetched(prescriptionData));
 
       modal.openModal(
         <PrescriptionMedicinesModal

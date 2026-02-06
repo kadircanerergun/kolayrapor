@@ -103,7 +103,10 @@ const receteSlice = createSlice({
         sonuclar: Record<string, ReceteReportResponse>;
       }>,
     ) {
-      state.analizSonuclari[action.payload.receteNo] = action.payload.sonuclar;
+      state.analizSonuclari[action.payload.receteNo] = {
+        ...state.analizSonuclari[action.payload.receteNo],
+        ...action.payload.sonuclar,
+      };
     },
     analizSonuclariLoaded(
       state,

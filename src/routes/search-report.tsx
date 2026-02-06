@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchByDateRange } from "@/blocks/search-by-date-range";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Recete, ReceteOzet } from "@/types/recete";
 import {
   Table,
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Circle, CircleDot, Database, FlaskConical, Loader2, ShieldCheck, ShieldX, X } from "lucide-react";
+import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Database, Eye, FlaskConical, Loader2, ShieldCheck, ShieldX, StopCircle, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator as SeparatorUI } from "@/components/ui/separator";
 import {
@@ -66,6 +66,7 @@ function SearchReport() {
   const pageSize = 10;
 
   const [analizSheetReceteNo, setAnalizSheetReceteNo] = useState<string | null>(null);
+  const bulkCancelRef = useRef(false);
 
   type SortKey = keyof ReceteOzet | "verilerAlindi" | "analizEdildi";
   type SortDir = "asc" | "desc";
@@ -195,8 +196,10 @@ function SearchReport() {
   const sheetEntries = sheetSonuclar ? Object.entries(sheetSonuclar) : [];
 
   const handleBulkVerileriAl = async () => {
+    bulkCancelRef.current = false;
     const selected = [...selectedRecetes];
     for (let i = 0; i < selected.length; i++) {
+      if (bulkCancelRef.current) break;
       dispatch(setBulkProgress({ type: "verileriAl", current: i + 1, total: selected.length, currentReceteNo: selected[i] }));
       await dispatch(searchPrescriptionDetail({ receteNo: selected[i] }));
     }
@@ -204,12 +207,18 @@ function SearchReport() {
   };
 
   const handleBulkAnalizEt = async () => {
+    bulkCancelRef.current = false;
     const selected = [...selectedRecetes];
     for (let i = 0; i < selected.length; i++) {
+      if (bulkCancelRef.current) break;
       dispatch(setBulkProgress({ type: "analizEt", current: i + 1, total: selected.length, currentReceteNo: selected[i] }));
       await dispatch(analyzePrescription({ receteNo: selected[i] }));
     }
     dispatch(setBulkProgress(null));
+  };
+
+  const handleBulkCancel = () => {
+    bulkCancelRef.current = true;
   };
 
 
@@ -307,9 +316,20 @@ function SearchReport() {
                     {bulkProgress.type === "verileriAl" && "Veriler alınıyor..."}
                     {bulkProgress.type === "analizEt" && "Analiz ediliyor..."}
                   </span>
-                  <span className="text-muted-foreground font-medium">
-                    {bulkProgress.current}/{bulkProgress.total}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground font-medium">
+                      {bulkProgress.current}/{bulkProgress.total}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleBulkCancel}
+                    >
+                      <StopCircle className="h-3.5 w-3.5 mr-1" />
+                      Durdur
+                    </Button>
+                  </div>
                 </div>
                 <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                   <div
@@ -395,7 +415,7 @@ function SearchReport() {
                                   onClick={() => handleDetay(recete.receteNo)}
                                   className="mx-auto flex cursor-pointer items-center justify-center"
                                 >
-                                  <CircleCheck className="h-5 w-5 text-green-500" />
+                                  <Eye className="h-5 w-5 text-green-500" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Detayları görüntüle</TooltipContent>
@@ -426,7 +446,7 @@ function SearchReport() {
                                       </span>
                                     </>
                                   ) : (
-                                    <CircleCheck className="h-5 w-5 text-green-500" />
+                                    <Eye className="h-5 w-5 text-green-500" />
                                   )}
                                 </button>
                               </TooltipTrigger>

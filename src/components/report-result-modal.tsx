@@ -28,7 +28,7 @@ const ReportResultModal: React.FC<ReportResultModalProps> = ({
   };
 
   return (
-    <div className="flex max-h-[70vh] flex-col space-y-6 overflow-hidden">
+    <div className="flex flex-col space-y-6 min-h-0">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Rapor Sonuçları</h2>

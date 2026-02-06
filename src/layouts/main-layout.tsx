@@ -93,8 +93,8 @@ export default function MainLayout({
     {
       to: "/home",
       icon: FileCheck,
-      label: "Rapor Doğrulama",
-      description: "Ana sayfa ve rapor işlemleri"
+      label: "Kontrol Merkezi",
+      description: "Özet bilgiler ve son işlemler"
     },
     {
       to: "/search-by-recipe",
