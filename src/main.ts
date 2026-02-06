@@ -17,6 +17,23 @@ import { setupSecureStorageIPC } from "./ipc/secure-storage";
 import electronSquirrelStartup from "electron-squirrel-startup";
 if (electronSquirrelStartup) app.quit();
 
+// Ensure only one instance of the app runs at a time.
+// This prevents "Access is denied" errors on Windows when cache files are locked.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log('Another instance is already running. Quitting...');
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  // Someone tried to run a second instance, focus our window instead
+  const windows = BrowserWindow.getAllWindows();
+  if (windows.length > 0) {
+    if (windows[0].isMinimized()) windows[0].restore();
+    windows[0].focus();
+  }
+});
+
 const inDevelopment = process.env.NODE_ENV === "development";
 const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 console.log('API URL:', apiUrl);
@@ -140,14 +157,33 @@ function createWindow() {
 }
 
 async function installExtensions() {
-  try {
-    const react = await installExtension(REACT_DEVELOPER_TOOLS);
-    console.log(`Extension installed: ${react.name}`);
-    const redux = await installExtension(REDUX_DEVTOOLS);
-    console.log(`Extension installed: ${redux.name}`);
-  } catch {
-    console.error("Failed to install extensions");
+  // Only install devtools extensions in development mode
+  if (!inDevelopment) {
+    console.log('Skipping extension installation in production mode');
+    return;
   }
+
+  // Add timeout to prevent hanging when disk cache is locked
+  const timeoutPromise = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      console.log('Extension installation timed out, continuing...');
+      resolve();
+    }, 5000); // 5 second timeout
+  });
+
+  const installPromise = (async () => {
+    try {
+      const react = await installExtension(REACT_DEVELOPER_TOOLS);
+      console.log(`Extension installed: ${react.name}`);
+      const redux = await installExtension(REDUX_DEVTOOLS);
+      console.log(`Extension installed: ${redux.name}`);
+    } catch (err) {
+      console.error("Failed to install extensions:", err);
+    }
+  })();
+
+  // Race between installation and timeout
+  await Promise.race([installPromise, timeoutPromise]);
 }
 
 
@@ -162,31 +198,38 @@ async function setupORPC() {
   });
 }
 
-app
-  .whenReady()
-  .then(installExtensions)
-  .then(createWindow)
-  .then(setupORPC)
-  .then(() => {
-    console.log('About to setup Playwright IPC...');
-    setupSecureStorageIPC();
-    return setupPlaywrightIPC();
-  })
-  .then(setupAutoUpdater)
-  .catch((error) => {
-    console.error('App initialization error:', error);
+// Only initialize the app if we got the single instance lock
+if (gotTheLock) {
+  app
+    .whenReady()
+    .then(createWindow)  // Create window first so user sees something
+    .then(setupORPC)
+    .then(() => {
+      console.log('Setting up IPC handlers...');
+      setupSecureStorageIPC();
+      setupPlaywrightIPC();
+      console.log('IPC handlers registered');
+    })
+    .then(setupAutoUpdater)
+    .then(() => {
+      // Install extensions last (non-blocking for app functionality)
+      installExtensions().catch(err => {
+        console.error('Extension installation failed:', err);
+      });
+    })
+    .catch((error) => {
+      console.error('App initialization error:', error);
+    });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
   });
 
-//osX only
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-//osX only ends
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+}

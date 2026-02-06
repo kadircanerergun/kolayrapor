@@ -12,6 +12,7 @@ import {
   ShieldX,
 } from "lucide-react";
 import { SonIslemlerTable } from "@/components/son-islemler-table";
+import { SystemStatus } from "@/components/system-status";
 import type { CachedRecete } from "@/lib/db";
 import type { ReceteReportResponse } from "@/services/report-api";
 
@@ -55,6 +56,11 @@ function KontrolMerkezi() {
           <p className="text-muted-foreground">
             Reçete doğrulama ve analiz işlemlerinizi yönetin
           </p>
+        </div>
+
+        {/* System Status */}
+        <div className="mb-6">
+          <SystemStatus />
         </div>
 
         {/* Stats */}

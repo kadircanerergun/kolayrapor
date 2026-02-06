@@ -1,11 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Spinner } from "@/components/ui/spinner";
-import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useEffect, useState, useCallback } from "react";
+import { RefreshCw } from "lucide-react";
 
 interface InstallProgress {
   status: "checking" | "installing" | "done" | "error";
   message: string;
   progress?: number;
+  details?: string;
 }
 
 function LandingPage() {
@@ -15,46 +18,63 @@ function LandingPage() {
     message: "Uygulama hazırlanıyor...",
   });
   const [isReady, setIsReady] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
-  useEffect(() => {
+  const initializeApp = useCallback(async () => {
     let cleanup: (() => void) | undefined;
 
-    const initializeApp = async () => {
-      try {
-        // Subscribe to progress updates
-        cleanup = window.playwrightAPI.onBrowserInstallProgress((progress) => {
-          setInstallProgress(progress);
-        });
+    try {
+      // Subscribe to progress updates
+      cleanup = window.playwrightAPI.onBrowserInstallProgress((progress) => {
+        setInstallProgress(progress);
+      });
 
-        // Ensure browsers are installed
-        setInstallProgress({
-          status: "checking",
-          message: "Tarayıcı kontrol ediliyor...",
-        });
+      // Ensure browsers are installed
+      setInstallProgress({
+        status: "checking",
+        message: "Tarayıcı kontrol ediliyor...",
+      });
 
-        await window.playwrightAPI.ensureBrowsers();
+      const result = await window.playwrightAPI.ensureBrowsers();
 
-        setInstallProgress({
-          status: "done",
-          message: "Hazır",
-          progress: 100,
-        });
-
-        setIsReady(true);
-      } catch (error) {
-        setInstallProgress({
-          status: "error",
-          message: error instanceof Error ? error.message : "Bir hata oluştu",
-        });
+      // Check if result indicates an error
+      if (result && !result.success && result.error) {
+        throw new Error(result.error);
       }
-    };
 
-    initializeApp();
+      setInstallProgress({
+        status: "done",
+        message: "Hazır",
+        progress: 100,
+      });
+
+      setIsReady(true);
+    } catch (error) {
+      console.error("Initialization error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Bir hata oluştu";
+      setInstallProgress({
+        status: "error",
+        message: "Başlatma hatası",
+        details: errorMessage,
+      });
+    }
 
     return () => {
       if (cleanup) cleanup();
     };
   }, []);
+
+  useEffect(() => {
+    initializeApp();
+  }, [initializeApp, retryCount]);
+
+  const handleRetry = () => {
+    setInstallProgress({
+      status: "checking",
+      message: "Tekrar deneniyor...",
+    });
+    setRetryCount((c) => c + 1);
+  };
 
   useEffect(() => {
     if (!isReady) return;
@@ -82,7 +102,18 @@ function LandingPage() {
             </div>
           )}
         {installProgress.status === "error" ? (
-          <p className="text-destructive text-sm">{installProgress.message}</p>
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-destructive text-center">
+              <p className="font-medium">{installProgress.message}</p>
+              {installProgress.details && (
+                <p className="text-sm mt-1 max-w-md">{installProgress.details}</p>
+              )}
+            </div>
+            <Button onClick={handleRetry} variant="outline" className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Tekrar Dene
+            </Button>
+          </div>
         ) : (
           <Spinner size="lg" />
         )}

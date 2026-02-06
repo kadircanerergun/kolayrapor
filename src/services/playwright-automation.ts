@@ -362,25 +362,41 @@ export class PlaywrightAutomationService {
 
   async initialize(forceRestart: boolean = false, onProgress?: ProgressCallback): Promise<void> {
     try {
+      console.log("[Playwright] Starting initialization...");
+
       // Set Playwright browsers path before loading
       const browsersPath = getBrowsersPath();
       process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
-      console.log("Using Playwright browsers path:", browsersPath);
+      console.log("[Playwright] Using browsers path:", browsersPath);
+
+      // Check if browsers path exists
+      if (!fs.existsSync(browsersPath)) {
+        console.log("[Playwright] Browsers path does not exist, will install...");
+      }
 
       // Ensure browsers are installed before proceeding
+      console.log("[Playwright] Ensuring browsers are installed...");
       await ensureBrowsersInstalled(onProgress);
+      console.log("[Playwright] Browsers check complete");
 
       // Load Playwright dynamically
+      console.log("[Playwright] Loading Playwright module...");
       await loadPlaywright();
+      console.log("[Playwright] Playwright module loaded");
 
       // If already initialized and not forcing restart, return
-      if (this.isInitialized && !forceRestart) return;
+      if (this.isInitialized && !forceRestart) {
+        console.log("[Playwright] Already initialized, skipping...");
+        return;
+      }
 
       // Close existing browser if restarting
       if (forceRestart && this.browser) {
+        console.log("[Playwright] Closing existing browser for restart...");
         await this.close();
       }
 
+      console.log("[Playwright] Launching browser...");
       this.browser = await chromium.launch({
         headless: !this.debugMode, // Show browser when debug mode is enabled
         slowMo: this.debugMode ? 100 : 100, // Slower when debugging
@@ -393,15 +409,19 @@ export class PlaywrightAutomationService {
             ]
           : [],
       });
+      console.log("[Playwright] Browser launched");
 
+      console.log("[Playwright] Creating context...");
       const context = await this.browser.newContext();
+      console.log("[Playwright] Creating page...");
       this.page = await context.newPage();
       this.isInitialized = true;
 
-      console.log("Playwright automation service initialized");
+      console.log("[Playwright] Initialization complete - service ready");
     } catch (error) {
-      console.error("Failed to initialize Playwright:", error);
-      throw error;
+      console.error("[Playwright] Failed to initialize:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Playwright initialization failed: ${errorMessage}`);
     }
   }
 

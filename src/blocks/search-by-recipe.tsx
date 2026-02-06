@@ -58,7 +58,10 @@ const SearchByRecipe = () => {
       console.log("Initializing Playwright...");
       const initResult = await playwright.initialize();
       if (!initResult.success) {
-        alert(`Playwright başlatılırken hata: ${initResult.error}`);
+        dialog.showAlert({
+          title: "Başlatma Hatası",
+          description: `Playwright başlatılırken hata oluştu: ${initResult.error}`,
+        });
         return;
       }
     }
