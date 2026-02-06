@@ -2,7 +2,7 @@ import Dexie, { type EntityTable, type Table } from "dexie";
 import type { Recete } from "@/types/recete";
 import type { ReceteReportResponse } from "@/services/report-api";
 
-interface CachedRecete extends Recete {
+export interface CachedRecete extends Recete {
   cachedAt: number;
 }
 
@@ -85,6 +85,22 @@ export async function cacheAnalysisBatch(
     cachedAt: Date.now(),
   }));
   await db.analizSonuclari.bulkPut(entries);
+}
+
+// --- Load all cached prescriptions ---
+
+export async function getAllCachedReceteler(): Promise<CachedRecete[]> {
+  return db.receteDetaylar.orderBy("receteNo").reverse().toArray();
+}
+
+export async function getAllCachedAnalysis(): Promise<Record<string, Record<string, ReceteReportResponse>>> {
+  const rows = await db.analizSonuclari.toArray();
+  const map: Record<string, Record<string, ReceteReportResponse>> = {};
+  for (const row of rows) {
+    if (!map[row.receteNo]) map[row.receteNo] = {};
+    map[row.receteNo][row.barkod] = row.result;
+  }
+  return map;
 }
 
 // --- Clear all ---

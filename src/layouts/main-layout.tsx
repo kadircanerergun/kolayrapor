@@ -17,6 +17,7 @@ import {
   Search,
   User2,
   CalendarIcon,
+  History,
   Shield,
   Coins,
 } from "lucide-react";
@@ -106,6 +107,12 @@ export default function MainLayout({
       icon: CalendarIcon,
       label: "Tarih ile Arama",
       description: "Tarih aralığı ile rapor arama"
+    },
+    {
+      to: "/son-islemler",
+      icon: History,
+      label: "Son İşlemler",
+      description: "Daha önce sorgulanan reçeteler"
     },
     {
       to: "/ayarlar",

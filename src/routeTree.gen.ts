@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SubscriptionRouteImport } from './routes/subscription'
+import { Route as SonIslemlerRouteImport } from './routes/son-islemler'
 import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
 import { Route as HomeRouteImport } from './routes/home'
@@ -19,6 +20,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const SubscriptionRoute = SubscriptionRouteImport.update({
   id: '/subscription',
   path: '/subscription',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SonIslemlerRoute = SonIslemlerRouteImport.update({
+  id: '/son-islemler',
+  path: '/son-islemler',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchReportRoute = SearchReportRouteImport.update({
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/son-islemler': typeof SonIslemlerRoute
   '/subscription': typeof SubscriptionRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/son-islemler': typeof SonIslemlerRoute
   '/subscription': typeof SubscriptionRoute
 }
 export interface FileRoutesById {
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/home': typeof HomeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
+  '/son-islemler': typeof SonIslemlerRoute
   '/subscription': typeof SubscriptionRoute
 }
 export interface FileRouteTypes {
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
+    | '/son-islemler'
     | '/subscription'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
+    | '/son-islemler'
     | '/subscription'
   id:
     | '__root__'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/search-by-recipe'
     | '/search-report'
+    | '/son-islemler'
     | '/subscription'
   fileRoutesById: FileRoutesById
 }
@@ -105,6 +117,7 @@ export interface RootRouteChildren {
   HomeRoute: typeof HomeRoute
   SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
+  SonIslemlerRoute: typeof SonIslemlerRoute
   SubscriptionRoute: typeof SubscriptionRoute
 }
 
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/subscription'
       fullPath: '/subscription'
       preLoaderRoute: typeof SubscriptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/son-islemler': {
+      id: '/son-islemler'
+      path: '/son-islemler'
+      fullPath: '/son-islemler'
+      preLoaderRoute: typeof SonIslemlerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search-report': {
@@ -161,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   HomeRoute: HomeRoute,
   SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
+  SonIslemlerRoute: SonIslemlerRoute,
   SubscriptionRoute: SubscriptionRoute,
 }
 export const routeTree = rootRouteImport
