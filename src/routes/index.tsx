@@ -32,7 +32,7 @@ function LandingPage() {
       // Ensure browsers are installed
       setInstallProgress({
         status: "checking",
-        message: "Tarayıcı kontrol ediliyor...",
+        message: "Gerekli dosyalar kontrol ediliyor...",
       });
 
       const result = await window.playwrightAPI.ensureBrowsers();

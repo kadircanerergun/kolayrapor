@@ -14,7 +14,6 @@ import fs from "fs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 
 dayjs.extend(customParseFormat);
-import { spawn } from "child_process";
 import { createRequire } from "module";
 import {
   EsdegerBilgi,
@@ -164,12 +163,7 @@ function getBrowsersPath(): string {
     // In development, use the local playwright-browsers folder if it exists
     return path.join(process.cwd(), "playwright-browsers");
   } else {
-    // In production, first check if browsers are bundled in resources (via extraResource)
-    const bundledPath = path.join(process.resourcesPath, "playwright-browsers");
-    if (fs.existsSync(bundledPath)) {
-      return bundledPath;
-    }
-    // Fallback to userData folder for runtime-installed browsers
+    // In production, browsers are downloaded on first launch to userData
     return path.join(app.getPath("userData"), "playwright-browsers");
   }
 }
@@ -181,12 +175,13 @@ function checkBrowsersExist(): boolean {
     return false;
   }
 
-  // Check if chromium folder exists inside browsers path
-  const chromiumDirs = fs.readdirSync(browsersPath).filter(dir =>
-    dir.startsWith("chromium")
-  );
-
-  return chromiumDirs.length > 0;
+  // Check if any chromium directory has the INSTALLATION_COMPLETE marker
+  const dirs = fs.readdirSync(browsersPath);
+  return dirs.some(dir => {
+    if (!dir.startsWith("chromium")) return false;
+    const markerFile = path.join(browsersPath, dir, "INSTALLATION_COMPLETE");
+    return fs.existsSync(markerFile);
+  });
 }
 
 export interface BrowserInstallProgress {
@@ -200,105 +195,142 @@ export type ProgressCallback = (progress: BrowserInstallProgress) => void;
 async function installBrowsers(onProgress?: ProgressCallback): Promise<void> {
   const browsersPath = getBrowsersPath();
 
-  // Ensure the browsers directory exists
   if (!fs.existsSync(browsersPath)) {
     fs.mkdirSync(browsersPath, { recursive: true });
   }
 
+  process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
+
   onProgress?.({
     status: "installing",
-    message: "Tarayıcı indiriliyor...",
-    progress: 0
+    message: "Gerekli dosyalar indiriliyor, lütfen bekleyin...",
+    progress: 0,
   });
 
-  return new Promise((resolve, reject) => {
-    // Get the path to npx or playwright CLI
-    const isWindows = process.platform === "win32";
-    const npxCmd = isWindows ? "npx.cmd" : "npx";
+  try {
+    const playwrightPath = getPlaywrightPath();
+    const nodeRequire = createRequire(import.meta.url);
 
-    const installProcess = spawn(npxCmd, ["playwright", "install", "chromium"], {
-      env: {
-        ...process.env,
-        PLAYWRIGHT_BROWSERS_PATH: browsersPath
-      },
-      shell: true,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
+    // Read browsers.json to get revision numbers
+    const browsersJson = nodeRequire(path.join(playwrightPath, "browsers.json"));
 
-    let lastProgress = 0;
+    // Get extract function from playwright-core's bundled zip utilities
+    const { extract } = nodeRequire(
+      path.join(playwrightPath, "lib", "zipBundle")
+    );
 
-    installProcess.stdout?.on("data", (data: Buffer) => {
-      const output = data.toString();
-      console.log("Playwright install:", output);
+    const CDN_BASE = "https://cdn.playwright.dev/dbazure/download/playwright";
 
-      // Try to parse progress from output
-      const progressMatch = output.match(/(\d+)%/);
-      if (progressMatch) {
-        lastProgress = parseInt(progressMatch[1], 10);
+    // Determine what needs to be installed
+    const toInstall: Array<{ name: string; revision: string; downloadPath: string }> = [];
+
+    const chromiumInfo = browsersJson.browsers.find((b: any) => b.name === "chromium");
+    if (chromiumInfo) {
+      toInstall.push({
+        name: "chromium",
+        revision: chromiumInfo.revision,
+        downloadPath: `builds/chromium/${chromiumInfo.revision}/chromium-win64.zip`,
+      });
+    }
+
+    // winldd is required on Windows for playwright to work
+    if (process.platform === "win32") {
+      const winlddInfo = browsersJson.browsers.find((b: any) => b.name === "winldd");
+      if (winlddInfo) {
+        toInstall.push({
+          name: "winldd",
+          revision: winlddInfo.revision,
+          downloadPath: `builds/winldd/${winlddInfo.revision}/winldd-win64.zip`,
+        });
+      }
+    }
+
+    for (let i = 0; i < toInstall.length; i++) {
+      const item = toInstall[i];
+      const browserDir = path.join(browsersPath, `${item.name}-${item.revision}`);
+      const markerFile = path.join(browserDir, "INSTALLATION_COMPLETE");
+
+      // Skip if already installed
+      if (fs.existsSync(markerFile)) {
+        console.log(`[Playwright] ${item.name} already installed, skipping`);
+        continue;
       }
 
       onProgress?.({
         status: "installing",
-        message: output.trim() || "Tarayıcı indiriliyor...",
-        progress: lastProgress
+        message: `Gerekli dosyalar indiriliyor (${i + 1}/${toInstall.length})...`,
+        progress: Math.round((i / toInstall.length) * 50),
       });
-    });
 
-    installProcess.stderr?.on("data", (data: Buffer) => {
-      const output = data.toString();
-      console.log("Playwright install stderr:", output);
+      const url = `${CDN_BASE}/${item.downloadPath}`;
+      console.log(`[Playwright] Downloading ${item.name} from: ${url}`);
 
-      // Playwright often outputs progress to stderr
-      const progressMatch = output.match(/(\d+)%/);
-      if (progressMatch) {
-        lastProgress = parseInt(progressMatch[1], 10);
-      }
+      const tempDir = path.join(browsersPath, `_temp_${item.name}_${Date.now()}`);
+      fs.mkdirSync(tempDir, { recursive: true });
+      const zipPath = path.join(tempDir, `${item.name}.zip`);
 
-      onProgress?.({
-        status: "installing",
-        message: output.trim() || "Tarayıcı indiriliyor...",
-        progress: lastProgress
-      });
-    });
+      try {
+        // Download the zip file in-process (no child_process.fork needed)
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        fs.writeFileSync(zipPath, Buffer.from(arrayBuffer));
+        console.log(`[Playwright] Downloaded ${item.name} (${arrayBuffer.byteLength} bytes)`);
 
-    installProcess.on("close", (code) => {
-      if (code === 0) {
+        // Extract the zip
+        if (!fs.existsSync(browserDir)) {
+          fs.mkdirSync(browserDir, { recursive: true });
+        }
+
         onProgress?.({
-          status: "done",
-          message: "Tarayıcı kurulumu tamamlandı",
-          progress: 100
+          status: "installing",
+          message: `Dosyalar çıkartılıyor (${i + 1}/${toInstall.length})...`,
+          progress: Math.round(((i + 0.5) / toInstall.length) * 100),
         });
-        resolve();
-      } else {
-        const error = `Browser installation failed with code ${code}`;
-        onProgress?.({
-          status: "error",
-          message: error
-        });
-        reject(new Error(error));
-      }
-    });
 
-    installProcess.on("error", (err) => {
-      onProgress?.({
-        status: "error",
-        message: err.message
-      });
-      reject(err);
+        await extract(zipPath, { dir: browserDir });
+        console.log(`[Playwright] Extracted ${item.name} to ${browserDir}`);
+
+        // Write the installation marker that playwright expects
+        fs.writeFileSync(markerFile, "");
+        console.log(`[Playwright] ${item.name} installation complete`);
+      } finally {
+        // Cleanup temp directory
+        try {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    }
+
+    onProgress?.({
+      status: "done",
+      message: "Kurulum tamamlandı",
+      progress: 100,
     });
-  });
+  } catch (error) {
+    console.error("[Playwright] Download error:", error);
+    onProgress?.({
+      status: "error",
+      message: "Dosya indirme sırasında hata oluştu",
+    });
+    throw error;
+  }
 }
 
 export async function ensureBrowsersInstalled(onProgress?: ProgressCallback): Promise<void> {
   onProgress?.({
     status: "checking",
-    message: "Tarayıcı kontrol ediliyor..."
+    message: "Gerekli dosyalar kontrol ediliyor..."
   });
 
   if (checkBrowsersExist()) {
     onProgress?.({
       status: "done",
-      message: "Tarayıcı hazır",
+      message: "Hazır",
       progress: 100
     });
     return;

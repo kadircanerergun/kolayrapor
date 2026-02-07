@@ -9,7 +9,10 @@
       "Bash(npx electron-vite build:*)",
       "Bash(npx electron-forge build:*)",
       "Bash(npm ls:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(git log:*)",
+      "Bash(node -e:*)",
+      "Bash(npx:*)"
     ]
   }
 }

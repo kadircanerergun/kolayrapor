@@ -1,3 +1,4 @@
+import "dotenv/config";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -11,8 +12,8 @@ import { PublisherS3 } from "@electron-forge/publisher-s3";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    icon: "./images/icon",
     extraResource: [
-      "./playwright-browsers",
       "./node_modules/playwright-core",
     ],
   },
@@ -21,6 +22,7 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: "KolayRapor",
       setupExe: "KolayRapor-Setup.exe",
+      setupIcon: "./images/icon.ico",
     }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),

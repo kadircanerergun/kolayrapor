@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { version as appVersion } from "../../package.json";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   Shield,
   Coins,
 } from "lucide-react";
+import logoSrc from "../../images/logo-outer-transparent.svg";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
@@ -137,9 +139,7 @@ export default function MainLayout({
         <Sidebar className="w-64 border-r shadow-sm">
           <SidebarHeader className="space-y-4 p-4">
             <div className="flex items-center gap-3">
-              <div className="bg-primary text-primary-foreground flex h-8 w-8 items-center justify-center rounded-lg">
-                <FileCheck className="h-4 w-4" />
-              </div>
+              <img src={logoSrc} alt="Kolay Rapor" className="h-8 w-8 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-base font-semibold">
                   Kolay Rapor
@@ -151,8 +151,8 @@ export default function MainLayout({
             <Separator />
 
             <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
-              <div className="bg-primary/10 flex h-8 w-8 items-center justify-center rounded-full">
-                <User2 className="text-primary h-4 w-4" />
+              <div className="bg-sidebar-primary/10 flex h-8 w-8 items-center justify-center rounded-full">
+                <User2 className="text-sidebar-primary h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
@@ -168,7 +168,7 @@ export default function MainLayout({
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-muted/50 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1">
-                  <Shield className="h-3.5 w-3.5 text-primary" />
+                  <Shield className="h-3.5 w-3.5 text-sidebar-primary" />
                   <span className="text-xs text-muted-foreground">Aktif Lisans</span>
                 </div>
                 <p className="text-sm font-medium truncate">
@@ -177,7 +177,7 @@ export default function MainLayout({
               </div>
               <div className="bg-muted/50 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1">
-                  <Coins className="h-3.5 w-3.5 text-primary" />
+                  <Coins className="h-3.5 w-3.5 text-sidebar-primary" />
                   <span className="text-xs text-muted-foreground">Kalan Kredi</span>
                 </div>
                 <p className="text-sm font-medium">
@@ -201,11 +201,12 @@ export default function MainLayout({
                     <TooltipTrigger asChild>
                       <Link to={item.to} className="block">
                         <Button
-                          variant={isActive ? "secondary" : "ghost"}
+                          variant="ghost"
                           className={cn(
                             "h-10 w-full justify-start px-3",
-                            isActive &&
-                              "bg-secondary text-secondary-foreground font-medium",
+                            isActive
+                              ? "bg-sidebar-accent text-sidebar-primary font-medium hover:bg-sidebar-accent hover:text-sidebar-primary"
+                              : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                           )}
                         >
                           <Icon className="mr-3 h-4 w-4" />
@@ -222,34 +223,10 @@ export default function MainLayout({
             </div>
           </SidebarContent>
 
-          <SidebarFooter className="space-y-4 p-4">
+          <SidebarFooter className="space-y-4 overflow-y-auto p-4">
             <Separator />
 
-            {/* Captcha Debug Area */}
-            {playwright.debugMode && (playwright.captchaImage || playwright.captchaSolution || testCaptchaData.image || testCaptchaData.solution) && (
-              <div className="space-y-2 p-2 bg-muted/30 rounded-lg border">
-                <div className="text-xs font-medium text-muted-foreground">Captcha Debug</div>
-                {(playwright.captchaImage || testCaptchaData.image) && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Detected Image:</div>
-                    <img
-                      src={`data:image/png;base64,${playwright.captchaImage || testCaptchaData.image}`}
-                      alt="Captcha"
-                      className="w-full max-w-32 border rounded"
-                    />
-                  </div>
-                )}
-                {(playwright.captchaSolution || testCaptchaData.solution) && (
-                  <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Solution:</div>
-                    <div className="text-sm font-mono bg-background px-2 py-1 rounded border">
-                      {playwright.captchaSolution || testCaptchaData.solution}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
+        
             {/* Debug Mode Toggle */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -314,15 +291,12 @@ export default function MainLayout({
               )}
             </div>
 
-            <Separator />
-
-            <div className="text-center">
-              <p className="text-muted-foreground text-xs">
-                © 2024 Kolay Rapor
-              </p>
-              <p className="text-muted-foreground text-xs">v1.0.0</p>
-            </div>
+          <div className="shrink-0 border-t px-4 py-1.5 pb-5 text-center">
+        
+            <p className="text-muted-foreground text-xs">Kolay Rapor v{appVersion}</p>
+          </div>
           </SidebarFooter>
+
         </Sidebar>
 
         <main className="flex flex-1 flex-col overflow-hidden">

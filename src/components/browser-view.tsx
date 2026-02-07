@@ -9,9 +9,10 @@ import {
   LogIn,
   CheckCircle2,
   AlertCircle,
-  FlaskConical,
 } from "lucide-react";
+import logoSvgRaw from "../../images/logo-outer-transparent.svg?raw";
 import { useCredentials } from "@/contexts/credentials-context";
+import { useDialogContext } from "@/contexts/dialog-context";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/utils/tailwind";
 import { toast } from "sonner";
@@ -59,6 +60,9 @@ const GET_RECETE_NO_JS = `
 })();
 `;
 
+// Convert logo SVG to data URI for injection into webview
+const logoDataUri = `data:image/svg+xml,${encodeURIComponent(logoSvgRaw)}`;
+
 // Inject analyze icons next to report text in the medicine table
 const INJECT_REPORT_ICONS_JS = `
 (() => {
@@ -84,7 +88,7 @@ const INJECT_REPORT_ICONS_JS = `
     btn.dataset.barkod = barkodInput.value || '';
     btn.title = 'Raporu Analiz Et';
     btn.style.cssText = 'cursor:pointer;margin-left:4px;display:inline-flex;vertical-align:middle;';
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6l-2 1"/><path d="M15 2v6l2 1"/><path d="M12 8v4"/><path d="M7 14.5A7 7 0 1 0 17 14.5"/><circle cx="12" cy="17" r="3"/></svg>';
+    btn.innerHTML = '<img width="16" height="16" src="${logoDataUri}" />';
 
     raporSpan.parentElement.appendChild(btn);
   });
@@ -111,6 +115,7 @@ export function BrowserView() {
   const performLoginRef = useRef<(skipReload?: boolean) => void>(() => {});
   const analyzeSingleRef = useRef<(barkod: string) => void>(() => {});
   const { credentials } = useCredentials();
+  const { showConfirmDialog } = useDialogContext();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
@@ -285,26 +290,15 @@ export function BrowserView() {
     }
   };
 
-  /** Analyze a single medicine — same flow, the thunk handles individual medicines */
-  const handleAnalyzeSingleMedicine = async (barkod: string) => {
+  /** Run analysis for a single medicine */
+  const runAnalysisSingle = async (barkod: string) => {
     if (isAnalyzing || !currentReceteNo) return;
-
-    // If already analyzed, show result directly
-    if (analizSonuclari[barkod]) {
-      setReportResult(analizSonuclari[barkod]);
-      setViewingMedicineName(barkod);
-      setViewingBarkod(barkod);
-      return;
-    }
 
     setIsAnalyzing(true);
     const toastId = toast.loading("Analiz ediliyor...");
 
     try {
-      // Ensure prescription detail is fetched
       await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo })).unwrap();
-
-      // Run full analysis (analyzes all raporlu medicines)
       const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo })).unwrap();
 
       if (results[barkod]) {
@@ -328,6 +322,28 @@ export function BrowserView() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  /** Analyze a single medicine — if not yet analyzed, ask for confirmation first */
+  const handleAnalyzeSingleMedicine = (barkod: string) => {
+    if (isAnalyzing || !currentReceteNo) return;
+
+    // If already analyzed, show result directly
+    if (analizSonuclari[barkod]) {
+      setReportResult(analizSonuclari[barkod]);
+      setViewingMedicineName(barkod);
+      setViewingBarkod(barkod);
+      return;
+    }
+
+    // Not yet analyzed — ask for confirmation
+    showConfirmDialog({
+      title: "Rapor Analizi",
+      description: "Bu ilaç henüz analiz edilmedi. Analiz etmek ister misiniz?",
+      confirmText: "Analiz Et",
+      cancelText: "İptal",
+      onConfirm: () => { runAnalysisSingle(barkod); },
+    });
   };
 
   // Keep ref updated so console-message listener always calls latest version
@@ -569,7 +585,7 @@ export function BrowserView() {
             onClick={handleAnalyzeAll}
             disabled={isAnalyzing}
           >
-            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4" />}
             Analiz Et
           </Button>
         )}

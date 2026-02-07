@@ -6,22 +6,22 @@ i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
-        appName: "electron-shadcn",
+        appName: "Kolay Rapor",
         titleHomePage: "Home Page",
         titleSecondPage: "Second Page",
         documentation: "Documentation",
         version: "Version",
-        madeBy: "Made by LuanRoger",
+        madeBy: "Kolay Rapor",
       },
     },
     "pt-BR": {
       translation: {
-        appName: "electron-shadcn",
+        appName: "Kolay Rapor",
         titleHomePage: "Página Inicial",
         titleSecondPage: "Segunda Página",
         documentation: "Documentação",
         version: "Versão",
-        madeBy: "Feito por LuanRoger",
+        madeBy: "Kolay Rapor",
       },
     },
   },

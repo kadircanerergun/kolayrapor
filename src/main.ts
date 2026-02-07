@@ -126,6 +126,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
+    icon: path.join(__dirname, "../../images/icon.ico"),
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,

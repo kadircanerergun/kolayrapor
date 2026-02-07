@@ -21,11 +21,16 @@ interface SystemStatusState {
   currentUrl?: string;
 }
 
+// Module-level cache: persists across mounts within the same session
+let cachedState: SystemStatusState | null = null;
+
 export function SystemStatus() {
-  const [state, setState] = useState<SystemStatusState>({
-    status: "checking",
-    message: "Sistem durumu kontrol ediliyor...",
-  });
+  const [state, setState] = useState<SystemStatusState>(
+    cachedState ?? {
+      status: "checking",
+      message: "Sistem durumu kontrol ediliyor...",
+    }
+  );
   const [isRetrying, setIsRetrying] = useState(false);
   const { credentials } = useCredentials();
 
@@ -41,7 +46,7 @@ export function SystemStatus() {
       // First try to initialize if not ready
       setState({
         status: "initializing",
-        message: "Tarayıcı başlatılıyor...",
+        message: "Sistem başlatılıyor...",
       });
 
       console.log("[SystemStatus] Initializing Playwright...");
@@ -49,12 +54,14 @@ export function SystemStatus() {
       console.log("[SystemStatus] Initialize result:", initResult);
 
       if (!initResult?.success) {
-        setState({
+        const errorState: SystemStatusState = {
           status: "error",
-          message: "Tarayıcı başlatılamadı",
+          message: "Sistem başlatılamadı",
           error: initResult?.error || "Bilinmeyen hata",
           browserInstalled: false,
-        });
+        };
+        cachedState = errorState;
+        setState(errorState);
         return;
       }
 
@@ -66,11 +73,13 @@ export function SystemStatus() {
 
       // Check if we have credentials
       if (!credentials?.username || !credentials?.password) {
-        setState({
+        const readyState: SystemStatusState = {
           status: "ready",
           message: "Sistem hazır (kimlik bilgileri gerekli)",
           browserInstalled: true,
-        });
+        };
+        cachedState = readyState;
+        setState(readyState);
         return;
       }
 
@@ -84,32 +93,41 @@ export function SystemStatus() {
       console.log("[SystemStatus] Navigation result:", navResult);
 
       if (navResult?.success) {
-        setState({
+        const successState: SystemStatusState = {
           status: "ready",
           message: "Sistem hazır - SGK portalına bağlı",
           browserInstalled: true,
           currentUrl: navResult.currentUrl,
-        });
+        };
+        cachedState = successState;
+        setState(successState);
       } else {
-        setState({
+        const errorState: SystemStatusState = {
           status: "error",
           message: "SGK portalına bağlanılamadı",
           error: navResult?.error || "Bağlantı hatası",
           browserInstalled: true,
-        });
+        };
+        cachedState = errorState;
+        setState(errorState);
       }
     } catch (err) {
       console.error("[SystemStatus] Error:", err);
-      setState({
+      const errorState: SystemStatusState = {
         status: "error",
         message: "Sistem durumu kontrol edilemedi",
         error: err instanceof Error ? err.message : "Bilinmeyen hata",
-      });
+      };
+      cachedState = errorState;
+      setState(errorState);
     }
   };
 
   useEffect(() => {
-    checkStatus();
+    // Only run the check if we don't have a cached result from this session
+    if (!cachedState) {
+      checkStatus();
+    }
   }, []);
 
   const handleRetry = async () => {
@@ -193,7 +211,7 @@ export function SystemStatus() {
 
           {state.status === "ready" && (
             <div className="text-xs text-muted-foreground">
-              <p>Tarayıcı hazır, sorgulama yapabilirsiniz.</p>
+              <p>Sistem hazır, sorgulama yapabilirsiniz.</p>
               {state.currentUrl && (
                 <p className="mt-1 truncate" title={state.currentUrl}>
                   URL: {state.currentUrl}
