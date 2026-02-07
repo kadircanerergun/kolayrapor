@@ -9,6 +9,8 @@ import {
   LogIn,
   CheckCircle2,
   AlertCircle,
+  PlugZap,
+  Eye,
 } from "lucide-react";
 import logoSvgRaw from "../../images/logo-outer-transparent.svg?raw";
 import { useCredentials } from "@/contexts/credentials-context";
@@ -28,6 +30,10 @@ import {
 } from "@/components/ui/sheet";
 
 type LoginStatus = "idle" | "logging-in" | "logged-in" | "error";
+
+// Module-level session cache — survives component unmount/remount
+let cachedLoginStatus: LoginStatus = "idle";
+let cachedAutoLoginAttempted = false;
 
 const MEDULA_URL = "https://medeczane.sgk.gov.tr/eczane";
 const DEFAULT_MAX_LOGIN_ATTEMPTS = 5;
@@ -63,13 +69,33 @@ const GET_RECETE_NO_JS = `
 // Convert logo SVG to data URI for injection into webview
 const logoDataUri = `data:image/svg+xml,${encodeURIComponent(logoSvgRaw)}`;
 
-// Inject analyze icons next to report text in the medicine table
-const INJECT_REPORT_ICONS_JS = `
+// Build the injection script with current analysis results and loading state
+function buildInjectReportIconsJS(
+  results: Record<string, any>,
+  analyzingBarkod: string | null,
+  isAnalyzingAll: boolean,
+): string {
+  const resultsJson = JSON.stringify(results);
+  const analyzingBarkodJson = JSON.stringify(analyzingBarkod);
+  const isAnalyzingAllJson = JSON.stringify(isAnalyzingAll);
+  return `
 (() => {
-  document.querySelectorAll('.kolay-rapor-icon').forEach(el => el.remove());
+  document.querySelectorAll('.kolay-rapor-btn').forEach(el => el.remove());
 
   const table = document.querySelector('table#f\\\\:tbl1');
   if (!table) return;
+
+  const results = ${resultsJson};
+  const analyzingBarkod = ${analyzingBarkodJson};
+  const isAnalyzingAll = ${isAnalyzingAllJson};
+
+  // Add spinner keyframes if not already added
+  if (!document.getElementById('kolay-spinner-style')) {
+    const style = document.createElement('style');
+    style.id = 'kolay-spinner-style';
+    style.textContent = '@keyframes kolay-spin { to { transform: rotate(360deg); } }';
+    document.head.appendChild(style);
+  }
 
   const rows = table.querySelectorAll('tr.rowClass1, tr.rowClass2');
   rows.forEach(row => {
@@ -83,17 +109,34 @@ const INJECT_REPORT_ICONS_JS = `
     const raporSpan = row.querySelector('span[id="f:tbl1:' + i + ':t9"]');
     if (!raporSpan || !raporSpan.textContent.trim()) return;
 
-    const btn = document.createElement('span');
-    btn.className = 'kolay-rapor-icon';
-    btn.dataset.barkod = barkodInput.value || '';
-    btn.title = 'Raporu Kontrol Et';
-    btn.style.cssText = 'cursor:pointer;margin-left:4px;display:inline-flex;vertical-align:middle;';
-    btn.innerHTML = '<img width="16" height="16" src="${logoDataUri}" />';
+    const barkod = barkodInput.value || '';
+    const analyzed = results[barkod];
+    const isLoading = isAnalyzingAll || analyzingBarkod === barkod;
+
+    const btn = document.createElement('button');
+    btn.className = 'kolay-rapor-btn';
+    btn.dataset.barkod = barkod;
+    btn.type = 'button';
+
+    if (isLoading) {
+      btn.disabled = true;
+      btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:kolay-spin 0.6s linear infinite;vertical-align:middle;"></span>';
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:not-allowed;border:none;color:white;margin-left:6px;vertical-align:middle;opacity:0.7;background:#746BEC;';
+    } else if (analyzed && typeof analyzed.validityScore === 'number') {
+      const score = Math.round(analyzed.validityScore);
+      const isGood = score >= 70;
+      btn.textContent = score + '%';
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:' + (isGood ? '#22c55e' : '#ef4444') + ';';
+    } else {
+      btn.textContent = 'Kontrol Et';
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:#746BEC;';
+    }
 
     raporSpan.parentElement.appendChild(btn);
   });
 })();
 `;
+}
 
 export function BrowserView() {
   const webviewRef = useRef<Electron.WebviewTag | null>(null);
@@ -101,17 +144,21 @@ export function BrowserView() {
   const [isLoading, setIsLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
-  const [loginStatus, setLoginStatus] = useState<LoginStatus>("idle");
+  const [loginStatus, setLoginStatus] = useState<LoginStatus>(cachedLoginStatus);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isOnReceteDetay, setIsOnReceteDetay] = useState(false);
   const [currentReceteNo, setCurrentReceteNo] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingBarkod, setAnalyzingBarkod] = useState<string | null>(null);
   const [isReAnalyzing, setIsReAnalyzing] = useState(false);
   const [reportResult, setReportResult] = useState<ReceteReportResponse | null>(null);
   const [viewingMedicineName, setViewingMedicineName] = useState("");
   const [viewingBarkod, setViewingBarkod] = useState("");
+  const [showAllResults, setShowAllResults] = useState(false);
+  const [isAutoScraping, setIsAutoScraping] = useState(false);
   const loginAttemptRef = useRef(0);
-  const autoLoginAttempted = useRef(false);
+  const autoLoginAttempted = useRef(cachedAutoLoginAttempted);
+  const autoScrapedReceteRef = useRef<string | null>(null);
   const performLoginRef = useRef<(skipReload?: boolean) => void>(() => {});
   const analyzeSingleRef = useRef<(barkod: string) => void>(() => {});
   const { credentials } = useCredentials();
@@ -123,6 +170,14 @@ export function BrowserView() {
   const analizSonuclari = useAppSelector((s) =>
     currentReceteNo ? s.recete.analizSonuclari[currentReceteNo] ?? {} : {}
   );
+
+  // Sync loginStatus to module-level cache for persistence across remount
+  useEffect(() => {
+    cachedLoginStatus = loginStatus;
+    if (loginStatus === "logged-in") {
+      cachedAutoLoginAttempted = true;
+    }
+  }, [loginStatus]);
 
   const updateNavState = useCallback(() => {
     const webview = webviewRef.current;
@@ -145,7 +200,6 @@ export function BrowserView() {
       if (isDetay) {
         const receteNo: string | null = await webview.executeJavaScript(GET_RECETE_NO_JS);
         setCurrentReceteNo(receteNo);
-        await webview.executeJavaScript(INJECT_REPORT_ICONS_JS);
       } else {
         setCurrentReceteNo(null);
       }
@@ -156,16 +210,19 @@ export function BrowserView() {
       `);
       if (!hasLoginForm && loginStatus === "idle") {
         setLoginStatus("logged-in");
-      } else if (hasLoginForm && loginStatus === "idle" && !autoLoginAttempted.current && credentials) {
-        autoLoginAttempted.current = true;
-        // Defer so state updates settle before login starts; skip reload since page is already loaded
-        setTimeout(() => performLoginRef.current(true), 0);
+      } else if (hasLoginForm && !autoLoginAttempted.current && credentials) {
+        // Only auto-login if we haven't done so and session is truly expired (login form visible)
+        if (loginStatus === "idle" || loginStatus === "logged-in") {
+          autoLoginAttempted.current = true;
+          cachedAutoLoginAttempted = true;
+          setTimeout(() => performLoginRef.current(true), 0);
+        }
       }
     } catch {
       setIsOnReceteDetay(false);
       setCurrentReceteNo(null);
     }
-  }, [loginStatus]);
+  }, [loginStatus, credentials]);
 
   useEffect(() => {
     const webview = webviewRef.current;
@@ -205,16 +262,17 @@ export function BrowserView() {
     };
   }, [updateNavState, checkPageState]);
 
-  // Attach click handlers to injected icons
+  // Inject buttons and attach click handlers when on Recete Detay, results change, or analysis state changes
   useEffect(() => {
     if (!isOnReceteDetay) return;
     const webview = webviewRef.current;
     if (!webview) return;
 
-    const attach = async () => {
+    const injectAndAttach = async () => {
       try {
+        await webview.executeJavaScript(buildInjectReportIconsJS(analizSonuclari, analyzingBarkod, isAnalyzing));
         await webview.executeJavaScript(`
-          document.querySelectorAll('.kolay-rapor-icon').forEach(btn => {
+          document.querySelectorAll('.kolay-rapor-btn').forEach(btn => {
             if (btn.dataset.listenerAttached) return;
             btn.dataset.listenerAttached = 'true';
             btn.addEventListener('click', (e) => {
@@ -225,8 +283,22 @@ export function BrowserView() {
         `);
       } catch { /* ignore */ }
     };
-    attach();
-  }, [isOnReceteDetay]);
+    injectAndAttach();
+  }, [isOnReceteDetay, analizSonuclari, analyzingBarkod, isAnalyzing]);
+
+  // Auto-scrape prescription data in background when on Recete Detay page (Item 9)
+  useEffect(() => {
+    if (!isOnReceteDetay || !currentReceteNo) return;
+    if (autoScrapedReceteRef.current === currentReceteNo) return;
+
+    autoScrapedReceteRef.current = currentReceteNo;
+    setIsAutoScraping(true);
+
+    dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo }))
+      .unwrap()
+      .catch(() => { /* silent background failure */ })
+      .finally(() => setIsAutoScraping(false));
+  }, [isOnReceteDetay, currentReceteNo, dispatch]);
 
   const goBack = () => webviewRef.current?.goBack();
   const goForward = () => webviewRef.current?.goForward();
@@ -256,7 +328,7 @@ export function BrowserView() {
 
     try {
       // 1. Use Playwright to fetch full prescription detail (with rapor + detay)
-      toast.loading("Reçete detayları Playwright ile alınıyor...", { id: toastId });
+      toast.loading("Reçete detayları alınıyor...", { id: toastId });
       await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
 
       // 2. Run analysis for all raporlu medicines
@@ -265,21 +337,15 @@ export function BrowserView() {
 
       const count = Object.keys(results).length;
       if (count > 0) {
-        toast.success(`Analiz tamamlandı (${count} ilaç)`, {
-          id: toastId,
-          action: count === 1
-            ? {
-                label: "Sonucu Gör",
-                onClick: () => {
-                  const barkod = Object.keys(results)[0];
-                  setReportResult(results[barkod]);
-                  setViewingMedicineName(barkod);
-                  setViewingBarkod(barkod);
-                },
-              }
-            : undefined,
-          duration: 10000,
-        });
+        toast.success(`Analiz tamamlandı (${count} ilaç)`, { id: toastId });
+        if (count === 1) {
+          const barkod = Object.keys(results)[0];
+          setReportResult(results[barkod]);
+          setViewingMedicineName(barkod);
+          setViewingBarkod(barkod);
+        } else {
+          setShowAllResults(true);
+        }
       } else {
         toast.info("Bu reçetede analiz edilecek raporlu ilaç bulunamadı.", { id: toastId });
       }
@@ -295,6 +361,7 @@ export function BrowserView() {
     if (isAnalyzing || !currentReceteNo) return;
 
     setIsAnalyzing(true);
+    setAnalyzingBarkod(barkod);
     const toastId = toast.loading("Analiz ediliyor...");
 
     try {
@@ -302,18 +369,10 @@ export function BrowserView() {
       const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo })).unwrap();
 
       if (results[barkod]) {
-        toast.success("Analiz tamamlandı", {
-          id: toastId,
-          action: {
-            label: "Sonucu Gör",
-            onClick: () => {
-              setReportResult(results[barkod]);
-              setViewingMedicineName(barkod);
-              setViewingBarkod(barkod);
-            },
-          },
-          duration: 10000,
-        });
+        toast.success("Analiz tamamlandı", { id: toastId });
+        setReportResult(results[barkod]);
+        setViewingMedicineName(barkod);
+        setViewingBarkod(barkod);
       } else {
         toast.info("Bu ilaç için analiz sonucu üretilemedi.", { id: toastId });
       }
@@ -321,6 +380,7 @@ export function BrowserView() {
       toast.error(err?.message || "Analiz sırasında hata oluştu.", { id: toastId });
     } finally {
       setIsAnalyzing(false);
+      setAnalyzingBarkod(null);
     }
   };
 
@@ -570,24 +630,53 @@ export function BrowserView() {
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
 
+        {/* Yeniden Baglan button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 whitespace-nowrap"
+          onClick={() => performLogin()}
+          disabled={loginStatus === "logging-in"}
+        >
+          <PlugZap className="h-4 w-4" />
+          Yeniden Bağlan
+        </Button>
+
         {/* URL bar */}
         <div className="bg-background flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-1.5">
           {isHttps && <Lock className="text-green-600 h-3.5 w-3.5 flex-shrink-0" />}
           <span className="text-muted-foreground truncate text-sm">{currentUrl}</span>
+          {isAutoScraping && (
+            <Loader2 className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+          )}
         </div>
 
         {/* Analyze button — only when on Recete Detay page */}
         {isOnReceteDetay && (
-          <Button
-            variant="default"
-            size="sm"
-            className="ml-1 gap-1.5"
-            onClick={handleAnalyzeAll}
-            disabled={isAnalyzing}
-          >
-            {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4" />}
-            Kontrol Et
-          </Button>
+          <>
+            <Button
+              variant="default"
+              className="ml-1 gap-1.5 px-8 py-2.5 text-sm"
+              onClick={handleAnalyzeAll}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4" />}
+              Kontrol Et
+            </Button>
+
+            {/* Sonucu Gor button — visible when results exist for current prescription */}
+            {Object.keys(analizSonuclari).length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setShowAllResults(true)}
+              >
+                <Eye className="h-4 w-4" />
+                Sonucu Gör ({Object.keys(analizSonuclari).length})
+              </Button>
+            )}
+          </>
         )}
 
         {/* Login button — hidden once logged in */}
@@ -650,6 +739,46 @@ export function BrowserView() {
               isReAnalyzing={isReAnalyzing}
             />
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* All Results Sheet — shows all analysis results for the current prescription */}
+      <Sheet open={showAllResults} onOpenChange={setShowAllResults}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Tüm Analiz Sonuçları</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {Object.entries(analizSonuclari).map(([barkod, result]) => {
+              const score = Math.round(result.validityScore ?? 0);
+              const isGood = score >= 70;
+              return (
+                <button
+                  key={barkod}
+                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => {
+                    setShowAllResults(false);
+                    setReportResult(result);
+                    setViewingMedicineName(barkod);
+                    setViewingBarkod(barkod);
+                  }}
+                >
+                  <span className="text-sm font-medium">{barkod}</span>
+                  <span
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-semibold text-white",
+                      isGood ? "bg-green-500" : "bg-red-500"
+                    )}
+                  >
+                    {score}%
+                  </span>
+                </button>
+              );
+            })}
+            {Object.keys(analizSonuclari).length === 0 && (
+              <p className="text-muted-foreground text-sm">Henüz analiz sonucu yok.</p>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>
