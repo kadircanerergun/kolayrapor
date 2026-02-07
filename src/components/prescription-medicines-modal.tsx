@@ -11,7 +11,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Recete, ReceteIlac } from '@/types/recete';
 import { reportApiService, ReceteReportResponse } from '@/services/report-api';
-import { ReportResultModal } from '@/components/report-result-modal';
+import { KontrolSonucPanel } from '@/components/kontrol-sonuc-panel';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { CircleCheck, Eye, FlaskConical, Loader2, RefreshCw } from 'lucide-react';
 import { cacheAnalysis } from '@/lib/db';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -32,10 +39,9 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
   );
   const { loadingRecete, analyzingRecete, bulkProgress } = useAppSelector((s) => s.recete);
   const isSystemBusy = loadingRecete !== null || analyzingRecete !== null || bulkProgress !== null;
-  const [reportResult, setReportResult] = useState<ReceteReportResponse | null>(null);
-  const [viewingMedicineName, setViewingMedicineName] = useState<string>('');
   const [loadingMedicine, setLoadingMedicine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showKontrolSheet, setShowKontrolSheet] = useState(false);
 
   const handleQueryMedicine = async (medicine: ReceteIlac) => {
     setLoadingMedicine(medicine.barkod);
@@ -45,15 +51,13 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
       const result = await reportApiService.generateReport(medicine.barkod, prescriptionData);
 
       if (result.success && result.data) {
-        setReportResult(result.data);
-        setViewingMedicineName(medicine.ad);
-
         // Save to Dexie cache and Redux
         await cacheAnalysis(prescriptionData.receteNo, medicine.barkod, result.data);
         dispatch(analizCompleted({
           receteNo: prescriptionData.receteNo,
           sonuclar: { [medicine.barkod]: result.data },
         }));
+        setShowKontrolSheet(true);
       } else {
         setError(result.error || 'Rapor oluşturulurken bir hata oluştu');
       }
@@ -64,29 +68,17 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
     }
   };
 
-  const handleViewResult = (medicine: ReceteIlac) => {
-    const cached = cachedResults[medicine.barkod];
-    if (cached) {
-      setReportResult(cached);
-      setViewingMedicineName(medicine.ad);
+  const handleViewResult = (_medicine: ReceteIlac) => {
+    setShowKontrolSheet(true);
+  };
+
+  const handleReAnalyze = async (barkod?: string) => {
+    if (!barkod) return;
+    const medicine = prescriptionData.ilaclar?.find((m) => m.barkod === barkod);
+    if (medicine) {
+      await handleQueryMedicine(medicine);
     }
   };
-
-  const handleBackToMedicines = () => {
-    setReportResult(null);
-    setViewingMedicineName('');
-    setError(null);
-  };
-
-  if (reportResult) {
-    return (
-      <ReportResultModal
-        reportData={reportResult}
-        medicineName={viewingMedicineName || 'Seçili İlaç'}
-        onBack={handleBackToMedicines}
-      />
-    );
-  }
 
   return (
     <div className="space-y-4 flex flex-col min-h-0">
@@ -240,6 +232,24 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
           </div>
         )}
       </div>
+
+      <Sheet open={showKontrolSheet} onOpenChange={setShowKontrolSheet}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto z-[60]">
+          <SheetHeader>
+            <SheetTitle>Kontrol Sonucu</SheetTitle>
+            <SheetDescription>Reçete: {prescriptionData.receteNo}</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <KontrolSonucPanel
+              receteNo={prescriptionData.receteNo}
+              sonuclar={cachedResults}
+              ilaclar={prescriptionData.ilaclar}
+              onReAnalyze={handleReAnalyze}
+              isReAnalyzing={!!loadingMedicine}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };

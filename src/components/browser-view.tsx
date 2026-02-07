@@ -18,13 +18,13 @@ import { useDialogContext } from "@/contexts/dialog-context";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/utils/tailwind";
 import { toast } from "sonner";
-import type { ReceteReportResponse } from "@/services/report-api";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
-import { ReportResultModal } from "@/components/report-result-modal";
+import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -124,9 +124,10 @@ function buildInjectReportIconsJS(
       btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:not-allowed;border:none;color:white;margin-left:6px;vertical-align:middle;opacity:0.7;background:#746BEC;';
     } else if (analyzed && typeof analyzed.validityScore === 'number') {
       const score = Math.round(analyzed.validityScore);
-      const isGood = score >= 70;
-      btn.textContent = score + '%';
-      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:' + (isGood ? '#22c55e' : '#ef4444') + ';';
+      const color = score >= 80 ? '#22c55e' : score >= 60 ? '#f97316' : '#ef4444';
+      const label = score >= 80 ? 'Uygun' : score >= 60 ? 'Şüpheli' : 'Uygun Değil';
+      btn.textContent = score + '% ' + label;
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:' + color + ';';
     } else {
       btn.textContent = 'Kontrol Et';
       btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:#746BEC;';
@@ -151,10 +152,7 @@ export function BrowserView() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzingBarkod, setAnalyzingBarkod] = useState<string | null>(null);
   const [isReAnalyzing, setIsReAnalyzing] = useState(false);
-  const [reportResult, setReportResult] = useState<ReceteReportResponse | null>(null);
-  const [viewingMedicineName, setViewingMedicineName] = useState("");
-  const [viewingBarkod, setViewingBarkod] = useState("");
-  const [showAllResults, setShowAllResults] = useState(false);
+  const [showKontrolSonuc, setShowKontrolSonuc] = useState(false);
   const [isAutoScraping, setIsAutoScraping] = useState(false);
   const loginAttemptRef = useRef(0);
   const autoLoginAttempted = useRef(cachedAutoLoginAttempted);
@@ -166,10 +164,12 @@ export function BrowserView() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
-  // Get analysis results from Redux for current prescription
+  // Get analysis results and prescription details from Redux
   const analizSonuclari = useAppSelector((s) =>
     currentReceteNo ? s.recete.analizSonuclari[currentReceteNo] ?? {} : {}
   );
+  const detaylar = useAppSelector((s) => s.recete.detaylar);
+  const currentIlaclar = currentReceteNo ? detaylar[currentReceteNo]?.ilaclar : undefined;
 
   // Sync loginStatus to module-level cache for persistence across remount
   useEffect(() => {
@@ -338,14 +338,7 @@ export function BrowserView() {
       const count = Object.keys(results).length;
       if (count > 0) {
         toast.success(`Analiz tamamlandı (${count} ilaç)`, { id: toastId });
-        if (count === 1) {
-          const barkod = Object.keys(results)[0];
-          setReportResult(results[barkod]);
-          setViewingMedicineName(barkod);
-          setViewingBarkod(barkod);
-        } else {
-          setShowAllResults(true);
-        }
+        setShowKontrolSonuc(true);
       } else {
         toast.info("Bu reçetede analiz edilecek raporlu ilaç bulunamadı.", { id: toastId });
       }
@@ -370,9 +363,7 @@ export function BrowserView() {
 
       if (results[barkod]) {
         toast.success("Analiz tamamlandı", { id: toastId });
-        setReportResult(results[barkod]);
-        setViewingMedicineName(barkod);
-        setViewingBarkod(barkod);
+        setShowKontrolSonuc(true);
       } else {
         toast.info("Bu ilaç için analiz sonucu üretilemedi.", { id: toastId });
       }
@@ -390,9 +381,7 @@ export function BrowserView() {
 
     // If already analyzed, show result directly
     if (analizSonuclari[barkod]) {
-      setReportResult(analizSonuclari[barkod]);
-      setViewingMedicineName(barkod);
-      setViewingBarkod(barkod);
+      setShowKontrolSonuc(true);
       return;
     }
 
@@ -410,20 +399,14 @@ export function BrowserView() {
   analyzeSingleRef.current = handleAnalyzeSingleMedicine;
 
   /** Re-analyze: re-fetch prescription data then re-run analysis */
-  const handleReAnalyze = async () => {
-    if (!currentReceteNo || !viewingBarkod) return;
+  const handleReAnalyze = async (_barkod?: string) => {
+    if (!currentReceteNo) return;
 
     setIsReAnalyzing(true);
     try {
       await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
-      const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
-
-      if (results[viewingBarkod]) {
-        setReportResult(results[viewingBarkod]);
-        toast.success("Yeniden analiz tamamlandı");
-      } else {
-        toast.info("Bu ilaç için analiz sonucu üretilemedi.");
-      }
+      await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
+      toast.success("Yeniden analiz tamamlandı");
     } catch (err: any) {
       toast.error(err?.message || "Yeniden analiz sırasında hata oluştu.");
     } finally {
@@ -670,7 +653,7 @@ export function BrowserView() {
                 variant="secondary"
                 size="sm"
                 className="gap-1.5"
-                onClick={() => setShowAllResults(true)}
+                onClick={() => setShowKontrolSonuc(true)}
               >
                 <Eye className="h-4 w-4" />
                 Sonucu Gör ({Object.keys(analizSonuclari).length})
@@ -711,73 +694,21 @@ export function BrowserView() {
         style={{ width: "100%", height: "100%" }}
       />
 
-      {/* Report Result Sheet */}
-      <Sheet
-        open={!!reportResult}
-        onOpenChange={(open) => {
-          if (!open) {
-            setReportResult(null);
-            setViewingMedicineName("");
-            setViewingBarkod("");
-          }
-        }}
-      >
+      {/* Kontrol Sonucu Sheet */}
+      <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Rapor Sonuçları</SheetTitle>
+            <SheetTitle>Kontrol Sonucu</SheetTitle>
+            {currentReceteNo && <SheetDescription>Reçete: {currentReceteNo}</SheetDescription>}
           </SheetHeader>
-          {reportResult && (
-            <ReportResultModal
-              reportData={reportResult}
-              medicineName={viewingMedicineName || "Seçili İlaç"}
-              onBack={() => {
-                setReportResult(null);
-                setViewingMedicineName("");
-                setViewingBarkod("");
-              }}
+          <div className="mt-4">
+            <KontrolSonucPanel
+              receteNo={currentReceteNo || ""}
+              sonuclar={analizSonuclari}
+              ilaclar={currentIlaclar}
               onReAnalyze={handleReAnalyze}
               isReAnalyzing={isReAnalyzing}
             />
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* All Results Sheet — shows all analysis results for the current prescription */}
-      <Sheet open={showAllResults} onOpenChange={setShowAllResults}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Tüm Analiz Sonuçları</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-3">
-            {Object.entries(analizSonuclari).map(([barkod, result]) => {
-              const score = Math.round(result.validityScore ?? 0);
-              const isGood = score >= 70;
-              return (
-                <button
-                  key={barkod}
-                  className="flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
-                  onClick={() => {
-                    setShowAllResults(false);
-                    setReportResult(result);
-                    setViewingMedicineName(barkod);
-                    setViewingBarkod(barkod);
-                  }}
-                >
-                  <span className="text-sm font-medium">{barkod}</span>
-                  <span
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-semibold text-white",
-                      isGood ? "bg-green-500" : "bg-red-500"
-                    )}
-                  >
-                    {score}%
-                  </span>
-                </button>
-              );
-            })}
-            {Object.keys(analizSonuclari).length === 0 && (
-              <p className="text-muted-foreground text-sm">Henüz analiz sonucu yok.</p>
-            )}
           </div>
         </SheetContent>
       </Sheet>

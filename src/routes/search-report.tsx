@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowUpDown, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Database, Eye, FlaskConical, Loader2, ShieldCheck, ShieldX, StopCircle, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Database, Eye, FlaskConical, Loader2, StopCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Separator as SeparatorUI } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +47,7 @@ import {
 } from "@/store/slices/receteSlice";
 import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
 import type { ReceteReportResponse } from "@/services/report-api";
+import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 
 function SearchReport() {
   const dispatch = useAppDispatch();
@@ -190,10 +190,6 @@ function SearchReport() {
     setAnalizSheetReceteNo(receteNo);
   };
 
-  // Derive sheet data from state
-  const sheetSonuclar = analizSheetReceteNo ? analizSonuclari[analizSheetReceteNo] : null;
-  const sheetRecete = analizSheetReceteNo ? detaylar[analizSheetReceteNo] : null;
-  const sheetEntries = sheetSonuclar ? Object.entries(sheetSonuclar) : [];
 
   const handleBulkVerileriAl = async () => {
     bulkCancelRef.current = false;
@@ -529,123 +525,17 @@ function SearchReport() {
       <Sheet open={!!analizSheetReceteNo} onOpenChange={(open) => !open && setAnalizSheetReceteNo(null)}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Analiz Sonuçları</SheetTitle>
-            <SheetDescription>
-              {analizSheetReceteNo && `Reçete: ${analizSheetReceteNo}`}
-              {sheetEntries.length > 0 && ` — ${sheetEntries.length} raporlu ilaç`}
-            </SheetDescription>
+            <SheetTitle>Kontrol Sonucu</SheetTitle>
+            <SheetDescription>Reçete: {analizSheetReceteNo}</SheetDescription>
           </SheetHeader>
-          <div className="mt-6 space-y-4">
-            {sheetEntries.map(([barkod, report]) => {
-              const ilac = sheetRecete?.ilaclar?.find((m) => m.barkod === barkod);
-              const scoreColor =
-                report.validityScore >= 80
-                  ? "border-l-green-500"
-                  : report.validityScore >= 60
-                    ? "border-l-yellow-500"
-                    : "border-l-red-500";
-              const scoreBg =
-                report.validityScore >= 80
-                  ? "bg-green-50 text-green-700"
-                  : report.validityScore >= 60
-                    ? "bg-yellow-50 text-yellow-700"
-                    : "bg-red-50 text-red-700";
-
-              return (
-                <div
-                  key={barkod}
-                  className={`rounded-lg border border-l-4 ${scoreColor} bg-card shadow-sm`}
-                >
-                  {/* Header */}
-                  <div className="p-4 pb-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm truncate">
-                          {ilac?.ad || barkod}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {barkod}
-                        </p>
-                      </div>
-                      <div className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-bold ${scoreBg}`}>
-                        {report.isValid ? (
-                          <ShieldCheck className="h-4 w-4" />
-                        ) : (
-                          <ShieldX className="h-4 w-4" />
-                        )}
-                        {report.validityScore}
-                      </div>
-                    </div>
-                  </div>
-
-                  <SeparatorUI />
-
-                  {/* Details grid */}
-                  <div className="p-4 pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div>
-                      <p className="text-muted-foreground text-xs">Durum</p>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {report.isValid ? (
-                          <>
-                            <Check className="h-3.5 w-3.5 text-green-600" />
-                            <span className="text-green-700 font-medium">Geçerli</span>
-                          </>
-                        ) : (
-                          <>
-                            <X className="h-3.5 w-3.5 text-red-600" />
-                            <span className="text-red-700 font-medium">Geçersiz</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs">İşlem Tarihi</p>
-                      <p className="mt-0.5 font-medium">{report.processedAt || "—"}</p>
-                    </div>
-                    {ilac?.doz && (
-                      <div>
-                        <p className="text-muted-foreground text-xs">Doz</p>
-                        <p className="mt-0.5 font-medium">{ilac.doz}</p>
-                      </div>
-                    )}
-                    {ilac?.adet != null && (
-                      <div>
-                        <p className="text-muted-foreground text-xs">Adet</p>
-                        <p className="mt-0.5 font-medium">{ilac.adet}</p>
-                      </div>
-                    )}
-                    {ilac?.periyot && (
-                      <div>
-                        <p className="text-muted-foreground text-xs">Periyot</p>
-                        <p className="mt-0.5 font-medium">{ilac.periyot}</p>
-                      </div>
-                    )}
-                    {ilac?.rapor?.raporNo && (
-                      <div>
-                        <p className="text-muted-foreground text-xs">Rapor No</p>
-                        <p className="mt-0.5 font-medium">{ilac.rapor.raporNo}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Evolution details */}
-                  {report.reportEvolutionDetails && (
-                    <>
-                      <SeparatorUI />
-                      <div className="p-4 pt-3">
-                        <p className="text-xs text-muted-foreground mb-1.5">Detaylar</p>
-                        <div
-                          className="text-xs leading-relaxed prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{
-                            __html: report.reportEvolutionDetails,
-                          }}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
+          <div className="mt-4">
+            <KontrolSonucPanel
+              receteNo={analizSheetReceteNo || ""}
+              sonuclar={analizSheetReceteNo ? analizSonuclari[analizSheetReceteNo] ?? {} : {}}
+              ilaclar={analizSheetReceteNo ? detaylar[analizSheetReceteNo]?.ilaclar : undefined}
+              onReAnalyze={() => analizSheetReceteNo && handleAnalizEt(analizSheetReceteNo, true)}
+              isReAnalyzing={analyzingRecete === analizSheetReceteNo}
+            />
           </div>
         </SheetContent>
       </Sheet>
