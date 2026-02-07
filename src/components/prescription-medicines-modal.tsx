@@ -199,7 +199,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                                   className="h-7 w-7"
                                   disabled={isLoading || isSystemBusy}
                                   onClick={() => handleQueryMedicine(medicine)}
-                                  title="Yeniden Analiz Et"
+                                  title="Yeniden Kontrol Et"
                                 >
                                   {isLoading ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -218,12 +218,12 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                                   {isLoading ? (
                                     <>
                                       <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                      Analiz Ediliyor
+                                      Kontrol Ediliyor
                                     </>
                                   ) : (
                                     <>
                                       <FlaskConical className="h-3 w-3 mr-1" />
-                                      Analiz Et
+                                      Kontrol Et
                                     </>
                                   )}
                                 </Button>

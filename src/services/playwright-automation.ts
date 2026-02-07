@@ -175,13 +175,16 @@ function checkBrowsersExist(): boolean {
     return false;
   }
 
-  // Check if any chromium directory has the INSTALLATION_COMPLETE marker
   const dirs = fs.readdirSync(browsersPath);
-  return dirs.some(dir => {
-    if (!dir.startsWith("chromium")) return false;
-    const markerFile = path.join(browsersPath, dir, "INSTALLATION_COMPLETE");
-    return fs.existsSync(markerFile);
-  });
+  const hasMarker = (prefix: string) =>
+    dirs.some(dir => {
+      if (!dir.startsWith(prefix)) return false;
+      const markerFile = path.join(browsersPath, dir, "INSTALLATION_COMPLETE");
+      return fs.existsSync(markerFile);
+    });
+
+  // Both chromium and chromium_headless_shell are required
+  return hasMarker("chromium-") && hasMarker("chromium_headless_shell");
 }
 
 export interface BrowserInstallProgress {
@@ -222,14 +225,27 @@ async function installBrowsers(onProgress?: ProgressCallback): Promise<void> {
     const CDN_BASE = "https://cdn.playwright.dev/dbazure/download/playwright";
 
     // Determine what needs to be installed
-    const toInstall: Array<{ name: string; revision: string; downloadPath: string }> = [];
+    // dirName: Playwright uses underscores in directory names (e.g. chromium_headless_shell-1200)
+    const toInstall: Array<{ name: string; dirName: string; revision: string; downloadPath: string }> = [];
 
     const chromiumInfo = browsersJson.browsers.find((b: any) => b.name === "chromium");
     if (chromiumInfo) {
       toInstall.push({
         name: "chromium",
+        dirName: "chromium",
         revision: chromiumInfo.revision,
         downloadPath: `builds/chromium/${chromiumInfo.revision}/chromium-win64.zip`,
+      });
+    }
+
+    // chromium-headless-shell is required for headless mode in Playwright v1.49+
+    const headlessShellInfo = browsersJson.browsers.find((b: any) => b.name === "chromium-headless-shell");
+    if (headlessShellInfo) {
+      toInstall.push({
+        name: "chromium-headless-shell",
+        dirName: "chromium_headless_shell",
+        revision: headlessShellInfo.revision,
+        downloadPath: `builds/chromium/${headlessShellInfo.revision}/chromium-headless-shell-win64.zip`,
       });
     }
 
@@ -239,6 +255,7 @@ async function installBrowsers(onProgress?: ProgressCallback): Promise<void> {
       if (winlddInfo) {
         toInstall.push({
           name: "winldd",
+          dirName: "winldd",
           revision: winlddInfo.revision,
           downloadPath: `builds/winldd/${winlddInfo.revision}/winldd-win64.zip`,
         });
@@ -247,7 +264,7 @@ async function installBrowsers(onProgress?: ProgressCallback): Promise<void> {
 
     for (let i = 0; i < toInstall.length; i++) {
       const item = toInstall[i];
-      const browserDir = path.join(browsersPath, `${item.name}-${item.revision}`);
+      const browserDir = path.join(browsersPath, `${item.dirName}-${item.revision}`);
       const markerFile = path.join(browserDir, "INSTALLATION_COMPLETE");
 
       // Skip if already installed

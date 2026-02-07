@@ -86,7 +86,7 @@ const INJECT_REPORT_ICONS_JS = `
     const btn = document.createElement('span');
     btn.className = 'kolay-rapor-icon';
     btn.dataset.barkod = barkodInput.value || '';
-    btn.title = 'Raporu Analiz Et';
+    btn.title = 'Raporu Kontrol Et';
     btn.style.cssText = 'cursor:pointer;margin-left:4px;display:inline-flex;vertical-align:middle;';
     btn.innerHTML = '<img width="16" height="16" src="${logoDataUri}" />';
 
@@ -340,7 +340,7 @@ export function BrowserView() {
     showConfirmDialog({
       title: "Rapor Analizi",
       description: "Bu ilaç henüz analiz edilmedi. Analiz etmek ister misiniz?",
-      confirmText: "Analiz Et",
+      confirmText: "Kontrol Et",
       cancelText: "İptal",
       onConfirm: () => { runAnalysisSingle(barkod); },
     });
@@ -586,7 +586,7 @@ export function BrowserView() {
             disabled={isAnalyzing}
           >
             {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4" />}
-            Analiz Et
+            Kontrol Et
           </Button>
         )}
 

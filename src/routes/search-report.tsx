@@ -297,11 +297,11 @@ function SearchReport() {
                   <DropdownMenuContent align="end" className="w-64">
                     <DropdownMenuItem onClick={handleBulkVerileriAl}>
                       <Database className="h-4 w-4 text-blue-500" />
-                      Verileri Al
+                      Sorgula
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleBulkAnalizEt}>
                       <FlaskConical className="h-4 w-4 text-purple-500" />
-                      Analiz Et
+                      Kontrol Et
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -471,7 +471,7 @@ function SearchReport() {
                             onClick={() => handleSorgula(recete.receteNo, hasCachedDetail)}
                             disabled={isBusy}
                           >
-                            Verileri Al
+                            Sorgula
                           </Button>
                           <Button
                             size="sm"
@@ -480,7 +480,7 @@ function SearchReport() {
                             disabled={isBusy}
                           >
                             <FlaskConical className="h-4 w-4" />
-                            {hasAnalysis ? "Yeniden Analiz Et" : "Analiz Et"}
+                            {hasAnalysis ? "Yeniden Kontrol Et" : "Kontrol Et"}
                           </Button>
                         </div>
                       </TableCell>

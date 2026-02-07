@@ -48,7 +48,7 @@ const ReportResultModal: React.FC<ReportResultModalProps> = ({
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            {isReAnalyzing ? "Analiz ediliyor..." : "Yeniden Analiz Et"}
+            {isReAnalyzing ? "Kontrol ediliyor..." : "Yeniden Kontrol Et"}
           </Button>
         )}
       </div>

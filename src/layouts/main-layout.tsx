@@ -15,18 +15,21 @@ import {
 import {
   FileCheck,
   Settings,
-  Search,
   User2,
   CalendarIcon,
   History,
   Globe,
   Shield,
   Coins,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import logoSrc from "../../images/logo-outer-transparent.svg";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
+
+const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
 export default function MainLayout({
   children,
@@ -37,6 +40,20 @@ export default function MainLayout({
   const { credentials } = useCredentials();
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
+
+  // Sidebar collapsed state persisted in localStorage
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    return stored === "true";
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
 
   // License and credit placeholders (will be connected to data source later)
   const [activeLicense, setActiveLicense] = useState<string | null>(null);
@@ -102,14 +119,8 @@ export default function MainLayout({
     {
       to: "/gezinti",
       icon: Globe,
-      label: "Gezinti Modu",
+      label: "Medulada Kontrol",
       description: "SGK Medula portalında doğrudan gezinin",
-    },
-    {
-      to: "/search-by-recipe",
-      icon: Search,
-      label: "Reçete Numarası ile Arama",
-      description: "Reçete numarası ile rapor arama",
     },
     {
       to: "/search-report",
@@ -136,62 +147,38 @@ export default function MainLayout({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="bg-background flex h-screen">
-        <Sidebar className="w-64 border-r shadow-sm">
-          <SidebarHeader className="space-y-4 p-4">
+        <Sidebar
+          className={cn(
+            "border-r shadow-sm transition-[width] duration-300 ease-in-out overflow-hidden",
+            collapsed ? "w-[68px]" : "w-64",
+          )}
+        >
+          <SidebarHeader className={cn("space-y-4 p-4", collapsed && "px-2")}>
+            {/* Logo + App Name */}
             <div className="flex items-center gap-3">
-              <img src={logoSrc} alt="Kolay Rapor" className="h-8 w-8 rounded-lg" />
-              <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-semibold">
-                  Kolay Rapor
-                </h2>
-                <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
-              <div className="bg-sidebar-primary/10 flex h-8 w-8 items-center justify-center rounded-full">
-                <User2 className="text-sidebar-primary h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {credentials?.username || 'Kullanıcı Yok'}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  {credentials ? 'Aktif Kullanıcı' : 'Ayarlardan giriş yapın'}
-                </p>
-              </div>
-            </div>
-
-            {/* License and Credit Info */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-muted/50 rounded-lg p-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <Shield className="h-3.5 w-3.5 text-sidebar-primary" />
-                  <span className="text-xs text-muted-foreground">Aktif Lisans</span>
+              <img
+                src={logoSrc}
+                alt="Kolay Rapor"
+                className="h-8 w-8 shrink-0 rounded-lg"
+              />
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-semibold">
+                    Kolay Rapor
+                  </h2>
+                  <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
                 </div>
-                <p className="text-sm font-medium truncate">
-                  {activeLicense || '—'}
-                </p>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-2.5">
-                <div className="flex items-center gap-2 mb-1">
-                  <Coins className="h-3.5 w-3.5 text-sidebar-primary" />
-                  <span className="text-xs text-muted-foreground">Kalan Kredi</span>
-                </div>
-                <p className="text-sm font-medium">
-                  {remainingCredit !== null ? remainingCredit : '—'}
-                </p>
-              </div>
+              )}
             </div>
           </SidebarHeader>
 
-          <SidebarContent className="px-4">
-            <div className="space-y-1">
-              <h4 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
-                Ana Menü
-              </h4>
+          <SidebarContent className={cn("px-4 flex flex-col gap-1", collapsed && "px-2")}>
+            <div className="space-y-1 flex-1">
+              {!collapsed && (
+                <h4 className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">
+                  Ana Menü
+                </h4>
+              )}
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.to;
@@ -203,43 +190,109 @@ export default function MainLayout({
                         <Button
                           variant="ghost"
                           className={cn(
-                            "h-10 w-full justify-start px-3",
+                            "h-10 w-full",
+                            collapsed
+                              ? "justify-center px-0"
+                              : "justify-start px-3",
                             isActive
                               ? "bg-sidebar-accent text-sidebar-primary font-medium hover:bg-sidebar-accent hover:text-sidebar-primary"
                               : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                           )}
                         >
-                          <Icon className="mr-3 h-4 w-4" />
-                          {item.label}
+                          <Icon
+                            className={cn(
+                              "h-4 w-4 shrink-0",
+                              !collapsed && "mr-3",
+                            )}
+                          />
+                          {!collapsed && item.label}
                         </Button>
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right" className="font-medium">
-                      {item.description}
+                      {collapsed ? item.label : item.description}
                     </TooltipContent>
                   </Tooltip>
                 );
               })}
             </div>
+            <div className="border-t height-fit flex justify-end gap-2 flex-col" >
+                   {!collapsed && <Separator />}
+
+            {/* User Info */}
+            {collapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="bg-sidebar-primary/10 mx-auto flex h-8 w-8 items-center justify-center rounded-full">
+                    <User2 className="text-sidebar-primary h-4 w-4" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {credentials?.username || "Kullanıcı Yok"}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
+                <div className="bg-sidebar-primary/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+                  <User2 className="text-sidebar-primary h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {credentials?.username || "Kullanıcı Yok"}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {credentials ? "Aktif Kullanıcı" : "Ayarlardan giriş yapın"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* License and Credit Info */}
+            {!collapsed && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-muted/50 rounded-lg p-2.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className="h-3.5 w-3.5 text-sidebar-primary" />
+                    <span className="text-xs text-muted-foreground">Aktif Lisans</span>
+                  </div>
+                  <p className="text-sm font-medium truncate">
+                    {activeLicense || "—"}
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Coins className="h-3.5 w-3.5 text-sidebar-primary" />
+                    <span className="text-xs text-muted-foreground">Kalan Kredi</span>
+                  </div>
+                  <p className="text-sm font-medium">
+                    {remainingCredit !== null ? remainingCredit : "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+            </div>
           </SidebarContent>
 
-          <SidebarFooter className="space-y-4 overflow-y-auto p-4">
-            <Separator />
+          <SidebarFooter className={cn("space-y-2 mb-4", collapsed && "px-2")}>
 
-        
             {/* Debug Mode Toggle */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center space-x-2">
+                    <div className={cn(
+                      "flex items-center",
+                      collapsed ? "justify-center w-full" : "space-x-2",
+                    )}>
                       <Switch
                         id="debug-mode"
                         checked={playwright.debugMode}
                         onCheckedChange={handleDebugToggle}
                         disabled={playwright.isLoading}
                       />
-                      <Label htmlFor="debug-mode">Debug Modu</Label>
+                      {!collapsed && (
+                        <Label htmlFor="debug-mode">Debug Modu</Label>
+                      )}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="right">
@@ -249,54 +302,51 @@ export default function MainLayout({
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <p className="text-muted-foreground text-xs">
-                {playwright.debugMode
-                  ? "Tarayıcı penceresi görünür olacak"
-                  : "Tarayıcı arka planda çalışacak"}
-              </p>
 
-              {/* Test Captcha Button - Only in Debug Mode */}
-              {playwright.debugMode && (
+              {!collapsed && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full h-8 text-xs"
-                    onClick={() => {
-                      // Simulate captcha debug data for testing
-                      console.log('CAPTCHA_DEBUG', {
-                        image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-                        solution: '12345'
-                      });
-                    }}
-                  >
-                    Test Captcha Display
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full h-8 text-xs"
-                    onClick={async () => {
-                      // Test if credentials are available on Playwright side
-                      const hasCredentials = await playwright.hasCredentials();
-                      const storedCredentials = await playwright.getStoredCredentials();
-                      console.log('Playwright has credentials:', hasCredentials.hasCredentials);
-                      console.log('Stored credentials:', storedCredentials.credentials);
-                    }}
-                  >
-                    Check Credentials
-                  </Button>
+                  <p className="text-muted-foreground text-xs">
+                    {playwright.debugMode
+                      ? "Tarayıcı penceresi görünür olacak"
+                      : "Tarayıcı arka planda çalışacak"}
+                  </p>
                 </>
               )}
             </div>
 
-          <div className="shrink-0 border-t px-4 py-1.5 pb-5 text-center">
-        
-            <p className="text-muted-foreground text-xs">Kolay Rapor v{appVersion}</p>
-          </div>
-          </SidebarFooter>
+            <Separator />
 
+            {/* Collapse Toggle + Version */}
+            <div className={cn(
+              "flex items-center",
+              collapsed ? "justify-center" : "justify-between",
+            )}>
+              {!collapsed && (
+                <p className="text-muted-foreground text-xs">
+                  v{appVersion}
+                </p>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={toggleCollapsed}
+                  >
+                    {collapsed ? (
+                      <ChevronsRight className="h-4 w-4" />
+                    ) : (
+                      <ChevronsLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </SidebarFooter>
         </Sidebar>
 
         <main className="flex flex-1 flex-col overflow-hidden">

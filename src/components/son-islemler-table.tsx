@@ -523,8 +523,8 @@ export function SonIslemlerTable({
                                 <Database className="h-4 w-4" />
                               )}
                               {hasCachedDetail
-                                ? "Yeniden Verileri Al"
-                                : "Verileri Al"}
+                                ? "Yeniden Sorgula"
+                                : "Sorgula"}
                             </Button>
                             <Button
                               size="sm"
@@ -540,8 +540,8 @@ export function SonIslemlerTable({
                                 <FlaskConical className="h-4 w-4" />
                               )}
                               {hasAnalysis
-                                ? "Yeniden Analiz Et"
-                                : "Analiz Et"}
+                                ? "Yeniden Kontrol Et"
+                                : "Kontrol Et"}
                             </Button>
                           </>
                         )}

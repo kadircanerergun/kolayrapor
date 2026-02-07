@@ -12,7 +12,9 @@
       "Bash(npm uninstall:*)",
       "Bash(git log:*)",
       "Bash(node -e:*)",
-      "Bash(npx:*)"
+      "Bash(npx:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:kolayasistan.uk)"
     ]
   }
 }

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { SonIslemlerTable } from "@/components/son-islemler-table";
 import { SystemStatus } from "@/components/system-status";
+import { SearchByRecipe } from "@/blocks/search-by-recipe";
 import type { CachedRecete } from "@/lib/db";
 import type { ReceteReportResponse } from "@/services/report-api";
 
@@ -64,7 +65,7 @@ function KontrolMerkezi() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+        {/* <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
@@ -128,40 +129,37 @@ function KontrolMerkezi() {
               </p>
             </CardContent>
           </Card>
-        </div>
+        </div> */}
 
         {/* Quick Actions */}
         <div className="mb-6">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
             Hızlı İşlemler
           </h2>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/search-by-recipe">
-              <Button variant="outline" size="sm">
-                <Search className="h-4 w-4" />
-                Reçete No ile Ara
-              </Button>
-            </Link>
-            <Link to="/search-report">
-              <Button variant="outline" size="sm">
-                <CalendarIcon className="h-4 w-4" />
-                Tarih ile Ara
-              </Button>
-            </Link>
-            <Link to="/son-islemler">
-              <Button variant="outline" size="sm">
-                <ClipboardList className="h-4 w-4" />
-                Tüm İşlemler
-              </Button>
-            </Link>
+          <div className="grid gap-4 md:grid-cols-2">
+            <SearchByRecipe />
+            <div className="flex flex-col gap-2">
+              <Link to="/search-report">
+                <Button variant="outline" size="sm" className="w-full justify-start">
+                  <CalendarIcon className="h-4 w-4" />
+                  Tarih ile Ara
+                </Button>
+              </Link>
+              <Link to="/son-islemler">
+                <Button variant="outline" size="sm" className="w-full justify-start">
+                  <ClipboardList className="h-4 w-4" />
+                  Tüm İşlemler
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Son İşlemler Table */}
+        {/* Son İşlemler Table
         <SonIslemlerTable
           showHeader={true}
           onDataLoaded={handleDataLoaded}
-        />
+        /> */}
       </div>
     </div>
   );

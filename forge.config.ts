@@ -33,7 +33,7 @@ const config: ForgeConfig = {
       bucket: process.env.S3_BUCKET || "kolay-rapor-releases",
       region: process.env.S3_REGION || "auto",
       endpoint: process.env.S3_ENDPOINT || undefined,
-      folder: "releases/win32/x64",
+      folder: "kolay-rapor/releases",
       public: true,
       // R2 doesn't support ACLs — set omitAcl to true for Cloudflare R2
       // For AWS S3, set to false or remove

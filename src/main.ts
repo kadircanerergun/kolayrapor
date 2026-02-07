@@ -52,14 +52,9 @@ function setupAutoUpdater() {
     return;
   }
 
-  // Feed URL: S3/R2 directory containing RELEASES + .nupkg files
+  // Feed URL: directory containing RELEASES + .nupkg files
   // Squirrel appends /RELEASES automatically
-  // Set UPDATE_FEED_URL env var at build time, or fall back to a default
-  const feedURL = process.env.UPDATE_FEED_URL;
-  if (!feedURL) {
-    console.log("UPDATE_FEED_URL not set, auto-updater disabled.");
-    return;
-  }
+  const feedURL = "https://kolayasistan.uk/kolay-rapor/releases/win32/x64";
 
   try {
     autoUpdater.setFeedURL({ url: feedURL });

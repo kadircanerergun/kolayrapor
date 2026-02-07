@@ -8,7 +8,7 @@ const Sidebar = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "flex h-full w-64 flex-col border-r bg-background",
+      "flex h-full flex-col bg-background",
       className
     )}
     {...props}
@@ -22,7 +22,7 @@ const SidebarHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col px-4 border-b", className)}
+    className={cn("flex shrink-0 flex-col px-4 border-b", className)}
     {...props}
   />
 ))
@@ -34,7 +34,7 @@ const SidebarContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex-1 overflow-auto p-4", className)}
+    className={cn("min-h-0 flex-1 overflow-auto p-4", className)}
     {...props}
   />
 ))
@@ -46,7 +46,7 @@ const SidebarFooter = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("border-t p-4", className)}
+    className={cn("shrink-0 border-t p-4", className)}
     {...props}
   />
 ))
