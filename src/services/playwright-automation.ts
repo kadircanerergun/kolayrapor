@@ -479,7 +479,22 @@ export class PlaywrightAutomationService {
       throw new Error("Playwright not initialized");
     }
 
-    await this.page.goto(url, { waitUntil: "networkidle" });
+    // Retry goto on ERR_ABORTED (common with SGK portal during concurrent navigations)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.page.goto(url, { waitUntil: "load" });
+        break;
+      } catch (err: any) {
+        if (attempt < 2 && err?.message?.includes("ERR_ABORTED")) {
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        throw err;
+      }
+    }
+    await this.page.waitForLoadState("networkidle").catch(() => {
+      // networkidle timeout is non-fatal — page is already loaded
+    });
     const currentUrl = this.page.url();
 
     // Check if redirected to login page
@@ -555,10 +570,13 @@ export class PlaywrightAutomationService {
 
     await captchaField.fill(captchaResult.solution!);
 
-    // Check KVKK consent checkbox
+    // Check KVKK consent checkbox (skip if already checked)
     const consentCheckbox = await this.page.$('input[name*="kvkkTaahhut"]');
     if (consentCheckbox) {
-      await consentCheckbox.check();
+      const alreadyChecked = await consentCheckbox.isChecked();
+      if (!alreadyChecked) {
+        await consentCheckbox.check();
+      }
     }
 
     // Click login button

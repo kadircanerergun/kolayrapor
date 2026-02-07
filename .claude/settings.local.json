@@ -15,7 +15,8 @@
       "Bash(npx:*)",
       "Bash(findstr:*)",
       "WebFetch(domain:kolayasistan.uk)",
-      "Bash(del \"C:\\\\Users\\\\kadir\\\\kolayrapor\\\\src\\\\components\\\\report-result-modal.tsx\")"
+      "Bash(del \"C:\\\\Users\\\\kadir\\\\kolayrapor\\\\src\\\\components\\\\report-result-modal.tsx\")",
+      "Bash(dir:*)"
     ]
   }
 }

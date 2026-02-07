@@ -17,6 +17,13 @@ import { setupSecureStorageIPC } from "./ipc/secure-storage";
 import electronSquirrelStartup from "electron-squirrel-startup";
 if (electronSquirrelStartup) app.quit();
 
+// Register custom protocol for deep links
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient('kolayrapor', process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient('kolayrapor');
+}
+
 // Ensure only one instance of the app runs at a time.
 // This prevents "Access is denied" errors on Windows when cache files are locked.
 const gotTheLock = app.requestSingleInstanceLock();
@@ -25,12 +32,70 @@ if (!gotTheLock) {
   app.quit();
 }
 
-app.on('second-instance', () => {
-  // Someone tried to run a second instance, focus our window instead
+let pendingDeeplinkUrl: string | null = null;
+
+function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[] } | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'kolayrapor:') return null;
+    const receteNo = parsed.searchParams.get('receteNo');
+    if (!receteNo) return null;
+    const barkodStr = parsed.searchParams.get('barkod') || '';
+    const barkodlar = barkodStr ? barkodStr.split(',').map(b => b.trim()).filter(Boolean) : [];
+    return { receteNo, barkodlar };
+  } catch {
+    return null;
+  }
+}
+
+function createDeeplinkPopup(params: { receteNo: string; barkodlar: string[] }) {
+  const preload = path.join(__dirname, "preload.js");
+  const popup = new BrowserWindow({
+    width: 480,
+    height: 650,
+    alwaysOnTop: true,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    icon: path.join(__dirname, "../../images/icon.ico"),
+    title: `Kontrol — ${params.receteNo}`,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: true,
+      preload,
+      additionalArguments: ['--deeplink'],
+    },
+  });
+
+  popup.setMenuBarVisibility(false);
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    popup.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    popup.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
+  }
+
+  popup.webContents.on('did-finish-load', () => {
+    popup.webContents.send(IPC_CHANNELS.DEEPLINK_PARAMS, params);
+  });
+}
+
+app.on('second-instance', (_event, argv) => {
+  console.log('second-instance argv:', argv);
   const windows = BrowserWindow.getAllWindows();
   if (windows.length > 0) {
     if (windows[0].isMinimized()) windows[0].restore();
     windows[0].focus();
+  }
+  // Check for deep link URL in argv
+  const deeplinkUrl = argv.find(arg => arg.startsWith('kolayrapor://'));
+  console.log('deep link URL:', deeplinkUrl);
+  if (deeplinkUrl) {
+    const params = parseDeeplinkUrl(deeplinkUrl);
+    console.log('parsed params:', params);
+    if (params) createDeeplinkPopup(params);
   }
 });
 
@@ -194,6 +259,10 @@ async function setupORPC() {
   });
 }
 
+// Check for cold-start deep link
+const coldStartDeeplink = process.argv.find(arg => arg.startsWith('kolayrapor://'));
+if (coldStartDeeplink) pendingDeeplinkUrl = coldStartDeeplink;
+
 // Only initialize the app if we got the single instance lock
 if (gotTheLock) {
   app
@@ -212,6 +281,13 @@ if (gotTheLock) {
       installExtensions().catch(err => {
         console.error('Extension installation failed:', err);
       });
+    })
+    .then(() => {
+      if (pendingDeeplinkUrl) {
+        const params = parseDeeplinkUrl(pendingDeeplinkUrl);
+        pendingDeeplinkUrl = null;
+        if (params) createDeeplinkPopup(params);
+      }
     })
     .catch((error) => {
       console.error('App initialization error:', error);

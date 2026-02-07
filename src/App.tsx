@@ -7,15 +7,25 @@ import { RouterProvider } from "@tanstack/react-router";
 import { Provider } from "react-redux";
 import { store } from "./store";
 import { router } from "./utils/routes";
+import { DeeplinkKontrol } from "./components/deeplink-kontrol";
 import "./localization/i18n";
 
 export default function App() {
   const { i18n } = useTranslation();
+  const isDeeplink = (window as any).deeplinkAPI?.isDeeplink;
 
   useEffect(() => {
     syncWithLocalTheme();
     updateAppLanguage(i18n);
   }, [i18n]);
+
+  if (isDeeplink) {
+    return (
+      <Provider store={store}>
+        <DeeplinkKontrol />
+      </Provider>
+    );
+  }
 
   return (
     <Provider store={store}>
