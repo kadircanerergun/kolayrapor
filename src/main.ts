@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, autoUpdater, BrowserWindow, dialog } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog, Tray, Menu, nativeImage } from "electron";
 import path from "path";
 import {
   installExtension,
@@ -33,6 +33,14 @@ if (!gotTheLock) {
 }
 
 let pendingDeeplinkUrl: string | null = null;
+let tray: Tray | null = null;
+
+function getIconPath() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "images", "icon.ico");
+  }
+  return path.join(__dirname, "../../images/icon.ico");
+}
 
 function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[] } | null {
   try {
@@ -57,7 +65,7 @@ function createDeeplinkPopup(params: { receteNo: string; barkodlar: string[] }) 
     resizable: true,
     minimizable: false,
     maximizable: false,
-    icon: path.join(__dirname, "../../images/icon.ico"),
+    icon: getIconPath(),
     title: `Kontrol — ${params.receteNo}`,
     webPreferences: {
       contextIsolation: true,
@@ -84,24 +92,31 @@ function createDeeplinkPopup(params: { receteNo: string; barkodlar: string[] }) 
 
 app.on('second-instance', (_event, argv) => {
   console.log('second-instance argv:', argv);
-  const windows = BrowserWindow.getAllWindows();
-  if (windows.length > 0) {
-    if (windows[0].isMinimized()) windows[0].restore();
-    windows[0].focus();
-  }
-  // Check for deep link URL in argv
   const deeplinkUrl = argv.find(arg => arg.startsWith('kolayrapor://'));
   console.log('deep link URL:', deeplinkUrl);
   if (deeplinkUrl) {
     const params = parseDeeplinkUrl(deeplinkUrl);
     console.log('parsed params:', params);
     if (params) createDeeplinkPopup(params);
+  } else {
+    // No deep link — show main window
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].show();
+      if (windows[0].isMinimized()) windows[0].restore();
+      windows[0].focus();
+    }
   }
 });
 
 const inDevelopment = process.env.NODE_ENV === "development";
 const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 console.log('API URL:', apiUrl);
+
+// Auto-start on Windows login (production only)
+if (process.platform === 'win32' && !inDevelopment) {
+  app.setLoginItemSettings({ openAtLogin: true });
+}
 
 // --- Auto-Update ---
 
@@ -162,6 +177,7 @@ function setupAutoUpdater() {
       })
       .then(({ response }) => {
         if (response === 0) {
+          (app as any).isQuitting = true;
           autoUpdater.quitAndInstall();
         }
       });
@@ -179,6 +195,44 @@ function setupAutoUpdater() {
   }, UPDATE_CHECK_INTERVAL);
 }
 
+// --- System Tray ---
+
+function setupTray() {
+  const iconPath = getIconPath();
+  const icon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(icon);
+  tray.setToolTip("KolayRapor");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Göster",
+      click: () => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win) {
+          win.show();
+          win.focus();
+        }
+      },
+    },
+    {
+      label: "Çıkış",
+      click: () => {
+        (app as any).isQuitting = true;
+        app.exit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+
+  tray.on("double-click", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      win.show();
+      win.focus();
+    }
+  });
+}
+
 // --- Window ---
 
 function createWindow() {
@@ -186,7 +240,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
-    icon: path.join(__dirname, "../../images/icon.ico"),
+    icon: getIconPath(),
     webPreferences: {
       devTools: inDevelopment,
       contextIsolation: true,
@@ -206,6 +260,14 @@ function createWindow() {
     // Disable node integration in webview for security
     webPreferences.nodeIntegration = false;
     webPreferences.contextIsolation = true;
+  });
+
+  // Minimize to tray instead of closing
+  mainWindow.on('close', (e) => {
+    if (!(app as any).isQuitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -268,6 +330,7 @@ if (gotTheLock) {
   app
     .whenReady()
     .then(createWindow)  // Create window first so user sees something
+    .then(setupTray)
     .then(setupORPC)
     .then(() => {
       console.log('Setting up IPC handlers...');
@@ -294,9 +357,8 @@ if (gotTheLock) {
     });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit();
-    }
+    // On Windows, keep the app alive in the system tray
+    // On macOS, standard behavior is to keep running
   });
 
   app.on("activate", () => {

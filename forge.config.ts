@@ -15,6 +15,7 @@ const config: ForgeConfig = {
     icon: "./images/icon",
     extraResource: [
       "./node_modules/playwright-core",
+      "./images",
     ],
   },
   rebuildConfig: {},

@@ -632,19 +632,36 @@ export class PlaywrightAutomationService {
         throw new Error("Page not initialized");
       }
 
-      // Find captcha image
-      const captchaImage = await this.page.$(
-        'img[src="/eczane/SayiUretenImageYeniServlet"]',
-      );
-      if (!captchaImage) {
-        throw new Error("Could not find captcha image");
-      }
+      // Fetch captcha image directly via page context instead of screenshotting
+      // the DOM element — element screenshots fail when the app is minimized to tray
+      // because the renderer throttles and the node is not considered "visible".
+      const base64Image = await this.page.evaluate(async () => {
+        const img = document.querySelector(
+          'img[src="/eczane/SayiUretenImageYeniServlet"]',
+        ) as HTMLImageElement | null;
+        if (!img) throw new Error("Could not find captcha image");
 
-      // Get image as base64
-      const imageBuffer = await captchaImage.screenshot({
-        type: "png",
+        // If the image hasn't loaded yet, wait for it
+        if (!img.complete) {
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("Captcha image failed to load"));
+            setTimeout(() => reject(new Error("Captcha image load timeout")), 10000);
+          });
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Could not create canvas context");
+        ctx.drawImage(img, 0, 0);
+        return canvas.toDataURL("image/png").split(",")[1];
       });
-      const base64Image = imageBuffer.toString("base64");
+
+      if (!base64Image) {
+        throw new Error("Could not capture captcha image");
+      }
 
       // Send captcha to renderer for debugging
       if (this.debugMode) {

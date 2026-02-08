@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   CheckCircle2,
   XCircle,
   Loader2,
   RefreshCw,
-  AlertTriangle,
   Server,
 } from "lucide-react";
 import { getPlaywrightAPI } from "@/utils/playwright-api-loader";
@@ -16,7 +14,6 @@ import { useCredentials } from "@/contexts/credentials-context";
 interface SystemStatusState {
   status: "checking" | "ready" | "error" | "initializing" | "validating";
   message: string;
-  error?: string;
   browserInstalled?: boolean;
   currentUrl?: string;
 }
@@ -24,7 +21,11 @@ interface SystemStatusState {
 // Module-level cache: persists across mounts within the same session
 let cachedState: SystemStatusState | null = null;
 
-export function SystemStatus() {
+interface SystemStatusProps {
+  maxRetries?: number;
+}
+
+export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
   const [state, setState] = useState<SystemStatusState>(
     cachedState ?? {
       status: "checking",
@@ -34,92 +35,98 @@ export function SystemStatus() {
   const [isRetrying, setIsRetrying] = useState(false);
   const { credentials } = useCredentials();
 
+  const checkStatusOnce = async (): Promise<SystemStatusState> => {
+    const api = getPlaywrightAPI();
+
+    const initResult = await api.initialize();
+    console.log("[SystemStatus] Initialize result:", initResult);
+
+    if (!initResult?.success) {
+      return {
+        status: "error",
+        message: "Sistem başlatılamadı",
+        browserInstalled: false,
+      };
+    }
+
+    // Check if we have credentials
+    if (!credentials?.username || !credentials?.password) {
+      return {
+        status: "ready",
+        message: "Sistem hazır (kimlik bilgileri gerekli)",
+        browserInstalled: true,
+      };
+    }
+
+    await api.setCredentials(credentials);
+
+    const navResult = await api.navigateToSGK();
+    console.log("[SystemStatus] Navigation result:", navResult);
+
+    if (navResult?.success) {
+      return {
+        status: "ready",
+        message: "Sistem hazır - SGK portalına bağlı",
+        browserInstalled: true,
+        currentUrl: navResult.currentUrl,
+      };
+    }
+
+    return {
+      status: "error",
+      message: "SGK portalına bağlanılamadı",
+      browserInstalled: true,
+    };
+  };
+
   const checkStatus = async () => {
     setState({
       status: "checking",
       message: "Sistem durumu kontrol ediliyor...",
     });
 
-    try {
-      const api = getPlaywrightAPI();
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        setState({
+          status: attempt === 1 ? "initializing" : "checking",
+          message:
+            attempt === 1
+              ? "Sistem başlatılıyor..."
+              : `Tekrar deneniyor (${attempt}/${maxRetries})...`,
+        });
 
-      // First try to initialize if not ready
-      setState({
-        status: "initializing",
-        message: "Sistem başlatılıyor...",
-      });
+        const result = await checkStatusOnce();
 
-      console.log("[SystemStatus] Initializing Playwright...");
-      const initResult = await api.initialize();
-      console.log("[SystemStatus] Initialize result:", initResult);
+        if (result.status === "ready") {
+          cachedState = result;
+          setState(result);
+          return;
+        }
 
-      if (!initResult?.success) {
-        const errorState: SystemStatusState = {
-          status: "error",
-          message: "Sistem başlatılamadı",
-          error: initResult?.error || "Bilinmeyen hata",
-          browserInstalled: false,
-        };
-        cachedState = errorState;
-        setState(errorState);
-        return;
+        // Got an error result — retry unless this was the last attempt
+        if (attempt === maxRetries) {
+          cachedState = result;
+          setState(result);
+          return;
+        }
+
+        console.log(`[SystemStatus] Attempt ${attempt} failed, retrying...`);
+      } catch (err) {
+        console.error(`[SystemStatus] Attempt ${attempt} error:`, err);
+
+        if (attempt === maxRetries) {
+          const errorState: SystemStatusState = {
+            status: "error",
+            message: "Sistem durumu kontrol edilemedi",
+          };
+          cachedState = errorState;
+          setState(errorState);
+          return;
+        }
       }
 
-      // Now validate by actually trying to navigate to SGK portal
-      setState({
-        status: "validating",
-        message: "SGK portalına bağlanılıyor...",
-      });
-
-      // Check if we have credentials
-      if (!credentials?.username || !credentials?.password) {
-        const readyState: SystemStatusState = {
-          status: "ready",
-          message: "Sistem hazır (kimlik bilgileri gerekli)",
-          browserInstalled: true,
-        };
-        cachedState = readyState;
-        setState(readyState);
-        return;
-      }
-
-      // Set credentials in playwright
-      console.log("[SystemStatus] Setting credentials...");
-      await api.setCredentials(credentials);
-
-      // Try to navigate to SGK portal (this will trigger login if needed)
-      console.log("[SystemStatus] Navigating to SGK portal...");
-      const navResult = await api.navigateToSGK();
-      console.log("[SystemStatus] Navigation result:", navResult);
-
-      if (navResult?.success) {
-        const successState: SystemStatusState = {
-          status: "ready",
-          message: "Sistem hazır - SGK portalına bağlı",
-          browserInstalled: true,
-          currentUrl: navResult.currentUrl,
-        };
-        cachedState = successState;
-        setState(successState);
-      } else {
-        const errorState: SystemStatusState = {
-          status: "error",
-          message: "SGK portalına bağlanılamadı",
-          error: navResult?.error || "Bağlantı hatası",
-          browserInstalled: true,
-        };
-        cachedState = errorState;
-        setState(errorState);
-      }
-    } catch (err) {
-      console.error("[SystemStatus] Error:", err);
-      const errorState: SystemStatusState = {
-        status: "error",
-        message: "Sistem durumu kontrol edilemedi",
-        error: err instanceof Error ? err.message : "Bilinmeyen hata",
-      };
-      cachedState = errorState;
-      setState(errorState);
+      // Brief delay before next retry
+      await new Promise((r) => setTimeout(r, 2000));
     }
   };
 
@@ -176,16 +183,6 @@ export function SystemStatus() {
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">{state.message}</span>
           </div>
-
-          {state.status === "error" && state.error && (
-            <Alert variant="destructive" className="mt-2">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Hata Detayı</AlertTitle>
-              <AlertDescription className="text-xs break-all">
-                {state.error}
-              </AlertDescription>
-            </Alert>
-          )}
 
           {state.status === "error" && (
             <Button
