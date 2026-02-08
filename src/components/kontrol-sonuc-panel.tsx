@@ -23,6 +23,8 @@ interface KontrolSonucPanelProps {
   ilaclar?: ReceteIlac[];
   onReAnalyze?: (barkod?: string) => void;
   isReAnalyzing?: boolean;
+  /** Barkod of the medicine to auto-expand when the panel opens */
+  focusBarkod?: string;
 }
 
 function getScoreTier(score: number) {
@@ -58,13 +60,25 @@ export function KontrolSonucPanel({
   ilaclar,
   onReAnalyze,
   isReAnalyzing,
+  focusBarkod,
 }: KontrolSonucPanelProps) {
   const entries = Object.entries(sonuclar);
 
   const [openItems, setOpenItems] = useState<Set<string>>(() => {
+    if (focusBarkod) return new Set([focusBarkod]);
     if (entries.length === 1) return new Set([entries[0][0]]);
     return new Set<string>();
   });
+
+  // When focusBarkod changes, ensure it's expanded
+  const [prevFocusBarkod, setPrevFocusBarkod] = useState(focusBarkod);
+  if (focusBarkod && focusBarkod !== prevFocusBarkod) {
+    setPrevFocusBarkod(focusBarkod);
+    setOpenItems((prev) => {
+      if (prev.has(focusBarkod)) return prev;
+      return new Set([...prev, focusBarkod]);
+    });
+  }
 
   const toggleItem = (barkod: string) => {
     setOpenItems((prev) => {

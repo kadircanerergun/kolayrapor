@@ -1,6 +1,7 @@
 // Lazy import of Playwright to avoid Electron startup issues
 import type { ChromiumBrowser, Page } from "playwright";
 import { ELEMENT_SELECTORS } from "@/constants";
+import { API_BASE_URL } from "@/lib/constants";
 import dayjs from "dayjs";
 import { WrongIpException } from "@/exceptions/wrong-ip.exception";
 import { WrongCaptchaException } from "@/exceptions/wrong-captcha.exception";
@@ -670,7 +671,7 @@ export class PlaywrightAutomationService {
       }
 
       // Send to captcha solving API
-      const response = await fetch(`https://kolay-rapor-api-8503f0bb8557.herokuapp.com/medula/numbers`, {
+      const response = await fetch(`${API_BASE_URL}/medula/numbers`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

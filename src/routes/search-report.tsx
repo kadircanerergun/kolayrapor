@@ -63,7 +63,7 @@ function SearchReport() {
   } = useAppSelector((s) => s.recete);
   const dialog = useDialogContext();
   const modal = useModal();
-  const pageSize = 10;
+  const pageSize = 40;
 
   const [analizSheetReceteNo, setAnalizSheetReceteNo] = useState<string | null>(null);
   const bulkCancelRef = useRef(false);

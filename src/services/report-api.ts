@@ -1,7 +1,6 @@
 import { apiClient } from "@/lib/axios";
+import { API_BASE_URL } from "@/lib/constants";
 import { Recete } from "@/types/recete";
-
-const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
 export interface GenerateReportRequest {
   barkod: string;
   recete: Recete;
@@ -22,7 +21,7 @@ export interface ReceteReportResponse {
 }
 
 class ReportApiService {
-  private baseUrl = apiUrl;
+  private baseUrl = API_BASE_URL;
 
   async generateReport(barkod: string, recete: Recete): Promise<ReportResult> {
     try {
@@ -30,6 +29,8 @@ class ReportApiService {
         barkod,
         recete,
       };
+
+      console.log('Sending report generation request with data:', requestData);
 
       const response = await apiClient.post(
         `${this.baseUrl}/report/generate`,

@@ -42,6 +42,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
   const [loadingMedicine, setLoadingMedicine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showKontrolSheet, setShowKontrolSheet] = useState(false);
+  const [focusBarkod, setFocusBarkod] = useState<string | undefined>();
 
   const handleQueryMedicine = async (medicine: ReceteIlac) => {
     setLoadingMedicine(medicine.barkod);
@@ -57,6 +58,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
           receteNo: prescriptionData.receteNo,
           sonuclar: { [medicine.barkod]: result.data },
         }));
+        setFocusBarkod(medicine.barkod);
         setShowKontrolSheet(true);
       } else {
         setError(result.error || 'Rapor oluşturulurken bir hata oluştu');
@@ -68,7 +70,8 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
     }
   };
 
-  const handleViewResult = (_medicine: ReceteIlac) => {
+  const handleViewResult = (medicine: ReceteIlac) => {
+    setFocusBarkod(medicine.barkod);
     setShowKontrolSheet(true);
   };
 
@@ -246,6 +249,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
               ilaclar={prescriptionData.ilaclar}
               onReAnalyze={handleReAnalyze}
               isReAnalyzing={!!loadingMedicine}
+              focusBarkod={focusBarkod}
             />
           </div>
         </SheetContent>

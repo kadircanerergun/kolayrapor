@@ -110,8 +110,8 @@ app.on('second-instance', (_event, argv) => {
 });
 
 const inDevelopment = process.env.NODE_ENV === "development";
-const apiUrl = "https://kolay-rapor-api-8503f0bb8557.herokuapp.com"
-console.log('API URL:', apiUrl);
+import { API_BASE_URL } from "./lib/constants";
+console.log('API URL:', API_BASE_URL);
 
 // Auto-start on Windows login (production only)
 if (process.platform === 'win32' && !inDevelopment) {

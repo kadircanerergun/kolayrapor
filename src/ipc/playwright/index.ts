@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
+import { API_BASE_URL } from '@/lib/constants';
 import { playwrightService, ensureBrowsersInstalled, BrowserInstallProgress } from '../../services/playwright-automation';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
@@ -140,7 +141,7 @@ export function setupPlaywrightIPC() {
 
   // Solve captcha via API (used by webview-based browse mode)
   createHandler('captcha:solve', async (base64Image: string) => {
-    const response = await fetch('https://kolay-rapor-api-8503f0bb8557.herokuapp.com/medula/numbers', {
+    const response = await fetch(`${API_BASE_URL}/medula/numbers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
