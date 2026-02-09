@@ -13,6 +13,8 @@ import { Route as SubscriptionRouteImport } from './routes/subscription'
 import { Route as SonIslemlerRouteImport } from './routes/son-islemler'
 import { Route as SearchReportRouteImport } from './routes/search-report'
 import { Route as SearchByRecipeRouteImport } from './routes/search-by-recipe'
+import { Route as OdemeRouteImport } from './routes/odeme'
+import { Route as KayitRouteImport } from './routes/kayit'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as GezintiRouteImport } from './routes/gezinti'
 import { Route as AyarlarRouteImport } from './routes/ayarlar'
@@ -36,6 +38,16 @@ const SearchReportRoute = SearchReportRouteImport.update({
 const SearchByRecipeRoute = SearchByRecipeRouteImport.update({
   id: '/search-by-recipe',
   path: '/search-by-recipe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OdemeRoute = OdemeRouteImport.update({
+  id: '/odeme',
+  path: '/odeme',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KayitRoute = KayitRouteImport.update({
+  id: '/kayit',
+  path: '/kayit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -64,6 +76,8 @@ export interface FileRoutesByFullPath {
   '/ayarlar': typeof AyarlarRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
+  '/kayit': typeof KayitRoute
+  '/odeme': typeof OdemeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/son-islemler': typeof SonIslemlerRoute
@@ -74,6 +88,8 @@ export interface FileRoutesByTo {
   '/ayarlar': typeof AyarlarRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
+  '/kayit': typeof KayitRoute
+  '/odeme': typeof OdemeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/son-islemler': typeof SonIslemlerRoute
@@ -85,6 +101,8 @@ export interface FileRoutesById {
   '/ayarlar': typeof AyarlarRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
+  '/kayit': typeof KayitRoute
+  '/odeme': typeof OdemeRoute
   '/search-by-recipe': typeof SearchByRecipeRoute
   '/search-report': typeof SearchReportRoute
   '/son-islemler': typeof SonIslemlerRoute
@@ -97,6 +115,8 @@ export interface FileRouteTypes {
     | '/ayarlar'
     | '/gezinti'
     | '/home'
+    | '/kayit'
+    | '/odeme'
     | '/search-by-recipe'
     | '/search-report'
     | '/son-islemler'
@@ -107,6 +127,8 @@ export interface FileRouteTypes {
     | '/ayarlar'
     | '/gezinti'
     | '/home'
+    | '/kayit'
+    | '/odeme'
     | '/search-by-recipe'
     | '/search-report'
     | '/son-islemler'
@@ -117,6 +139,8 @@ export interface FileRouteTypes {
     | '/ayarlar'
     | '/gezinti'
     | '/home'
+    | '/kayit'
+    | '/odeme'
     | '/search-by-recipe'
     | '/search-report'
     | '/son-islemler'
@@ -128,6 +152,8 @@ export interface RootRouteChildren {
   AyarlarRoute: typeof AyarlarRoute
   GezintiRoute: typeof GezintiRoute
   HomeRoute: typeof HomeRoute
+  KayitRoute: typeof KayitRoute
+  OdemeRoute: typeof OdemeRoute
   SearchByRecipeRoute: typeof SearchByRecipeRoute
   SearchReportRoute: typeof SearchReportRoute
   SonIslemlerRoute: typeof SonIslemlerRoute
@@ -162,6 +188,20 @@ declare module '@tanstack/react-router' {
       path: '/search-by-recipe'
       fullPath: '/search-by-recipe'
       preLoaderRoute: typeof SearchByRecipeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/odeme': {
+      id: '/odeme'
+      path: '/odeme'
+      fullPath: '/odeme'
+      preLoaderRoute: typeof OdemeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kayit': {
+      id: '/kayit'
+      path: '/kayit'
+      fullPath: '/kayit'
+      preLoaderRoute: typeof KayitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -200,6 +240,8 @@ const rootRouteChildren: RootRouteChildren = {
   AyarlarRoute: AyarlarRoute,
   GezintiRoute: GezintiRoute,
   HomeRoute: HomeRoute,
+  KayitRoute: KayitRoute,
+  OdemeRoute: OdemeRoute,
   SearchByRecipeRoute: SearchByRecipeRoute,
   SearchReportRoute: SearchReportRoute,
   SonIslemlerRoute: SonIslemlerRoute,

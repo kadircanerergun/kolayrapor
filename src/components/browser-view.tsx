@@ -12,7 +12,7 @@ import {
   PlugZap,
   Eye,
 } from "lucide-react";
-import logoSvgRaw from "../../images/logo-outer-transparent.svg?raw";
+import logoSvgRaw from "../../images/logo-transparent.svg?raw";
 import { useCredentials } from "@/contexts/credentials-context";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { useNavigate } from "@tanstack/react-router";

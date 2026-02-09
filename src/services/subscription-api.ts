@@ -1,166 +1,236 @@
-import {
-  SubscriptionPlan,
+import { apiClient } from "@/lib/axios";
+import { API_BASE_URL } from "@/lib/constants";
+import type {
+  ApiProduct,
+  ApiSubscription,
+  ApiCredit,
+  CardInfo,
+  CreditPackage,
+  StoreMySubscription,
   SubscriptionProduct,
   SubscriptionResponse,
 } from "@/types/subscription";
 
+const BILLING_CYCLE_LABELS: Record<string, { name: string; duration: string }> =
+  {
+    monthly: { name: "Aylık", duration: "1 Ay" },
+    yearly: { name: "Yıllık", duration: "12 Ay" },
+  };
+
+function mapPlanToVariant(
+  plan: ApiProduct["plans"][number],
+): SubscriptionProduct["variants"][number] {
+  const label = BILLING_CYCLE_LABELS[plan.billingCycle] ?? {
+    name: plan.name,
+    duration: plan.billingCycle,
+  };
+
+  return {
+    id: plan.id,
+    name: plan.name || label.name,
+    duration: label.duration,
+    price: Number(plan.price),
+    originalPrice: plan.originalPrice ? Number(plan.originalPrice) : undefined,
+    discount: plan.discount ?? undefined,
+    isPopular: plan.isPopular,
+    billingCycle: plan.billingCycle,
+    maxRequests: plan.maxRequests,
+    includedCreditAmount: Number(plan.includedCreditAmount),
+  };
+}
+
+function mapProductToSubscriptionProduct(
+  product: ApiProduct,
+): SubscriptionProduct {
+  const activePlans = (product.plans || []).filter((p) => p.isActive);
+
+  return {
+    id: product.id,
+    name: product.name,
+    description: product.description || "",
+    features: product.features || [],
+    variants: activePlans.map(mapPlanToVariant),
+    isRecommended: product.isRecommended,
+  };
+}
+
+export interface ApiPharmacy {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  isActive: boolean;
+}
+
+export interface RegistrationStatus {
+  registered: boolean;
+  pharmacy?: ApiPharmacy;
+  ipAddress: string;
+}
+
+export interface RegisterPharmacyData {
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  ipAddress?: string;
+}
+
 class SubscriptionApiService {
-  private baseUrl = "http://localhost:3000";
-
-  // Mock data for now - replace with actual API call when backend is ready
-  async getProducts(): Promise<SubscriptionProduct[]> {
-    // TODO: Replace with actual API call
-    // const response = await apiClient.get(`${this.baseUrl}/subscription/products`);
-    // return response.data;
-
-    return [
-      {
-        id: "basic",
-        name: "Temel Plan",
-        description: "Küçük eczaneler için ideal başlangıç paketi",
-        features: [
-          "100 reçete sorgulama/ay",
-          "Temel rapor kontrolü",
-          "E-posta desteği",
-          "7/24 sistem erişimi",
-        ],
-        variants: [
-          {
-            id: "basic-monthly",
-            name: "Aylık",
-            duration: "1 Ay",
-            price: 299,
-          },
-          {
-            id: "basic-quarterly",
-            name: "Üç Aylık",
-            duration: "3 Ay",
-            price: 799,
-            originalPrice: 897,
-            discount: 11,
-          },
-          {
-            id: "basic-yearly",
-            name: "Yıllık",
-            duration: "12 Ay",
-            price: 2990,
-            originalPrice: 3588,
-            discount: 17,
-            isPopular: true,
-          },
-        ],
-      },
-      {
-        id: "professional",
-        name: "Profesyonel Plan",
-        description: "Orta ölçekli eczaneler için kapsamlı çözüm",
-        features: [
-          "500 reçete sorgulama/ay",
-          "Gelişmiş rapor kontrolü",
-          "İlaç stok takibi",
-          "Öncelikli destek",
-          "API erişimi",
-          "Toplu işlem desteği",
-        ],
-        variants: [
-          {
-            id: "pro-monthly",
-            name: "Aylık",
-            duration: "1 Ay",
-            price: 699,
-          },
-          {
-            id: "pro-quarterly",
-            name: "Üç Aylık",
-            duration: "3 Ay",
-            price: 1899,
-            originalPrice: 2097,
-            discount: 9,
-          },
-          {
-            id: "pro-yearly",
-            name: "Yıllık",
-            duration: "12 Ay",
-            price: 6990,
-            originalPrice: 8388,
-            discount: 17,
-            isPopular: true,
-          },
-        ],
-        isRecommended: true,
-      },
-      {
-        id: "enterprise",
-        name: "Kurumsal Plan",
-        description: "Büyük eczane zincirleri için kurumsal çözüm",
-        features: [
-          "Sınırsız reçete sorgulama",
-          "Tüm özellikler aktif",
-          "Özel rapor şablonları",
-          "7/24 telefon desteği",
-          "Özel entegrasyonlar",
-          "Çoklu şube yönetimi",
-          "Özel eğitim desteği",
-          "SLA garantisi",
-        ],
-        variants: [
-          {
-            id: "ent-monthly",
-            name: "Aylık",
-            duration: "1 Ay",
-            price: 1999,
-          },
-          {
-            id: "ent-quarterly",
-            name: "Üç Aylık",
-            duration: "3 Ay",
-            price: 5499,
-            originalPrice: 5997,
-            discount: 8,
-          },
-          {
-            id: "ent-yearly",
-            name: "Yıllık",
-            duration: "12 Ay",
-            price: 19990,
-            originalPrice: 23988,
-            discount: 17,
-            isPopular: true,
-          },
-        ],
-      },
-    ];
+  async getMyPharmacy(): Promise<ApiPharmacy | null> {
+    try {
+      const response = await apiClient.get<ApiPharmacy>(
+        `${API_BASE_URL}/my-pharmacy`,
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
   }
 
-  async subscribe(plan: SubscriptionPlan): Promise<SubscriptionResponse> {
+  async getRegistrationStatus(): Promise<RegistrationStatus> {
     try {
-      // TODO: Replace with actual API call when payment is implemented
-      // const response = await apiClient.post(`${this.baseUrl}/subscription/subscribe`, plan);
+      const response = await apiClient.get<RegistrationStatus>(
+        `${API_BASE_URL}/my-pharmacy/status`,
+      );
+      return response.data;
+    } catch {
+      return { registered: false };
+    }
+  }
 
-      // Mock response for now
-      console.log("Subscription request:", plan);
+  async registerPharmacy(data: RegisterPharmacyData): Promise<ApiPharmacy> {
+    const response = await apiClient.post<ApiPharmacy>(
+      `${API_BASE_URL}/my-pharmacy/register`,
+      data,
+    );
+    return response.data;
+  }
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  async getProducts(): Promise<SubscriptionProduct[]> {
+    const response = await apiClient.get<ApiProduct[]>(
+      `${API_BASE_URL}/products`,
+    );
+    return response.data
+      .filter((p) => p.type === "subscription")
+      .map(mapProductToSubscriptionProduct);
+  }
 
+  async getCreditPackages(): Promise<CreditPackage[]> {
+    const response = await apiClient.get<ApiProduct[]>(
+      `${API_BASE_URL}/store/products`,
+    );
+    return response.data.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      price: Number(p.price),
+      creditAmount: Number(p.creditAmount),
+      isActive: p.isActive,
+    }));
+  }
+
+  async getMySubscription(): Promise<StoreMySubscription> {
+    const response = await apiClient.get<StoreMySubscription>(
+      `${API_BASE_URL}/store/my-subscription`,
+    );
+    return response.data;
+  }
+
+  async getActiveSubscription(
+    pharmacyId: string,
+  ): Promise<ApiSubscription | null> {
+    try {
+      const response = await apiClient.get<ApiSubscription>(
+        `${API_BASE_URL}/subscriptions/pharmacy/${pharmacyId}/active`,
+      );
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getCreditBalance(pharmacyId: string): Promise<ApiCredit> {
+    const response = await apiClient.get<ApiCredit>(
+      `${API_BASE_URL}/credits/pharmacy/${pharmacyId}`,
+    );
+    return response.data;
+  }
+
+  async subscribe(
+    planId: string,
+    cardInfo: CardInfo,
+  ): Promise<SubscriptionResponse> {
+    try {
+      const response = await apiClient.post(
+        `${API_BASE_URL}/store/subscribe`,
+        { planId, cardInfo },
+      );
       return {
         success: true,
-        message:
-          "Abonelik talebiniz alındı. Ödeme sayfasına yönlendiriliyorsunuz...",
+        message: "Abonelik başarıyla oluşturuldu!",
         data: {
-          subscriptionId: `sub_${Date.now()}`,
-          status: "pending",
+          subscriptionId: response.data.subscription?.id,
+          status: response.data.subscription?.status,
         },
       };
     } catch (error: any) {
-      console.error("Subscription failed:", error);
-
       return {
         success: false,
         error:
           error.response?.data?.message ||
           error.message ||
           "Abonelik işlemi başarısız oldu",
+      };
+    }
+  }
+
+  async purchaseCredits(
+    productId: string,
+    cardInfo: CardInfo,
+  ): Promise<SubscriptionResponse> {
+    try {
+      const response = await apiClient.post(
+        `${API_BASE_URL}/store/purchase`,
+        { productId, cardInfo },
+      );
+      return {
+        success: true,
+        message: "Kredi satın alma işlemi başarılı!",
+        data: {
+          subscriptionId: response.data.purchase?.id,
+          status: response.data.purchase?.status,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          "Satın alma işlemi başarısız oldu",
+      };
+    }
+  }
+
+  async cancelSubscription(): Promise<SubscriptionResponse> {
+    try {
+      await apiClient.post(`${API_BASE_URL}/store/cancel-subscription`);
+      return {
+        success: true,
+        message: "Abonelik başarıyla iptal edildi.",
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          "İptal işlemi başarısız oldu",
       };
     }
   }

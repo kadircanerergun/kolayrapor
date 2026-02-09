@@ -1,20 +1,31 @@
-import { useState, useEffect } from 'react';
-import { subscriptionApiService } from '@/services/subscription-api';
-import { SubscriptionProduct, SubscriptionVariant } from '@/types/subscription';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Spinner } from '@/components/ui/spinner';
-import { CheckCircle2, Sparkles } from 'lucide-react';
-import { useDialog } from '@/hooks/useDialog';
-import { cn } from '@/utils/tailwind';
+import { useState, useEffect } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { subscriptionApiService } from "@/services/subscription-api";
+import type { SubscriptionProduct } from "@/types/subscription";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { CheckCircle2, Sparkles } from "lucide-react";
+import { useDialog } from "@/hooks/useDialog";
+import { cn } from "@/utils/tailwind";
+import { useSubscription } from "@/hooks/useSubscription";
 
 export function SubscriptionProducts() {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
-  const [subscribingTo, setSubscribingTo] = useState<string | null>(null);
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, string>
+  >({});
   const { showAlert } = useDialog();
+  const { pharmacy, isPending } = useSubscription();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadProducts();
@@ -28,41 +39,39 @@ export function SubscriptionProducts() {
 
       // Set default variant (popular or first) for each product
       const defaults: Record<string, string> = {};
-      data.forEach(product => {
-        const popularVariant = product.variants.find(v => v.isPopular);
+      data.forEach((product) => {
+        const popularVariant = product.variants.find((v) => v.isPopular);
         defaults[product.id] = popularVariant?.id || product.variants[0]?.id;
       });
       setSelectedVariants(defaults);
-    } catch (error) {
-      console.error('Failed to load products:', error);
-      showAlert('Abonelik planları yüklenirken bir hata oluştu.');
+    } catch {
+      showAlert({
+        title: "Hata",
+        description: "Abonelik planları yüklenirken bir hata oluştu.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubscribe = async (productId: string) => {
+  const handleSubscribeClick = (productId: string) => {
     const variantId = selectedVariants[productId];
     if (!variantId) return;
 
-    setSubscribingTo(`${productId}-${variantId}`);
-
-    try {
-      const result = await subscriptionApiService.subscribe({
-        productId,
-        variantId,
+    if (!pharmacy || isPending) {
+      showAlert({
+        title: "Hata",
+        description: isPending
+          ? "Eczane kaydınız henüz onaylanmadı. Onay sonrası abonelik satın alabilirsiniz."
+          : "Eczane kaydı bulunamadı. Lütfen önce eczanenizi kaydedin.",
       });
-
-      if (result.success) {
-        showAlert(result.message || 'Abonelik talebiniz alındı.');
-      } else {
-        showAlert(result.error || 'Abonelik işlemi başarısız oldu.');
-      }
-    } catch (error) {
-      showAlert('Abonelik işlemi sırasında bir hata oluştu.');
-    } finally {
-      setSubscribingTo(null);
+      return;
     }
+
+    navigate({
+      to: "/odeme",
+      search: { type: "subscription", id: variantId },
+    });
   };
 
   if (loading) {
@@ -77,15 +86,16 @@ export function SubscriptionProducts() {
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {products.map((product) => {
         const selectedVariantId = selectedVariants[product.id];
-        const selectedVariant = product.variants.find(v => v.id === selectedVariantId);
-        const isSubscribing = subscribingTo?.startsWith(product.id);
+        const selectedVariant = product.variants.find(
+          (v) => v.id === selectedVariantId,
+        );
 
         return (
           <Card
             key={product.id}
             className={cn(
-              'relative flex flex-col',
-              product.isRecommended && 'border-primary shadow-lg'
+              "relative flex flex-col",
+              product.isRecommended && "border-primary shadow-lg",
             )}
           >
             {product.isRecommended && (
@@ -99,57 +109,83 @@ export function SubscriptionProducts() {
 
             <CardHeader>
               <CardTitle className="text-2xl">{product.name}</CardTitle>
-              <CardDescription>{product.description}</CardDescription>
+              {product.description && (
+                <div
+                  className="product-description text-sm text-muted-foreground"
+                  dangerouslySetInnerHTML={{ __html: product.description }}
+                />
+              )}
             </CardHeader>
 
-            <CardContent className="flex-1 space-y-6">
+            <CardContent className="flex-1 flex flex-col space-y-6">
               {/* Features */}
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold">Özellikler:</h4>
-                <ul className="space-y-2">
-                  {product.features.map((feature, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {product.features.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold">Özellikler:</h4>
+                  <ul className="space-y-2">
+                    {product.features.map((feature, index) => (
+                      <li
+                        key={index}
+                        className="flex items-start gap-2 text-sm"
+                      >
+                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Variants */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold">Süre Seçin:</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  {product.variants.map((variant) => (
-                    <button
-                      key={variant.id}
-                      onClick={() => setSelectedVariants(prev => ({ ...prev, [product.id]: variant.id }))}
-                      className={cn(
-                        'relative rounded-lg border-2 p-3 text-center transition-all hover:border-primary/50',
-                        selectedVariantId === variant.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-muted'
-                      )}
-                    >
-                      {variant.isPopular && (
-                        <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                          <Badge variant="secondary" className="text-xs px-2 py-0">
-                            Popüler
-                          </Badge>
+              {product.variants.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold">Süre Seçin:</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {product.variants.map((variant) => (
+                      <button
+                        key={variant.id}
+                        onClick={() =>
+                          setSelectedVariants((prev) => ({
+                            ...prev,
+                            [product.id]: variant.id,
+                          }))
+                        }
+                        className={cn(
+                          "relative rounded-lg border-2 p-3 text-center transition-all hover:border-primary/50",
+                          selectedVariantId === variant.id
+                            ? "border-primary bg-primary/5"
+                            : "border-muted",
+                        )}
+                      >
+                        {variant.isPopular && (
+                          <div className="absolute -top-2 left-1/2 -translate-x-1/2">
+                            <Badge
+                              variant="secondary"
+                              className="text-xs px-2 py-0"
+                            >
+                              Popüler
+                            </Badge>
+                          </div>
+                        )}
+                        <div className="text-xs font-medium">
+                          {variant.name}
                         </div>
-                      )}
-                      <div className="text-xs font-medium">{variant.name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{variant.duration}</div>
-                    </button>
-                  ))}
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {variant.duration}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Price */}
+              {/* Price — pushed to bottom with mt-auto */}
               {selectedVariant && (
-                <div className="space-y-2 pt-4 border-t">
+                <div className="mt-auto space-y-2 pt-4 border-t">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold">₺{selectedVariant.price}</span>
+                    <span className="text-3xl font-bold">
+                      ₺{selectedVariant.price}
+                    </span>
                     {selectedVariant.originalPrice && (
                       <span className="text-lg text-muted-foreground line-through">
                         ₺{selectedVariant.originalPrice}
@@ -160,6 +196,11 @@ export function SubscriptionProducts() {
                     <Badge variant="secondary" className="text-xs">
                       %{selectedVariant.discount} İndirim
                     </Badge>
+                  )}
+                  {selectedVariant.includedCreditAmount > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Aylık {selectedVariant.includedCreditAmount} kredi dahil
+                    </p>
                   )}
                   <p className="text-xs text-muted-foreground">
                     {selectedVariant.duration} boyunca geçerli
@@ -172,18 +213,10 @@ export function SubscriptionProducts() {
               <Button
                 className="w-full"
                 size="lg"
-                variant={product.isRecommended ? 'default' : 'outline'}
-                onClick={() => handleSubscribe(product.id)}
-                disabled={isSubscribing}
+                variant={product.isRecommended ? "default" : "outline"}
+                onClick={() => handleSubscribeClick(product.id)}
               >
-                {isSubscribing ? (
-                  <>
-                    <Spinner size="sm" className="mr-2" />
-                    İşleniyor...
-                  </>
-                ) : (
-                  'Abone Ol'
-                )}
+                Abone Ol
               </Button>
             </CardFooter>
           </Card>

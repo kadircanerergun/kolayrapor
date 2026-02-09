@@ -48,6 +48,7 @@ import {
 import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
 import type { ReceteReportResponse } from "@/services/report-api";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
+import { PharmacyRequired } from "@/components/pharmacy-required";
 
 function SearchReport() {
   const dispatch = useAppDispatch();
@@ -234,6 +235,7 @@ function SearchReport() {
   const isSomeSelected = selectedRecetes.length > 0 && selectedRecetes.length < receteler.length;
 
   return (
+    <PharmacyRequired>
     <div className="p-6">
       <div className="mx-auto">
         <div className="mb-6">
@@ -540,6 +542,7 @@ function SearchReport() {
         </SheetContent>
       </Sheet>
     </div>
+    </PharmacyRequired>
   );
 }
 

@@ -24,10 +24,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
-import logoSrc from "../../images/logo-outer-transparent.svg";
+import logoSrc from "../../images/icon.png";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
+import { usePharmacy } from "@/contexts/pharmacy-context";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -38,8 +39,21 @@ export default function MainLayout({
 }) {
   const location = useLocation();
   const { credentials } = useCredentials();
+  const { pharmacy, subscription, creditBalance, products } = usePharmacy();
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
+
+  // Derive display values from pharmacy context
+  const activePlanName = (() => {
+    if (!subscription || subscription.status !== "active") return null;
+    // Find matching product name from plans
+    const matchedProduct = products.find((p) =>
+      p.variants.some((v) => v.id === subscription.planId),
+    );
+    return matchedProduct?.name ?? null;
+  })();
+
+  const remainingCredit = creditBalance ? Number(creditBalance.balance) : null;
 
   // Sidebar collapsed state persisted in localStorage
   const [collapsed, setCollapsed] = useState(() => {
@@ -54,10 +68,6 @@ export default function MainLayout({
       return next;
     });
   };
-
-  // License and credit placeholders (will be connected to data source later)
-  const [activeLicense, setActiveLicense] = useState<string | null>(null);
-  const [remainingCredit, setRemainingCredit] = useState<number | null>(null);
 
   useEffect(() => {
     // Initialize debug mode from localStorage and sync with Playwright service
@@ -196,12 +206,12 @@ export default function MainLayout({
                               : "justify-start px-3",
                             isActive
                               ? "bg-sidebar-accent text-sidebar-primary font-medium hover:bg-sidebar-accent hover:text-sidebar-primary"
-                              : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                           )}
                         >
                           <Icon
                             className={cn(
-                              "h-4 w-4 shrink-0",
+                              "h-4 w-4 shrink-0 text-sidebar-primary",
                               !collapsed && "mr-3",
                             )}
                           />
@@ -228,7 +238,7 @@ export default function MainLayout({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {credentials?.username || "Kullanıcı Yok"}
+                  {pharmacy?.name || credentials?.username || "Kullanıcı Yok"}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -238,10 +248,10 @@ export default function MainLayout({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
-                    {credentials?.username || "Kullanıcı Yok"}
+                    {pharmacy?.name || credentials?.username || "Kullanıcı Yok"}
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    {credentials ? "Aktif Kullanıcı" : "Ayarlardan giriş yapın"}
+                    {credentials?.username ? `SGK: ${credentials.username}` : "SGK bilgisi eklenmedi"}
                   </p>
                 </div>
               </div>
@@ -256,7 +266,7 @@ export default function MainLayout({
                     <span className="text-xs text-muted-foreground">Aktif Lisans</span>
                   </div>
                   <p className="text-sm font-medium truncate">
-                    {activeLicense || "—"}
+                    {activePlanName || "—"}
                   </p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-2.5">

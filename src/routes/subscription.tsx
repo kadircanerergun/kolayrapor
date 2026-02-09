@@ -1,6 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { SubscriptionProducts } from '@/components/subscription-products';
-import { CreditCard } from 'lucide-react';
+import { createFileRoute } from "@tanstack/react-router";
+import { SubscriptionProducts } from "@/components/subscription-products";
+import { CreditPackages } from "@/components/credit-packages";
+import { CreditCard } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 
 function SubscriptionPage() {
   return (
@@ -16,8 +18,13 @@ function SubscriptionPage() {
         </p>
       </div>
 
-      {/* Products */}
+      {/* Subscription Products */}
       <SubscriptionProducts />
+
+      <Separator />
+
+      {/* Credit Packages */}
+      <CreditPackages />
 
       {/* Footer Info */}
       <div className="mt-8 p-4 bg-muted/50 rounded-lg">
@@ -33,6 +40,6 @@ function SubscriptionPage() {
   );
 }
 
-export const Route = createFileRoute('/subscription')({
+export const Route = createFileRoute("/subscription")({
   component: SubscriptionPage,
 });
