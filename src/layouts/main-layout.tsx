@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { version as appVersion } from "../../package.json";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
-import logoSrc from "../../images/icon.png";
+import logoSrc from "../../images/logo-transparent.svg";
 import { cn } from "@/utils/tailwind";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
@@ -164,12 +163,12 @@ export default function MainLayout({
           )}
         >
           <SidebarHeader className={cn("space-y-4 p-4", collapsed && "px-2")}>
-            {/* Logo + App Name */}
+            {/* Logo + App Name + Toggle */}
             <div className="flex items-center gap-3">
               <img
                 src={logoSrc}
                 alt="Kolay Rapor"
-                className="h-8 w-8 shrink-0 rounded-lg"
+                className="h-8 w-8 shrink-0"
               />
               {!collapsed && (
                 <div className="min-w-0 flex-1">
@@ -179,6 +178,25 @@ export default function MainLayout({
                   <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
                 </div>
               )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 ml-auto"
+                    onClick={toggleCollapsed}
+                  >
+                    {collapsed ? (
+                      <ChevronsRight className="h-4 w-4" />
+                    ) : (
+                      <ChevronsLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
+                </TooltipContent>
+              </Tooltip>
             </div>
           </SidebarHeader>
 
@@ -211,7 +229,7 @@ export default function MainLayout({
                         >
                           <Icon
                             className={cn(
-                              "h-4 w-4 shrink-0 text-sidebar-primary",
+                              "h-4 w-4 shrink-0",
                               !collapsed && "mr-3",
                             )}
                           />
@@ -229,56 +247,60 @@ export default function MainLayout({
             <div className="border-t height-fit flex justify-end gap-2 flex-col" >
                    {!collapsed && <Separator />}
 
-            {/* User Info */}
-            {collapsed ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="bg-sidebar-primary/10 mx-auto flex h-8 w-8 items-center justify-center rounded-full">
-                    <User2 className="text-sidebar-primary h-4 w-4" />
+            {/* User Info — only show when pharmacy is registered */}
+            {pharmacy && (
+              <>
+                {collapsed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="bg-sidebar-primary/10 mx-auto flex h-8 w-8 items-center justify-center rounded-full">
+                        <User2 className="text-sidebar-primary h-4 w-4" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {pharmacy.name || credentials?.username || "Kullanıcı Yok"}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
+                    <div className="bg-sidebar-primary/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+                      <User2 className="text-sidebar-primary h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {pharmacy.name || credentials?.username || "Kullanıcı Yok"}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {credentials?.username ? `SGK: ${credentials.username}` : "SGK bilgisi eklenmedi"}
+                      </p>
+                    </div>
                   </div>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  {pharmacy?.name || credentials?.username || "Kullanıcı Yok"}
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <div className="bg-muted/50 flex items-center gap-3 rounded-lg p-3">
-                <div className="bg-sidebar-primary/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-                  <User2 className="text-sidebar-primary h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {pharmacy?.name || credentials?.username || "Kullanıcı Yok"}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {credentials?.username ? `SGK: ${credentials.username}` : "SGK bilgisi eklenmedi"}
-                  </p>
-                </div>
-              </div>
-            )}
+                )}
 
-            {/* License and Credit Info */}
-            {!collapsed && (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-muted/50 rounded-lg p-2.5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Shield className="h-3.5 w-3.5 text-sidebar-primary" />
-                    <span className="text-xs text-muted-foreground">Aktif Lisans</span>
+                {/* License and Credit Info */}
+                {!collapsed && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-muted/50 rounded-lg p-2.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Shield className="h-3.5 w-3.5 text-sidebar-primary" />
+                        <span className="text-xs text-muted-foreground">Aktif Lisans</span>
+                      </div>
+                      <p className="text-sm font-medium truncate">
+                        {activePlanName || "—"}
+                      </p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-2.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Coins className="h-3.5 w-3.5 text-sidebar-primary" />
+                        <span className="text-xs text-muted-foreground">Kalan Kredi</span>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {remainingCredit !== null ? remainingCredit : "—"}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm font-medium truncate">
-                    {activePlanName || "—"}
-                  </p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-2.5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Coins className="h-3.5 w-3.5 text-sidebar-primary" />
-                    <span className="text-xs text-muted-foreground">Kalan Kredi</span>
-                  </div>
-                  <p className="text-sm font-medium">
-                    {remainingCredit !== null ? remainingCredit : "—"}
-                  </p>
-                </div>
-              </div>
+                )}
+              </>
             )}
             </div>
           </SidebarContent>
@@ -324,38 +346,6 @@ export default function MainLayout({
               )}
             </div>
 
-            <Separator />
-
-            {/* Collapse Toggle + Version */}
-            <div className={cn(
-              "flex items-center",
-              collapsed ? "justify-center" : "justify-between",
-            )}>
-              {!collapsed && (
-                <p className="text-muted-foreground text-xs">
-                  v{appVersion}
-                </p>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={toggleCollapsed}
-                  >
-                    {collapsed ? (
-                      <ChevronsRight className="h-4 w-4" />
-                    ) : (
-                      <ChevronsLeft className="h-4 w-4" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  {collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
-                </TooltipContent>
-              </Tooltip>
-            </div>
           </SidebarFooter>
         </Sidebar>
 

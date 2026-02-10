@@ -598,6 +598,7 @@ export class PlaywrightAutomationService {
       }
     }
     await this.page.goto(URLS.MEDULA_HOME);
+    await this.page.waitForLoadState('load');
     const currentUrl = this.page.url();
     const stillOnLogin = currentUrl.includes("login");
     if (stillOnLogin) {

@@ -1,6 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Database,
@@ -10,14 +16,21 @@ import {
   ClipboardList,
   ShieldCheck,
   ShieldX,
+  AlertTriangle,
+  Building2,
+  Clock,
 } from "lucide-react";
 import { SonIslemlerTable } from "@/components/son-islemler-table";
 import { SystemStatus } from "@/components/system-status";
 import { SearchByRecipe } from "@/blocks/search-by-recipe";
+import { useSubscription } from "@/hooks/useSubscription";
+import { Spinner } from "@/components/ui/spinner";
 import type { CachedRecete } from "@/lib/db";
 import type { ReceteReportResponse } from "@/services/report-api";
 
 function KontrolMerkezi() {
+  const { pharmacy, isPending, loading } = useSubscription();
+
   const [stats, setStats] = useState({
     totalCached: 0,
     totalAnalyzed: 0,
@@ -49,6 +62,92 @@ function KontrolMerkezi() {
     setStats({ totalCached, totalAnalyzed, validCount, invalidCount });
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // No pharmacy registered
+  if (!pharmacy) {
+    return (
+      <div className="p-6">
+        <div className="mx-auto">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold">Kontrol Merkezi</h1>
+            <p className="text-muted-foreground">
+              Reçete doğrulama ve analiz işlemlerinizi yönetin
+            </p>
+          </div>
+
+          <Card className="border-yellow-300 dark:border-yellow-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                Eczane Kaydı Gerekli
+              </CardTitle>
+              <CardDescription>
+                Uygulamayı kullanabilmek için önce eczanenizi kaydetmeniz
+                gerekmektedir.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Reçete sorgulama, rapor doğrulama ve diğer işlemleri
+                yapabilmek için eczanenizin sistemde kayıtlı olması
+                gerekmektedir. Kayıt işlemi tamamlandıktan sonra tüm
+                özelliklere erişebilirsiniz.
+              </p>
+              <Link to="/kayit">
+                <Button>
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Eczane Kaydına Git
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Pharmacy pending approval
+  if (isPending) {
+    return (
+      <div className="p-6">
+        <div className="mx-auto">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold">Kontrol Merkezi</h1>
+            <p className="text-muted-foreground">
+              Reçete doğrulama ve analiz işlemlerinizi yönetin
+            </p>
+          </div>
+
+          <Card className="border-yellow-300 dark:border-yellow-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-yellow-500" />
+                Eczane Kaydınız Onay Bekliyor
+              </CardTitle>
+              <CardDescription>
+                Eczane kaydınız incelenmektedir. Onaylandıktan sonra tüm
+                özelliklere erişebilirsiniz.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Kayıt onay süreciniz devam ediyor. Durumu Ayarlar sayfasından
+                kontrol edebilirsiniz.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="mx-auto">
@@ -63,73 +162,6 @@ function KontrolMerkezi() {
         <div className="mb-6">
           <SystemStatus />
         </div>
-
-        {/* Stats */}
-        {/* <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Kayıtlı Reçete
-              </CardTitle>
-              <Database className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCached}</div>
-              <p className="text-xs text-muted-foreground">
-                Önbellekte kayıtlı reçete
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Analiz Edilen
-              </CardTitle>
-              <FlaskConical className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalAnalyzed}</div>
-              <p className="text-xs text-muted-foreground">
-                Toplam analiz edilen ilaç
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Geçerli Rapor
-              </CardTitle>
-              <ShieldCheck className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {stats.validCount}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Geçerli analiz sonucu
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Geçersiz Rapor
-              </CardTitle>
-              <ShieldX className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">
-                {stats.invalidCount}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Geçersiz analiz sonucu
-              </p>
-            </CardContent>
-          </Card>
-        </div> */}
 
         {/* Quick Actions */}
         <div className="mb-6">
@@ -154,12 +186,6 @@ function KontrolMerkezi() {
             </div>
           </div>
         </div>
-
-        {/* Son İşlemler Table
-        <SonIslemlerTable
-          showHeader={true}
-          onDataLoaded={handleDataLoaded}
-        /> */}
       </div>
     </div>
   );

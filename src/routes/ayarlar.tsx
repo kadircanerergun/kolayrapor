@@ -13,6 +13,9 @@ import {
   XCircle,
   Building2,
   Clock,
+  RefreshCw,
+  Download,
+  Info,
 } from "lucide-react";
 import {
   Card,
@@ -36,6 +39,8 @@ import { ModalProvider } from "@/components/modal-provider";
 import { useState, useEffect, useCallback } from "react";
 import { subscriptionApiService } from "@/services/subscription-api";
 import { useCredentials } from "@/contexts/credentials-context";
+import { ipc } from "@/ipc/manager";
+import { version as appVersion } from "../../package.json";
 
 function SettingsPage() {
   const {
@@ -54,6 +59,11 @@ function SettingsPage() {
   const { showAlert, showConfirmDialog } = useDialog();
   const [cancelling, setCancelling] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<
+    "idle" | "up-to-date" | "update-available" | "error" | "dev"
+  >("idle");
+  const [updateMessage, setUpdateMessage] = useState("");
 
   const handleCheckStatus = useCallback(async () => {
     setCheckingStatus(true);
@@ -63,6 +73,32 @@ function SettingsPage() {
       setCheckingStatus(false);
     }
   }, [refresh]);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    setCheckingUpdate(true);
+    setUpdateStatus("idle");
+    setUpdateMessage("");
+    try {
+      const result = await ipc.client.app.checkForUpdates();
+      setUpdateStatus(result.status);
+      if (result.status === "update-available") {
+        setUpdateMessage(
+          "Yeni bir güncelleme mevcut! İndirme arka planda başladı.",
+        );
+      } else if (result.status === "up-to-date") {
+        setUpdateMessage("Uygulamanız güncel.");
+      } else if (result.status === "dev") {
+        setUpdateMessage("Geliştirme modunda güncelleme kontrolü devre dışı.");
+      } else {
+        setUpdateMessage(result.message || "Güncelleme kontrolü başarısız.");
+      }
+    } catch {
+      setUpdateStatus("error");
+      setUpdateMessage("Güncelleme kontrolü sırasında bir hata oluştu.");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
 
   // Credentials from shared context
   const {
@@ -585,6 +621,69 @@ function SettingsPage() {
         )}
       </Card>
       </div>
+
+      {/* Version & Update Check */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Info className="h-5 w-5" />
+            Uygulama Bilgisi
+          </CardTitle>
+          <CardDescription>
+            Mevcut sürüm ve güncelleme durumu
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Mevcut Sürüm</p>
+              <p className="text-lg font-semibold">v{appVersion}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {updateStatus === "up-to-date" && (
+                <Badge variant="default" className="gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Güncel
+                </Badge>
+              )}
+              {updateStatus === "update-available" && (
+                <Badge variant="secondary" className="gap-1">
+                  <Download className="h-3 w-3" />
+                  Güncelleme Mevcut
+                </Badge>
+              )}
+              {updateStatus === "error" && (
+                <Badge variant="destructive" className="gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Hata
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                onClick={handleCheckForUpdates}
+                disabled={checkingUpdate}
+              >
+                {checkingUpdate ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Kontrol Ediliyor...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Güncelleme Kontrol Et
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          {updateMessage && (
+            <p className="text-sm text-muted-foreground mt-3">
+              {updateMessage}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <ModalProvider modal={modal} onClose={closeModal} />
     </div>

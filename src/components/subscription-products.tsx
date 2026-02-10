@@ -13,9 +13,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { CheckCircle2, Sparkles } from "lucide-react";
-import { useDialog } from "@/hooks/useDialog";
 import { cn } from "@/utils/tailwind";
 import { useSubscription } from "@/hooks/useSubscription";
+import { toast } from "sonner";
 
 export function SubscriptionProducts() {
   const [products, setProducts] = useState<SubscriptionProduct[]>([]);
@@ -23,7 +23,6 @@ export function SubscriptionProducts() {
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
-  const { showAlert } = useDialog();
   const { pharmacy, isPending } = useSubscription();
   const navigate = useNavigate();
 
@@ -45,10 +44,7 @@ export function SubscriptionProducts() {
       });
       setSelectedVariants(defaults);
     } catch {
-      showAlert({
-        title: "Hata",
-        description: "Abonelik planları yüklenirken bir hata oluştu.",
-      });
+      toast.error("Abonelik planları yüklenirken bir hata oluştu.");
     } finally {
       setLoading(false);
     }
@@ -59,12 +55,8 @@ export function SubscriptionProducts() {
     if (!variantId) return;
 
     if (!pharmacy || isPending) {
-      showAlert({
-        title: "Hata",
-        description: isPending
-          ? "Eczane kaydınız henüz onaylanmadı. Onay sonrası abonelik satın alabilirsiniz."
-          : "Eczane kaydı bulunamadı. Lütfen önce eczanenizi kaydedin.",
-      });
+      toast.info("Satın alabilmek için öncelikle kaydolmalısınız.");
+      navigate({ to: "/kayit" });
       return;
     }
 

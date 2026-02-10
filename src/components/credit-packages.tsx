@@ -2,23 +2,18 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Coins } from "lucide-react";
-import { useDialog } from "@/hooks/useDialog";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 export function CreditPackages() {
   const { pharmacy, isPending, creditPackages, creditBalance } = useSubscription();
-  const { showAlert } = useDialog();
   const navigate = useNavigate();
 
   const handlePurchase = (pkgId: string) => {
     if (!pharmacy || isPending) {
-      showAlert({
-        title: "Hata",
-        description: isPending
-          ? "Eczane kaydınız henüz onaylanmadı. Onay sonrası kredi satın alabilirsiniz."
-          : "Eczane kaydı bulunamadı. Lütfen önce eczanenizi kaydedin.",
-      });
+      toast.info("Satın alabilmek için öncelikle kaydolmalısınız.");
+      navigate({ to: "/kayit" });
       return;
     }
     navigate({

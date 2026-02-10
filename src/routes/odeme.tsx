@@ -110,7 +110,7 @@ function OdemePage() {
             description: result.message || "Abonelik başarıyla oluşturuldu!",
           });
           await refresh();
-          navigate({ to: "/subscription" });
+          navigate({ to: "/ayarlar" });
         } else {
           showAlert({
             title: "Hata",
@@ -130,7 +130,7 @@ function OdemePage() {
               "Kredi satın alma işlemi başarıyla tamamlandı.",
           });
           await refresh();
-          navigate({ to: "/subscription" });
+          navigate({ to: "/ayarlar" });
         } else {
           showAlert({
             title: "Hata",
