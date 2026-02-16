@@ -58,6 +58,9 @@ function mapProductToSubscriptionProduct(
 export interface ApiPharmacy {
   id: string;
   name: string;
+  nameSurname: string;
+  pharmacyPhone: string;
+  glnNumber: string;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -72,6 +75,9 @@ export interface RegistrationStatus {
 
 export interface RegisterPharmacyData {
   name: string;
+  nameSurname: string;
+  pharmacyPhone: string;
+  glnNumber: string;
   address?: string;
   phone?: string;
   email?: string;
@@ -99,6 +105,16 @@ class SubscriptionApiService {
     } catch {
       return { registered: false };
     }
+  }
+
+  async updateMyPharmacy(
+    data: Partial<Pick<ApiPharmacy, "name" | "nameSurname" | "pharmacyPhone" | "glnNumber" | "address" | "phone" | "email">>,
+  ): Promise<ApiPharmacy> {
+    const response = await apiClient.patch<ApiPharmacy>(
+      `${API_BASE_URL}/my-pharmacy`,
+      data,
+    );
+    return response.data;
   }
 
   async registerPharmacy(data: RegisterPharmacyData): Promise<ApiPharmacy> {

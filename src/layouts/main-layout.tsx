@@ -134,7 +134,7 @@ export default function MainLayout({
     {
       to: "/search-report",
       icon: CalendarIcon,
-      label: "Tarih ile Arama",
+      label: "Toplu Kontrol",
       description: "Tarih aralığı ile rapor arama",
     },
     {
@@ -268,10 +268,10 @@ export default function MainLayout({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {pharmacy.name || credentials?.username || "Kullanıcı Yok"}
+                        {pharmacy.nameSurname || pharmacy.name || credentials?.username || "Kullanıcı Yok"}
                       </p>
-                      <p className="text-muted-foreground text-xs">
-                        {credentials?.username ? `SGK: ${credentials.username}` : "SGK bilgisi eklenmedi"}
+                      <p className="text-muted-foreground text-xs truncate">
+                        {pharmacy.name}
                       </p>
                     </div>
                   </div>

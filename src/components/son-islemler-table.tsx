@@ -350,7 +350,7 @@ export function SonIslemlerTable({
           <Database className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">Henüz veri yok</p>
           <p className="text-sm mt-1">
-            Tarih ile Arama sayfasından reçete sorgulayarak başlayın
+            Toplu Kontrol sayfasından reçete sorgulayarak başlayın
           </p>
         </div>
       ) : (

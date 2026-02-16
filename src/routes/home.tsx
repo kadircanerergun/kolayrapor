@@ -174,7 +174,7 @@ function KontrolMerkezi() {
               <Link to="/search-report">
                 <Button variant="outline" size="sm" className="w-full justify-start">
                   <CalendarIcon className="h-4 w-4" />
-                  Tarih ile Ara
+                  Toplu Kontrol
                 </Button>
               </Link>
               <Link to="/son-islemler">

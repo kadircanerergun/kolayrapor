@@ -9,6 +9,8 @@ import {
   Phone,
   Mail,
   Globe,
+  User,
+  Hash,
 } from "lucide-react";
 import {
   Card,
@@ -32,6 +34,9 @@ function RegistrationPage() {
   const { showAlert } = useDialog();
 
   const [name, setName] = useState("");
+  const [nameSurname, setNameSurname] = useState("");
+  const [pharmacyPhone, setPharmacyPhone] = useState("");
+  const [glnNumber, setGlnNumber] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -39,10 +44,10 @@ function RegistrationPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const handleRegister = async () => {
-    if (!name.trim()) {
+    if (!name.trim() || !nameSurname.trim() || !pharmacyPhone.trim() || !glnNumber.trim()) {
       showAlert({
         title: "Uyari",
-        description: "Eczane adi zorunludur.",
+        description: "Eczane adi, ad soyad, eczane telefonu ve GLN numarasi zorunludur.",
       });
       return;
     }
@@ -51,6 +56,9 @@ function RegistrationPage() {
     try {
       await subscriptionApiService.registerPharmacy({
         name: name.trim(),
+        nameSurname: nameSurname.trim(),
+        pharmacyPhone: pharmacyPhone.trim(),
+        glnNumber: glnNumber.trim(),
         address: address.trim() || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
@@ -110,6 +118,18 @@ function RegistrationPage() {
           <CardContent className="space-y-3">
             <div className="space-y-2">
               <p className="text-lg font-semibold">{pharmacy.name}</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <User className="h-4 w-4" />
+                {pharmacy.nameSurname}
+              </p>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                {pharmacy.pharmacyPhone}
+              </p>
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Hash className="h-4 w-4" />
+                GLN: {pharmacy.glnNumber}
+              </p>
               {pharmacy.address && (
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
@@ -226,6 +246,42 @@ function RegistrationPage() {
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="pharmacy-name-surname">
+              Ad Soyad <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="pharmacy-name-surname"
+              value={nameSurname}
+              onChange={(e) => setNameSurname(e.target.value)}
+              placeholder="Eczaci ad soyad"
+            />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="pharmacy-pharmacy-phone">
+                Eczane Telefonu <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="pharmacy-pharmacy-phone"
+                type="tel"
+                value={pharmacyPhone}
+                onChange={(e) => setPharmacyPhone(e.target.value)}
+                placeholder="0 (2XX) XXX XX XX"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pharmacy-gln-number">
+                GLN Numarasi <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="pharmacy-gln-number"
+                value={glnNumber}
+                onChange={(e) => setGlnNumber(e.target.value)}
+                placeholder="GLN numarasi"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="pharmacy-address">Adres</Label>
             <Input
               id="pharmacy-address"
@@ -236,7 +292,7 @@ function RegistrationPage() {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="pharmacy-phone">Telefon</Label>
+              <Label htmlFor="pharmacy-phone">Telefon (Kisisel)</Label>
               <Input
                 id="pharmacy-phone"
                 type="tel"
@@ -276,7 +332,7 @@ function RegistrationPage() {
         <CardFooter>
           <Button
             onClick={handleRegister}
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !nameSurname.trim() || !pharmacyPhone.trim() || !glnNumber.trim()}
           >
             {submitting ? (
               <>

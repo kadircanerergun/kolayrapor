@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Settings,
   CreditCard,
@@ -22,6 +22,10 @@ import {
   Plus,
   RotateCw,
   PauseCircle,
+  Phone,
+  Hash,
+  MapPin,
+  Mail,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,7 +48,7 @@ import { ipc } from "@/ipc/manager";
 import { version as appVersion } from "../../package.json";
 import type { SavedCard, CardInfo } from "@/types/subscription";
 
-type SettingsSection = "medula" | "abonelik" | "odeme" | "uygulama";
+type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "uygulama";
 
 interface SidebarItem {
   id: SettingsSection;
@@ -54,6 +58,12 @@ interface SidebarItem {
 }
 
 const SIDEBAR_ITEMS: SidebarItem[] = [
+  {
+    id: "eczane",
+    label: "Eczane Bilgileri",
+    icon: Building2,
+    description: "Eczane ve eczacı bilgileri",
+  },
   {
     id: "medula",
     label: "Medula Ayarları",
@@ -103,7 +113,7 @@ function SettingsPage() {
 
   const { modal, openModal, closeModal } = useModal();
   const { showConfirmDialog } = useDialogContext();
-  const [activeSection, setActiveSection] = useState<SettingsSection>("medula");
+  const [activeSection, setActiveSection] = useState<SettingsSection>("eczane");
   const [cancelling, setCancelling] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -378,6 +388,32 @@ function SettingsPage() {
     }
   };
 
+  // ─── Pharmacy Edit State ────────────────────────────────
+  const [pharmacyForm, setPharmacyForm] = useState({
+    name: pharmacy?.name || "",
+    nameSurname: pharmacy?.nameSurname || "",
+    pharmacyPhone: pharmacy?.pharmacyPhone || "",
+    glnNumber: pharmacy?.glnNumber || "",
+    address: pharmacy?.address || "",
+    phone: pharmacy?.phone || "",
+    email: pharmacy?.email || "",
+  });
+  const [savingPharmacy, setSavingPharmacy] = useState(false);
+
+  useEffect(() => {
+    if (pharmacy) {
+      setPharmacyForm({
+        name: pharmacy.name || "",
+        nameSurname: pharmacy.nameSurname || "",
+        pharmacyPhone: pharmacy.pharmacyPhone || "",
+        glnNumber: pharmacy.glnNumber || "",
+        address: pharmacy.address || "",
+        phone: pharmacy.phone || "",
+        email: pharmacy.email || "",
+      });
+    }
+  }, [pharmacy]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -386,7 +422,191 @@ function SettingsPage() {
     );
   }
 
+  const handleSavePharmacy = async () => {
+    if (!pharmacyForm.name.trim() || !pharmacyForm.nameSurname.trim() || !pharmacyForm.pharmacyPhone.trim() || !pharmacyForm.glnNumber.trim()) {
+      toast.warning("Eczane adi, ad soyad, eczane telefonu ve GLN numarasi zorunludur.");
+      return;
+    }
+    setSavingPharmacy(true);
+    try {
+      await subscriptionApiService.updateMyPharmacy({
+        name: pharmacyForm.name.trim(),
+        nameSurname: pharmacyForm.nameSurname.trim(),
+        pharmacyPhone: pharmacyForm.pharmacyPhone.trim(),
+        glnNumber: pharmacyForm.glnNumber.trim(),
+        address: pharmacyForm.address.trim() || undefined,
+        phone: pharmacyForm.phone.trim() || undefined,
+        email: pharmacyForm.email.trim() || undefined,
+      });
+      toast.success("Eczane bilgileri guncellendi.");
+      await refresh();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Guncelleme sirasinda hata olustu.");
+    } finally {
+      setSavingPharmacy(false);
+    }
+  };
+
   // ─── Section Renderers ───────────────────────────────────
+
+  const renderEczaneSection = () => (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold">Eczane Bilgileri</h2>
+        <p className="text-sm text-muted-foreground">
+          Eczane ve eczaci bilgilerinizi goruntuleyin ve duzenleyin
+        </p>
+      </div>
+
+      {!pharmacy ? (
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
+              <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Eczane kaydi bulunamadi</p>
+                <p className="text-sm text-muted-foreground">
+                  Bilgilerinizi duzenlemek icin once eczanenizi kaydedin.
+                </p>
+                <Link to="/kayit">
+                  <Button variant="outline" size="sm">
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Eczane Kaydina Git
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : isPending ? (
+        <Card>
+          <CardContent className="py-6">
+            <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
+              <Clock className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Eczane kaydiniz onay bekliyor</p>
+                <p className="text-sm text-muted-foreground">
+                  Onaylandiktan sonra bilgilerinizi duzenleyebilirsiniz.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ph-name">
+                  Eczane Adi <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="ph-name"
+                  value={pharmacyForm.name}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, name: e.target.value })}
+                  placeholder="Eczane adi"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ph-nameSurname">
+                  Ad Soyad <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="ph-nameSurname"
+                  value={pharmacyForm.nameSurname}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, nameSurname: e.target.value })}
+                  placeholder="Eczaci ad soyad"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ph-pharmacyPhone">
+                  Eczane Telefonu <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="ph-pharmacyPhone"
+                  type="tel"
+                  value={pharmacyForm.pharmacyPhone}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, pharmacyPhone: e.target.value })}
+                  placeholder="0 (2XX) XXX XX XX"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ph-glnNumber">
+                  GLN Numarasi <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="ph-glnNumber"
+                  value={pharmacyForm.glnNumber}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, glnNumber: e.target.value })}
+                  placeholder="GLN numarasi"
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ph-address">Adres</Label>
+                <Input
+                  id="ph-address"
+                  value={pharmacyForm.address}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, address: e.target.value })}
+                  placeholder="Eczane adresi"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ph-phone">Telefon (Kisisel)</Label>
+                <Input
+                  id="ph-phone"
+                  type="tel"
+                  value={pharmacyForm.phone}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, phone: e.target.value })}
+                  placeholder="0 (5XX) XXX XX XX"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ph-email">E-posta</Label>
+                <Input
+                  id="ph-email"
+                  type="email"
+                  value={pharmacyForm.email}
+                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, email: e.target.value })}
+                  placeholder="eczane@ornek.com"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSavePharmacy}
+                disabled={savingPharmacy || !pharmacyForm.name.trim() || !pharmacyForm.nameSurname.trim() || !pharmacyForm.pharmacyPhone.trim() || !pharmacyForm.glnNumber.trim()}
+                size="sm"
+              >
+                {savingPharmacy ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Kaydet
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
 
   const renderMedulaSection = () => (
     <div className="space-y-4">
@@ -1187,6 +1407,8 @@ function SettingsPage() {
 
   const renderContent = () => {
     switch (activeSection) {
+      case "eczane":
+        return renderEczaneSection();
       case "medula":
         return renderMedulaSection();
       case "abonelik":

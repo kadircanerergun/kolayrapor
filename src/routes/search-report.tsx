@@ -239,7 +239,7 @@ function SearchReport() {
     <div className="p-6">
       <div className="mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Reçete Arama</h1>
+          <h1 className="text-2xl font-bold">Toplu Kontrol</h1>
           <p className="text-muted-foreground">
             SGK sisteminde reçete bilgilerini sorgulayın
           </p>
