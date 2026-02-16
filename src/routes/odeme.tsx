@@ -6,6 +6,7 @@ import type {
   SubscriptionProduct,
   SubscriptionVariant,
   CreditPackage,
+  SavedCard,
 } from "@/types/subscription";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useDialog } from "@/hooks/useDialog";
@@ -27,6 +28,7 @@ import {
   CreditCard,
   Coins,
   ShieldCheck,
+  Trash2,
 } from "lucide-react";
 
 interface OdemeSearch {
@@ -42,6 +44,8 @@ const EMPTY_CARD: CardInfo = {
   cvc: "",
 };
 
+type PaymentMode = "saved" | "new";
+
 function OdemePage() {
   const { type, id } = Route.useSearch();
   const navigate = useNavigate();
@@ -51,6 +55,12 @@ function OdemePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [card, setCard] = useState<CardInfo>(EMPTY_CARD);
+  const [saveCard, setSaveCard] = useState(false);
+
+  // Saved cards
+  const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("new");
 
   // Subscription data
   const [product, setProduct] = useState<SubscriptionProduct | null>(null);
@@ -68,30 +78,46 @@ function OdemePage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      if (type === "subscription") {
-        const products = await subscriptionApiService.getProducts();
-        for (const p of products) {
-          const v = p.variants.find((v) => v.id === id);
-          if (v) {
-            setProduct(p);
-            setVariant(v);
-            break;
-          }
-        }
-      } else {
-        const packages = await subscriptionApiService.getCreditPackages();
-        const pkg = packages.find((p) => p.id === id);
-        if (pkg) {
-          setCreditPackage(pkg);
-        }
+
+      // Load saved cards and product data in parallel
+      const [cards] = await Promise.all([
+        subscriptionApiService.getSavedCards(),
+        loadProductData(),
+      ]);
+
+      setSavedCards(cards);
+      if (cards.length > 0) {
+        const defaultCard = cards.find((c) => c.isDefault) || cards[0];
+        setSelectedCardId(defaultCard.id);
+        setPaymentMode("saved");
       }
     } catch {
       showAlert({
         title: "Hata",
-        description: "Ürün bilgileri yüklenirken bir hata oluştu.",
+        description: "Veriler yüklenirken bir hata oluştu.",
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProductData = async () => {
+    if (type === "subscription") {
+      const products = await subscriptionApiService.getProducts();
+      for (const p of products) {
+        const v = p.variants.find((v) => v.id === id);
+        if (v) {
+          setProduct(p);
+          setVariant(v);
+          break;
+        }
+      }
+    } else {
+      const packages = await subscriptionApiService.getCreditPackages();
+      const pkg = packages.find((p) => p.id === id);
+      if (pkg) {
+        setCreditPackage(pkg);
+      }
     }
   };
 
@@ -100,10 +126,15 @@ function OdemePage() {
     setSubmitting(true);
     try {
       if (type === "subscription" && variant) {
-        const result = await subscriptionApiService.subscribe(
-          variant.id,
-          card,
-        );
+        const result =
+          paymentMode === "saved" && selectedCardId
+            ? await subscriptionApiService.subscribe(variant.id, undefined, {
+                savedCardId: selectedCardId,
+              })
+            : await subscriptionApiService.subscribe(variant.id, card, {
+                saveCard,
+              });
+
         if (result.success) {
           showAlert({
             title: "Başarılı",
@@ -118,10 +149,19 @@ function OdemePage() {
           });
         }
       } else if (type === "credit" && creditPackage) {
-        const result = await subscriptionApiService.purchaseCredits(
-          creditPackage.id,
-          card,
-        );
+        const result =
+          paymentMode === "saved" && selectedCardId
+            ? await subscriptionApiService.purchaseCredits(
+                creditPackage.id,
+                undefined,
+                { savedCardId: selectedCardId },
+              )
+            : await subscriptionApiService.purchaseCredits(
+                creditPackage.id,
+                card,
+                { saveCard },
+              );
+
         if (result.success) {
           showAlert({
             title: "Başarılı",
@@ -140,6 +180,22 @@ function OdemePage() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRemoveCard = async (cardId: string) => {
+    const removed = await subscriptionApiService.removeCard(cardId);
+    if (removed) {
+      const updated = savedCards.filter((c) => c.id !== cardId);
+      setSavedCards(updated);
+      if (selectedCardId === cardId) {
+        if (updated.length > 0) {
+          setSelectedCardId(updated[0].id);
+        } else {
+          setSelectedCardId(null);
+          setPaymentMode("new");
+        }
+      }
     }
   };
 
@@ -371,99 +427,202 @@ function OdemePage() {
                 <p className="text-2xl font-bold">₺{getAmount().toFixed(2)}</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="cardNumber">Kart Numarası</Label>
-                <Input
-                  id="cardNumber"
-                  placeholder="0000 0000 0000 0000"
-                  value={formatCardNumber(card.cardNumber)}
-                  onChange={(e) =>
-                    setCard({
-                      ...card,
-                      cardNumber: e.target.value.replace(/\s/g, ""),
-                    })
-                  }
-                  required
-                  maxLength={19}
-                />
-              </div>
+              {/* Saved Cards */}
+              {savedCards.length > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Kayıtlı Kartlar</Label>
+                  <div className="space-y-2">
+                    {savedCards.map((sc) => (
+                      <label
+                        key={sc.id}
+                        className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          paymentMode === "saved" && selectedCardId === sc.id
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentCard"
+                          checked={
+                            paymentMode === "saved" && selectedCardId === sc.id
+                          }
+                          onChange={() => {
+                            setPaymentMode("saved");
+                            setSelectedCardId(sc.id);
+                          }}
+                          className="accent-primary"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              {sc.maskedCardNumber}
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {sc.cardType}
+                            </Badge>
+                            {sc.isDefault && (
+                              <Badge variant="secondary" className="text-xs">
+                                Varsayılan
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {sc.cardHolderName} - {sc.expireMonth}/{sc.expireYear}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleRemoveCard(sc.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </label>
+                    ))}
 
-              <div className="space-y-2">
-                <Label htmlFor="cardHolderName">Kart Sahibi</Label>
-                <Input
-                  id="cardHolderName"
-                  placeholder="AD SOYAD"
-                  value={card.cardHolderName}
-                  onChange={(e) =>
-                    setCard({
-                      ...card,
-                      cardHolderName: e.target.value.toUpperCase(),
-                    })
-                  }
-                  required
-                />
-              </div>
+                    {/* New card option */}
+                    <label
+                      className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                        paymentMode === "new"
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentCard"
+                        checked={paymentMode === "new"}
+                        onChange={() => setPaymentMode("new")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm font-medium">
+                        Yeni kart ile öde
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="expireMonth">Ay</Label>
-                  <Input
-                    id="expireMonth"
-                    placeholder="MM"
-                    value={card.expireMonth}
-                    onChange={(e) =>
-                      setCard({
-                        ...card,
-                        expireMonth: e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 2),
-                      })
-                    }
-                    required
-                    maxLength={2}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expireYear">Yıl</Label>
-                  <Input
-                    id="expireYear"
-                    placeholder="YY"
-                    value={card.expireYear}
-                    onChange={(e) =>
-                      setCard({
-                        ...card,
-                        expireYear: e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 2),
-                      })
-                    }
-                    required
-                    maxLength={2}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cvc">CVC</Label>
-                  <Input
-                    id="cvc"
-                    placeholder="000"
-                    type="password"
-                    value={card.cvc}
-                    onChange={(e) =>
-                      setCard({
-                        ...card,
-                        cvc: e.target.value.replace(/\D/g, "").slice(0, 4),
-                      })
-                    }
-                    required
-                    maxLength={4}
-                  />
-                </div>
-              </div>
+              {/* New card form */}
+              {paymentMode === "new" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="cardNumber">Kart Numarası</Label>
+                    <Input
+                      id="cardNumber"
+                      placeholder="0000 0000 0000 0000"
+                      value={formatCardNumber(card.cardNumber)}
+                      onChange={(e) =>
+                        setCard({
+                          ...card,
+                          cardNumber: e.target.value.replace(/\s/g, ""),
+                        })
+                      }
+                      required
+                      maxLength={19}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="cardHolderName">Kart Sahibi</Label>
+                    <Input
+                      id="cardHolderName"
+                      placeholder="AD SOYAD"
+                      value={card.cardHolderName}
+                      onChange={(e) =>
+                        setCard({
+                          ...card,
+                          cardHolderName: e.target.value.toUpperCase(),
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="expireMonth">Ay</Label>
+                      <Input
+                        id="expireMonth"
+                        placeholder="MM"
+                        value={card.expireMonth}
+                        onChange={(e) =>
+                          setCard({
+                            ...card,
+                            expireMonth: e.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 2),
+                          })
+                        }
+                        required
+                        maxLength={2}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="expireYear">Yıl</Label>
+                      <Input
+                        id="expireYear"
+                        placeholder="YY"
+                        value={card.expireYear}
+                        onChange={(e) =>
+                          setCard({
+                            ...card,
+                            expireYear: e.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 2),
+                          })
+                        }
+                        required
+                        maxLength={2}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cvc">CVC</Label>
+                      <Input
+                        id="cvc"
+                        placeholder="000"
+                        type="password"
+                        value={card.cvc}
+                        onChange={(e) =>
+                          setCard({
+                            ...card,
+                            cvc: e.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 4),
+                          })
+                        }
+                        required
+                        maxLength={4}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Save card checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={saveCard}
+                      onChange={(e) => setSaveCard(e.target.checked)}
+                      className="accent-primary h-4 w-4"
+                    />
+                    <span className="text-sm">
+                      Kartımı sonraki ödemeler için kaydet
+                    </span>
+                  </label>
+                </>
+              )}
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
                 <ShieldCheck className="h-4 w-4 flex-shrink-0" />
                 <span>
-                  Ödeme bilgileriniz güvenli bir şekilde işlenmektedir.
+                  Ödeme bilgileriniz güvenli bir şekilde işlenmektedir. Kart
+                  bilgileri banka tarafında saklanır.
                 </span>
               </div>
 

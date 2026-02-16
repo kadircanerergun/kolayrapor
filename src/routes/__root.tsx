@@ -29,7 +29,7 @@ function Root() {
         <Outlet />
         {/* <TanStackRouterDevtools /> */}
       </MainLayout>
-      <Toaster position="bottom-right" richColors closeButton />
+      <Toaster position="top-right" richColors closeButton />
     </BaseLayout>
   );
 }

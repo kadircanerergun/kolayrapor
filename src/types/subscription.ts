@@ -42,6 +42,8 @@ export interface ApiSubscription {
   endDate: string | null;
   requestCount: number;
   autoRenew: boolean;
+  nextBillingDate: string | null;
+  renewalRetryCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -110,4 +112,14 @@ export interface SubscriptionResponse {
     status: string;
   };
   error?: string;
+}
+
+export interface SavedCard {
+  id: string;
+  maskedCardNumber: string;
+  cardHolderName: string;
+  cardType: string;
+  expireMonth: string;
+  expireYear: string;
+  isDefault: boolean;
 }

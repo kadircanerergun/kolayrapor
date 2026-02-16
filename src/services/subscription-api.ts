@@ -9,6 +9,7 @@ import type {
   StoreMySubscription,
   SubscriptionProduct,
   SubscriptionResponse,
+  SavedCard,
 } from "@/types/subscription";
 
 const BILLING_CYCLE_LABELS: Record<string, { name: string; duration: string }> =
@@ -163,12 +164,23 @@ class SubscriptionApiService {
 
   async subscribe(
     planId: string,
-    cardInfo: CardInfo,
+    cardInfo?: CardInfo,
+    options?: { savedCardId?: string; saveCard?: boolean },
   ): Promise<SubscriptionResponse> {
     try {
+      const body: Record<string, unknown> = { planId };
+      if (options?.savedCardId) {
+        body.savedCardId = options.savedCardId;
+      } else {
+        body.cardInfo = cardInfo;
+        if (options?.saveCard) {
+          body.saveCard = "true";
+        }
+      }
+
       const response = await apiClient.post(
         `${API_BASE_URL}/store/subscribe`,
-        { planId, cardInfo },
+        body,
       );
       return {
         success: true,
@@ -191,12 +203,23 @@ class SubscriptionApiService {
 
   async purchaseCredits(
     productId: string,
-    cardInfo: CardInfo,
+    cardInfo?: CardInfo,
+    options?: { savedCardId?: string; saveCard?: boolean },
   ): Promise<SubscriptionResponse> {
     try {
+      const body: Record<string, unknown> = { productId };
+      if (options?.savedCardId) {
+        body.savedCardId = options.savedCardId;
+      } else {
+        body.cardInfo = cardInfo;
+        if (options?.saveCard) {
+          body.saveCard = "true";
+        }
+      }
+
       const response = await apiClient.post(
         `${API_BASE_URL}/store/purchase`,
-        { productId, cardInfo },
+        body,
       );
       return {
         success: true,
@@ -232,6 +255,36 @@ class SubscriptionApiService {
           error.message ||
           "İptal işlemi başarısız oldu",
       };
+    }
+  }
+
+  // ─── Saved Cards ───────────────────────────────────────
+
+  async getSavedCards(): Promise<SavedCard[]> {
+    try {
+      const response = await apiClient.get<SavedCard[]>(
+        `${API_BASE_URL}/store/cards`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
+  }
+
+  async addCard(cardInfo: CardInfo): Promise<SavedCard> {
+    const response = await apiClient.post<SavedCard>(
+      `${API_BASE_URL}/store/cards`,
+      { cardInfo },
+    );
+    return response.data;
+  }
+
+  async removeCard(cardId: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`${API_BASE_URL}/store/cards/${cardId}`);
+      return true;
+    } catch {
+      return false;
     }
   }
 }

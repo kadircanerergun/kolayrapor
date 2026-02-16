@@ -262,9 +262,9 @@ function createWindow() {
     webPreferences.contextIsolation = true;
   });
 
-  // Minimize to tray instead of closing
+  // Minimize to tray instead of closing (production only)
   mainWindow.on('close', (e) => {
-    if (!(app as any).isQuitting) {
+    if (!inDevelopment && !(app as any).isQuitting) {
       e.preventDefault();
       mainWindow.hide();
     }
@@ -357,8 +357,10 @@ if (gotTheLock) {
     });
 
   app.on("window-all-closed", () => {
-    // On Windows, keep the app alive in the system tray
-    // On macOS, standard behavior is to keep running
+    if (inDevelopment) {
+      app.quit();
+    }
+    // In production: keep alive in system tray (Windows) or keep running (macOS)
   });
 
   app.on("activate", () => {

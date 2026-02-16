@@ -23,7 +23,8 @@ export function SubscriptionProducts() {
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
-  const { pharmacy, isPending } = useSubscription();
+  const { pharmacy, isPending, currentSubscription } = useSubscription();
+  const hasActiveSubscription = currentSubscription?.status === "active";
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -202,14 +203,25 @@ export function SubscriptionProducts() {
             </CardContent>
 
             <CardFooter>
-              <Button
-                className="w-full"
-                size="lg"
-                variant={product.isRecommended ? "default" : "outline"}
-                onClick={() => handleSubscribeClick(product.id)}
-              >
-                Abone Ol
-              </Button>
+              {hasActiveSubscription ? (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  variant="outline"
+                  disabled
+                >
+                  Mevcut Aboneliğiniz Aktif
+                </Button>
+              ) : (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  variant={product.isRecommended ? "default" : "outline"}
+                  onClick={() => handleSubscribeClick(product.id)}
+                >
+                  Abone Ol
+                </Button>
+              )}
             </CardFooter>
           </Card>
         );
