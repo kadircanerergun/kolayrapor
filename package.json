@@ -1,8 +1,8 @@
 {
   "name": "KolayRapor",
-  "productName": "Kolay Rapor",
+  "productName": "KolayRapor",
   "version": "0.0.3",
-  "description": "Kolay Rapor - Eczane Yönetim Sistemi",
+  "description": "KolayRapor - Eczane Yönetim Sistemi",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
@@ -20,7 +20,7 @@
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test"
   },
-  "author": "Kolay Rapor",
+  "author": "KolayRapor",
   "license": "MIT",
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",

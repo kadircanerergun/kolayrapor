@@ -13,11 +13,22 @@ export interface ReportResult {
 }
 
 export interface ReceteReportResponse {
+  reportId: string;
   isValid: boolean;
   validityScore: number;
   reportEvolutionDetails: string;
   processedAt: string;
   pharmacyId: string;
+}
+
+export interface ReportFeedbackResponse {
+  id: string;
+  pharmacyId: string;
+  pharmacyReportId: string;
+  rating: number;
+  message: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 class ReportApiService {
@@ -52,6 +63,25 @@ class ReportApiService {
           "Report generation failed",
       };
     }
+  }
+
+  async submitFeedback(
+    reportId: string,
+    rating: number,
+    message?: string,
+  ): Promise<ReportFeedbackResponse> {
+    const response = await apiClient.post(
+      `${this.baseUrl}/report/${reportId}/feedback`,
+      { rating, message },
+    );
+    return response.data;
+  }
+
+  async getFeedback(reportId: string): Promise<ReportFeedbackResponse | null> {
+    const response = await apiClient.get(
+      `${this.baseUrl}/report/${reportId}/feedback`,
+    );
+    return response.data || null;
   }
 }
 

@@ -167,13 +167,13 @@ export default function MainLayout({
             <div className="flex items-center gap-3">
               <img
                 src={logoSrc}
-                alt="Kolay Rapor"
+                alt="KolayRapor"
                 className="h-8 w-8 shrink-0"
               />
               {!collapsed && (
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-base font-semibold">
-                    Kolay Rapor
+                    KolayRapor
                   </h2>
                   <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
                 </div>

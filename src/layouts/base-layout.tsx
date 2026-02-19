@@ -11,7 +11,7 @@ export default function BaseLayout({
 }) {
   return (
     <>
-      <DragWindowRegion title="Kolay Rapor" />
+      <DragWindowRegion title="KolayRapor" />
       <CredentialsProvider>
         <PharmacyProvider>
           <DialogContextProvider>

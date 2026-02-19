@@ -16,6 +16,7 @@ import {
 import { cn } from "@/utils/tailwind";
 import type { ReceteReportResponse } from "@/services/report-api";
 import type { ReceteIlac } from "@/types/recete";
+import { ReportFeedback } from "@/components/report-feedback";
 
 interface KontrolSonucPanelProps {
   receteNo: string;
@@ -200,6 +201,14 @@ export function KontrolSonucPanel({
                     {report.pharmacyId || "—"}
                   </div>
                 </div>
+
+                {/* Feedback / Rating */}
+                {report.reportId && (
+                  <>
+                    <Separator />
+                    <ReportFeedback reportId={report.reportId} />
+                  </>
+                )}
 
                 {/* Re-analyze button */}
                 {onReAnalyze && (

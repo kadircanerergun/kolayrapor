@@ -21,6 +21,7 @@ export interface ApiSubscriptionPlan {
   description: string | null;
   price: number;
   includedCreditAmount: number;
+  creditValidityDays: number;
   billingCycle: "monthly" | "yearly";
   maxRequests: number;
   originalPrice: number | null;

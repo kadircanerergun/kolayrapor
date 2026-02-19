@@ -6,22 +6,22 @@ i18n.use(initReactI18next).init({
   resources: {
     en: {
       translation: {
-        appName: "Kolay Rapor",
+        appName: "KolayRapor",
         titleHomePage: "Home Page",
         titleSecondPage: "Second Page",
         documentation: "Documentation",
         version: "Version",
-        madeBy: "Kolay Rapor",
+        madeBy: "KolayRapor",
       },
     },
     "pt-BR": {
       translation: {
-        appName: "Kolay Rapor",
+        appName: "KolayRapor",
         titleHomePage: "Página Inicial",
         titleSecondPage: "Segunda Página",
         documentation: "Documentação",
         version: "Versão",
-        madeBy: "Kolay Rapor",
+        madeBy: "KolayRapor",
       },
     },
   },
