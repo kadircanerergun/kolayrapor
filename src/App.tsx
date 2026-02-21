@@ -1,5 +1,7 @@
 import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import * as Sentry from "@sentry/electron/renderer";
+import { init as sentryReactInit, ErrorBoundary as SentryErrorBoundary } from "@sentry/react";
 import { syncWithLocalTheme } from "./actions/theme";
 import { useTranslation } from "react-i18next";
 import { updateAppLanguage } from "./actions/language";
@@ -9,6 +11,16 @@ import { store } from "./store";
 import { router } from "./utils/routes";
 import { DeeplinkKontrol } from "./components/deeplink-kontrol";
 import "./localization/i18n";
+import { API_BASE_URL } from "./lib/constants";
+
+Sentry.init(
+  {
+    integrations: [Sentry.browserTracingIntegration()],
+    tracePropagationTargets: ["localhost", API_BASE_URL],
+    tracesSampleRate: 1.0,
+  },
+  sentryReactInit,
+);
 
 export default function App() {
   const { i18n } = useTranslation();
@@ -37,6 +49,8 @@ export default function App() {
 const root = createRoot(document.getElementById("app")!);
 root.render(
   <React.StrictMode>
-    <App />
+    <SentryErrorBoundary fallback={<p>Bir hata oluştu.</p>}>
+      <App />
+    </SentryErrorBoundary>
   </React.StrictMode>,
 );

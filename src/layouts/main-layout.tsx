@@ -22,6 +22,7 @@ import {
   Coins,
   ChevronsLeft,
   ChevronsRight,
+  RefreshCw,
 } from "lucide-react";
 import logoSrc from "../../images/logo-transparent.svg";
 import { cn } from "@/utils/tailwind";
@@ -38,7 +39,19 @@ export default function MainLayout({
 }) {
   const location = useLocation();
   const { credentials } = useCredentials();
-  const { pharmacy, subscription, creditBalance, products } = usePharmacy();
+  const { pharmacy, subscription, creditBalance, products, loading, refresh } = usePharmacy();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const needsRefresh = !loading && (!pharmacy || !subscription || !creditBalance);
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
 
@@ -246,6 +259,38 @@ export default function MainLayout({
             </div>
             <div className="border-t height-fit flex justify-end gap-2 flex-col" >
                    {!collapsed && <Separator />}
+
+            {/* Refresh button — show when pharmacy/subscription data is missing */}
+            {needsRefresh && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size={collapsed ? "icon" : "default"}
+                    className={cn(
+                      "w-full border-dashed",
+                      collapsed && "h-10 w-10 mx-auto",
+                    )}
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        refreshing && "animate-spin",
+                        !collapsed && "mr-2",
+                      )}
+                    />
+                    {!collapsed && (refreshing ? "Yenileniyor..." : "Verileri Yenile")}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {refreshing
+                    ? "Veriler yenileniyor..."
+                    : "Eczane ve abonelik bilgilerini yeniden yükle"}
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             {/* User Info — only show when pharmacy is registered */}
             {pharmacy && (

@@ -1,3 +1,12 @@
+import * as Sentry from "@sentry/electron/main";
+
+Sentry.init({
+  dsn: "https://9d433c71a9ec3d80cbe08001175f99e8@o94351.ingest.us.sentry.io/4510925898645504",
+  environment: process.env.NODE_ENV || "production",
+  tracesSampleRate: 1.0,
+  sendDefaultPii: false,
+});
+
 import "dotenv/config";
 import { app, autoUpdater, BrowserWindow, dialog, Tray, Menu, nativeImage } from "electron";
 import path from "path";
@@ -185,7 +194,7 @@ function setupAutoUpdater() {
 
   autoUpdater.on("error", (err) => {
     console.error("Auto-update error:", err);
-    // Silently fail — don't block the user
+    Sentry.captureException(err, { tags: { component: "autoUpdater" } });
   });
 
   // Check now, then periodically
@@ -354,6 +363,7 @@ if (gotTheLock) {
     })
     .catch((error) => {
       console.error('App initialization error:', error);
+      Sentry.captureException(error, { tags: { component: "appInit" } });
     });
 
   app.on("window-all-closed", () => {

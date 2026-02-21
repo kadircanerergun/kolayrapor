@@ -20,6 +20,9 @@ import { cn } from "@/utils/tailwind";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
+import { analizCompleted } from "@/store/slices/receteSlice";
+import { reportApiService } from "@/services/report-api";
+import { cacheAnalysis } from "@/lib/db";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 import {
   Sheet,
@@ -358,10 +361,21 @@ export function BrowserView() {
     const toastId = toast.loading("Analiz ediliyor...");
 
     try {
-      await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo })).unwrap();
-      const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo })).unwrap();
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo })).unwrap();
 
-      if (results[barkod]) {
+      if (!recete) {
+        toast.error("Reçete detayları bulunamadı.", { id: toastId });
+        return;
+      }
+
+      const result = await reportApiService.generateReport(barkod, recete);
+
+      if (result.success && result.data) {
+        await cacheAnalysis(currentReceteNo, barkod, result.data);
+        dispatch(analizCompleted({
+          receteNo: currentReceteNo,
+          sonuclar: { [barkod]: result.data },
+        }));
         toast.success("Analiz tamamlandı", { id: toastId });
         setShowKontrolSonuc(true);
       } else {
