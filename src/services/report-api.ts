@@ -48,6 +48,8 @@ class ReportApiService {
         requestData,
       );
 
+      window.dispatchEvent(new Event("credit-deducted"));
+
       return {
         success: true,
         data: response.data as ReceteReportResponse,

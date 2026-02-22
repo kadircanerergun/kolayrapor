@@ -102,6 +102,7 @@ function SettingsPage() {
   const {
     pharmacy,
     isPending,
+    ipAddress,
     currentSubscription,
     creditBalance,
     currentProduct,
@@ -468,6 +469,11 @@ function SettingsPage() {
                 <p className="text-sm text-muted-foreground">
                   Bilgilerinizi duzenlemek icin once eczanenizi kaydedin.
                 </p>
+                {ipAddress && (
+                  <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                    IP Adresiniz: {ipAddress}
+                  </p>
+                )}
                 <Link to="/kayit">
                   <Button variant="outline" size="sm">
                     <Building2 className="h-4 w-4 mr-2" />
@@ -628,6 +634,11 @@ function SettingsPage() {
                   SGK kimlik bilgilerinizi kaydetmek için önce eczanenizi
                   kaydetmeniz gerekmektedir.
                 </p>
+                {ipAddress && (
+                  <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                    IP Adresiniz: {ipAddress}
+                  </p>
+                )}
                 <Link to="/kayit">
                   <Button variant="outline" size="sm">
                     <Building2 className="h-4 w-4 mr-2" />
@@ -1106,6 +1117,11 @@ function SettingsPage() {
                     ? "Onay sonrası kart işlemlerini yapabilirsiniz."
                     : "Kart kaydetmek için önce eczanenizi kaydedin."}
                 </p>
+                {!isPending && ipAddress && (
+                  <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                    IP Adresiniz: {ipAddress}
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>

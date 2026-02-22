@@ -23,9 +23,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RefreshCw,
+  Copy,
 } from "lucide-react";
 import logoSrc from "../../images/logo-transparent.svg";
 import { cn } from "@/utils/tailwind";
+import { toast } from "sonner";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
@@ -39,7 +41,7 @@ export default function MainLayout({
 }) {
   const location = useLocation();
   const { credentials } = useCredentials();
-  const { pharmacy, subscription, creditBalance, products, loading, refresh } = usePharmacy();
+  const { pharmacy, subscription, creditBalance, products, ipAddress, loading, refresh } = usePharmacy();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -346,6 +348,33 @@ export default function MainLayout({
                   </div>
                 )}
               </>
+            )}
+
+            {/* IP Address — always show when available */}
+            {ipAddress && (
+              collapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(ipAddress).then(() => toast.success("IP adresi kopyalandı"))}
+                      className="text-[10px] text-muted-foreground font-mono text-center truncate px-1 hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      IP
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    IP: {ipAddress} (kopyalamak için tıklayın)
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <div
+                  onClick={() => navigator.clipboard.writeText(ipAddress).then(() => toast.success("IP adresi kopyalandı"))}
+                  className="flex items-center justify-between text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded cursor-pointer hover:text-foreground transition-colors group"
+                >
+                  <span>IP: {ipAddress}</span>
+                  <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              )
             )}
             </div>
           </SidebarContent>

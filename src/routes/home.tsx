@@ -29,7 +29,7 @@ import type { CachedRecete } from "@/lib/db";
 import type { ReceteReportResponse } from "@/services/report-api";
 
 function KontrolMerkezi() {
-  const { pharmacy, isPending, loading } = useSubscription();
+  const { pharmacy, isPending, ipAddress, loading } = useSubscription();
 
   const [stats, setStats] = useState({
     totalCached: 0,
@@ -100,6 +100,11 @@ function KontrolMerkezi() {
                 gerekmektedir. Kayıt işlemi tamamlandıktan sonra tüm
                 özelliklere erişebilirsiniz.
               </p>
+              {ipAddress && (
+                <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                  IP Adresiniz: {ipAddress}
+                </p>
+              )}
               <Link to="/kayit">
                 <Button>
                   <Building2 className="h-4 w-4 mr-2" />

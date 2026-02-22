@@ -106,6 +106,18 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     loadData();
   }, [loadData]);
 
+  // Deduct 1 credit locally when a report is generated
+  useEffect(() => {
+    const handleCreditDeducted = () => {
+      setCreditBalance((prev) =>
+        prev ? { ...prev, balance: prev.balance - 1 } : prev,
+      );
+    };
+    window.addEventListener("credit-deducted", handleCreditDeducted);
+    return () =>
+      window.removeEventListener("credit-deducted", handleCreditDeducted);
+  }, []);
+
   return (
     <PharmacyContext.Provider
       value={{

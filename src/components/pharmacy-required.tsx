@@ -11,7 +11,7 @@ interface PharmacyRequiredProps {
 }
 
 export function PharmacyRequired({ children }: PharmacyRequiredProps) {
-  const { pharmacy, subscription, loading } = usePharmacy();
+  const { pharmacy, subscription, ipAddress, loading } = usePharmacy();
 
   if (loading) {
     return (
@@ -36,6 +36,11 @@ export function PharmacyRequired({ children }: PharmacyRequiredProps) {
                 olması gerekmektedir. IP adresinize bağlı bir eczane kaydı
                 bulunamadı.
               </p>
+              {ipAddress && (
+                <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
+                  IP Adresiniz: {ipAddress}
+                </p>
+              )}
             </div>
             <div className="flex gap-2 justify-center">
               <Link to="/ayarlar">
