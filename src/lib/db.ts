@@ -1,6 +1,9 @@
 import Dexie, { type EntityTable, type Table } from "dexie";
 import type { Recete } from "@/types/recete";
-import type { ReceteReportResponse } from "@/services/report-api";
+import type {
+  ReceteReportResponse,
+  SyncedReport,
+} from "@/services/report-api";
 
 export interface CachedRecete extends Recete {
   cachedAt: number;
@@ -113,6 +116,38 @@ export async function getAllCachedAnalysis(): Promise<Record<string, Record<stri
     map[row.receteNo][row.barkod] = row.result;
   }
   return map;
+}
+
+// --- Sync from server ---
+
+export async function syncReportsFromServer(
+  reports: SyncedReport[],
+): Promise<number> {
+  let synced = 0;
+  for (const report of reports) {
+    const existing = await db.analizSonuclari
+      .where("[receteNo+barkod]")
+      .equals([report.receteNo, report.barkod])
+      .first();
+    if (!existing) {
+      const result: ReceteReportResponse = {
+        reportId: report.id,
+        isValid: report.isValid,
+        validityScore: report.validityScore,
+        reportEvolutionDetails: report.reportEvolutionDetails,
+        processedAt: report.processedAt,
+        pharmacyId: "",
+      };
+      await db.analizSonuclari.put({
+        receteNo: report.receteNo,
+        barkod: report.barkod,
+        result,
+        cachedAt: new Date(report.processedAt).getTime(),
+      });
+      synced++;
+    }
+  }
+  return synced;
 }
 
 // --- Clear all ---

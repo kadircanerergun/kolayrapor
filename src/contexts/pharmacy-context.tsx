@@ -7,6 +7,9 @@ import {
   ReactNode,
 } from "react";
 import { subscriptionApiService } from "@/services/subscription-api";
+import { reportApiService } from "@/services/report-api";
+import { syncReportsFromServer } from "@/lib/db";
+import { SYNC_DEFAULT_LOOKBACK_DAYS } from "@/lib/constants";
 import type { ApiPharmacy } from "@/services/subscription-api";
 import type {
   ApiSubscription,
@@ -105,6 +108,30 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Sync reports from server after pharmacy loads
+  useEffect(() => {
+    if (!pharmacy || !pharmacy.isActive) return;
+
+    const syncReports = async () => {
+      try {
+        const SYNC_KEY = "kolayrapor_lastSyncedAt";
+        const lastSyncedAt = localStorage.getItem(SYNC_KEY);
+        const since =
+          lastSyncedAt ||
+          new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const reports = await reportApiService.getMyReports(since);
+        if (reports.length > 0) {
+          await syncReportsFromServer(reports);
+        }
+        localStorage.setItem(SYNC_KEY, new Date().toISOString());
+      } catch (err) {
+        console.error("Report sync failed:", err);
+      }
+    };
+
+    syncReports();
+  }, [pharmacy]);
 
   // Deduct 1 credit locally when a report is generated
   useEffect(() => {

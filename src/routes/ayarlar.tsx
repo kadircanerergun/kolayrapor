@@ -47,8 +47,11 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { ipc } from "@/ipc/manager";
 import { version as appVersion } from "../../package.json";
 import type { SavedCard, CardInfo } from "@/types/subscription";
+import { reportApiService } from "@/services/report-api";
+import { syncReportsFromServer } from "@/lib/db";
+import { SYNC_DEFAULT_LOOKBACK_DAYS } from "@/lib/constants";
 
-type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "uygulama";
+type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "senkronizasyon" | "uygulama";
 
 interface SidebarItem {
   id: SettingsSection;
@@ -81,6 +84,12 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     label: "Ödeme Yöntemleri",
     icon: CreditCard,
     description: "Kayıtlı kartlar",
+  },
+  {
+    id: "senkronizasyon",
+    label: "Senkronizasyon",
+    icon: RefreshCw,
+    description: "Veri senkronizasyonu",
   },
   {
     id: "uygulama",
@@ -122,6 +131,41 @@ function SettingsPage() {
     "idle" | "up-to-date" | "update-available" | "error" | "dev"
   >("idle");
   const [updateMessage, setUpdateMessage] = useState("");
+
+  // Sync state
+  const SYNC_KEY = "kolayrapor_lastSyncedAt";
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(
+    () => localStorage.getItem(SYNC_KEY),
+  );
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const since =
+        lastSyncedAt ||
+        new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const reports = await reportApiService.getMyReports(since);
+      let synced = 0;
+      if (reports.length > 0) {
+        synced = await syncReportsFromServer(reports);
+      }
+      const now = new Date().toISOString();
+      localStorage.setItem(SYNC_KEY, now);
+      setLastSyncedAt(now);
+      setSyncResult(
+        synced > 0
+          ? `${synced} yeni rapor senkronize edildi.`
+          : "Tum raporlar guncel, yeni rapor bulunamadi.",
+      );
+    } catch {
+      setSyncResult("Senkronizasyon sirasinda bir hata olustu.");
+    } finally {
+      setSyncing(false);
+    }
+  }, [lastSyncedAt]);
 
   // Saved cards
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
@@ -1356,6 +1400,64 @@ function SettingsPage() {
     </div>
   );
 
+  const renderSenkronizasyonSection = () => (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold">Senkronizasyon</h2>
+        <p className="text-sm text-muted-foreground">
+          Sunucudaki rapor verilerinizi yerel onbellege senkronize edin
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" />
+                Son Senkronizasyon
+              </p>
+              <p className="text-lg font-semibold">
+                {lastSyncedAt
+                  ? new Date(lastSyncedAt).toLocaleString("tr-TR")
+                  : "Henuz senkronize edilmedi"}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSync}
+              disabled={syncing || !pharmacy || isPending}
+            >
+              {syncing ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Senkronize Ediliyor...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Simdi Senkronize Et
+                </>
+              )}
+            </Button>
+          </div>
+          {syncResult && (
+            <p className="text-sm text-muted-foreground">{syncResult}</p>
+          )}
+          {(!pharmacy || isPending) && (
+            <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
+              <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Senkronizasyon icin aktif bir eczane kaydi gereklidir.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   const renderUygulamaSection = () => (
     <div className="space-y-4">
       <div>
@@ -1431,6 +1533,8 @@ function SettingsPage() {
         return renderAbonelikSection();
       case "odeme":
         return renderOdemeSection();
+      case "senkronizasyon":
+        return renderSenkronizasyonSection();
       case "uygulama":
         return renderUygulamaSection();
     }

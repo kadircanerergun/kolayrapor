@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
+import { BrowserView } from "@/components/browser-view";
+import { PharmacyRequired } from "@/components/pharmacy-required";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -424,7 +426,23 @@ export default function MainLayout({
         </Sidebar>
 
         <main className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">{children}</div>
+          {/* BrowserView always mounted, hidden when not on /gezinti */}
+          <div
+            className="flex-1 flex-col overflow-hidden"
+            style={{ display: location.pathname === "/gezinti" ? "flex" : "none" }}
+          >
+            <PharmacyRequired>
+              <div className="flex h-full flex-col">
+                <BrowserView />
+              </div>
+            </PharmacyRequired>
+          </div>
+          <div
+            className="flex-1 overflow-y-auto flex-col"
+            style={{ display: location.pathname === "/gezinti" ? "none" : "flex" }}
+          >
+            {children}
+          </div>
         </main>
       </div>
     </TooltipProvider>

@@ -1,15 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BrowserView } from "@/components/browser-view";
-import { PharmacyRequired } from "@/components/pharmacy-required";
 
+// BrowserView is rendered persistently in MainLayout to preserve state across tab switches.
+// This route component is intentionally empty.
 function Gezinti() {
-  return (
-    <PharmacyRequired>
-      <div className="flex h-full flex-col">
-        <BrowserView />
-      </div>
-    </PharmacyRequired>
-  );
+  return null;
 }
 
 export const Route = createFileRoute("/gezinti")({

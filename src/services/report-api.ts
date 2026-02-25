@@ -21,6 +21,19 @@ export interface ReceteReportResponse {
   pharmacyId: string;
 }
 
+export interface SyncedReport {
+  id: string;
+  receteNo: string;
+  barkod: string;
+  raporNo: string | null;
+  ilacAd: string | null;
+  isValid: boolean;
+  validityScore: number;
+  reportEvolutionDetails: string;
+  reportIssues: string[] | null;
+  processedAt: string;
+}
+
 export interface ReportFeedbackResponse {
   id: string;
   pharmacyId: string;
@@ -46,6 +59,7 @@ class ReportApiService {
       const response = await apiClient.post(
         `${this.baseUrl}/report/generate`,
         requestData,
+        { timeout: 120_000 },
       );
 
       window.dispatchEvent(new Event("credit-deducted"));
@@ -84,6 +98,15 @@ class ReportApiService {
       `${this.baseUrl}/report/${reportId}/feedback`,
     );
     return response.data || null;
+  }
+
+  async getMyReports(since?: string): Promise<SyncedReport[]> {
+    const params = since ? { since } : {};
+    const response = await apiClient.get(
+      `${this.baseUrl}/report/my-reports`,
+      { params },
+    );
+    return response.data;
   }
 }
 
