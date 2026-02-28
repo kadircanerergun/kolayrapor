@@ -76,7 +76,7 @@ function KontrolMerkezi() {
       <div className="p-6">
         <div className="mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold">Kontrol Merkezi</h1>
+            <h1 className="text-2xl font-bold">Anasayfa</h1>
             <p className="text-muted-foreground">
               Reçete doğrulama ve analiz işlemlerinizi yönetin
             </p>
@@ -124,7 +124,7 @@ function KontrolMerkezi() {
       <div className="p-6">
         <div className="mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold">Kontrol Merkezi</h1>
+            <h1 className="text-2xl font-bold">Anasayfa</h1>
             <p className="text-muted-foreground">
               Reçete doğrulama ve analiz işlemlerinizi yönetin
             </p>
@@ -157,7 +157,7 @@ function KontrolMerkezi() {
     <div className="p-6">
       <div className="mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Kontrol Merkezi</h1>
+          <h1 className="text-2xl font-bold">Anasayfa</h1>
           <p className="text-muted-foreground">
             Reçete doğrulama ve analiz işlemlerinizi yönetin
           </p>

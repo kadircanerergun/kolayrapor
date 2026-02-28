@@ -139,7 +139,7 @@ export default function MainLayout({
     {
       to: "/home",
       icon: FileCheck,
-      label: "Kontrol Merkezi",
+      label: "Anasayfa",
       description: "Özet bilgiler ve son işlemler",
     },
     {
@@ -192,7 +192,7 @@ export default function MainLayout({
                   <h2 className="truncate text-base font-semibold">
                     KolayRapor
                   </h2>
-                  <p className="text-muted-foreground text-xs">Eczane Yönetimi</p>
+                  <p className="text-muted-foreground text-xs">Rapor Kontrol Asistanı</p>
                 </div>
               )}
               <Tooltip>

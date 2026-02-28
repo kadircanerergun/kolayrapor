@@ -11,6 +11,10 @@ import {
   AlertCircle,
   PlugZap,
   Eye,
+  CircleDot,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
 } from "lucide-react";
 import logoSvgRaw from "../../images/logo-transparent.svg?raw";
 import { useCredentials } from "@/contexts/credentials-context";
@@ -20,10 +24,11 @@ import { cn } from "@/utils/tailwind";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
-import { analizCompleted } from "@/store/slices/receteSlice";
+import { analizCompleted, analizSonuclariLoaded } from "@/store/slices/receteSlice";
 import { reportApiService } from "@/services/report-api";
-import { cacheAnalysis } from "@/lib/db";
+import { cacheAnalysis, getCachedAnalysis } from "@/lib/db";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
+import { AnalysisQueuePanel, type QueueItem } from "@/components/analysis-queue-panel";
 import {
   Sheet,
   SheetContent,
@@ -68,6 +73,119 @@ const GET_RECETE_NO_JS = `
   return el ? (el.textContent || '').replace(/\\u00a0/g, ' ').trim() : null;
 })();
 `;
+
+// Detect if we're on the Recete List page (A Grubu only)
+const DETECT_RECETE_LIST_JS = `
+(() => {
+  const headers = document.querySelectorAll('td.menuHeader');
+  let isListPage = false;
+  for (const h of headers) {
+    if ((h.textContent || '').trim() === 'Reçete Listesi Sorgulama') { isListPage = true; break; }
+  }
+  if (!isListPage) return false;
+  const select = document.querySelector('select[name="form1:menu1"]');
+  if (!select) return false;
+  return select.value === '1';
+})();
+`;
+
+// Extract all receteNos from the list table
+const GET_LIST_RECETE_NOS_JS = `
+(() => {
+  const table = document.querySelector('#form1\\\\:tableExReceteList');
+  if (!table) return [];
+  const spans = table.querySelectorAll('span[id$=":text88"]');
+  return Array.from(spans).map(s => (s.textContent || '').replace(/\\u00a0/g, ' ').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+})();
+`;
+
+// Normalize receteNo: collapse all whitespace/nbsp, trim
+function normalizeReceteNo(s: string): string {
+  return s.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Build injection script for recete list status badges
+function buildInjectListStatusJS(
+  allAnalizSonuclari: Record<string, Record<string, any>>,
+): string {
+  // Normalize Redux keys and compute summary
+  const summaryMap: Record<string, { total: number; uygun: number; supheli: number; uygunsuz: number }> = {};
+  for (const [receteNo, sonuclar] of Object.entries(allAnalizSonuclari)) {
+    const key = normalizeReceteNo(receteNo);
+    const results = Object.values(sonuclar);
+    const total = results.length;
+    if (total === 0) continue;
+    const uygun = results.filter((r) => (r.validityScore ?? 0) >= 80).length;
+    const supheli = results.filter((r) => {
+      const s = r.validityScore ?? 0;
+      return s >= 60 && s < 80;
+    }).length;
+    const uygunsuz = total - uygun - supheli;
+    summaryMap[key] = { total, uygun, supheli, uygunsuz };
+  }
+  const analyzedRecetes = JSON.stringify(summaryMap);
+
+  return `
+(() => {
+  // Remove previously injected elements
+  document.querySelectorAll('.kolay-list-badge').forEach(el => el.remove());
+  document.querySelectorAll('.kolay-list-th').forEach(el => el.remove());
+
+  const table = document.querySelector('#form1\\\\:tableExReceteList');
+  if (!table) return;
+
+  const analyzed = ${analyzedRecetes};
+  const norm = (s) => (s || '').replace(/\\u00a0/g, ' ').replace(/\\s+/g, ' ').trim();
+
+  // Add header column — table uses th.headerClass in thead
+  const headerRow = table.querySelector('thead tr');
+  if (headerRow) {
+    const th = document.createElement('th');
+    th.className = 'headerClass kolay-list-th';
+    th.setAttribute('align', 'center');
+    th.setAttribute('scope', 'col');
+    th.innerHTML = '<span class="outputText">Kontrol</span>';
+    headerRow.appendChild(th);
+  }
+
+  // Add status cell to each data row
+  const rows = table.querySelectorAll('tbody > tr.rowClass1, tbody > tr.rowClass2');
+  rows.forEach((row, i) => {
+    // ReceteNo is in span with id pattern form1:tableExReceteList:N:text88
+    const receteSpan = row.querySelector('span[id$=":text88"]');
+    const receteNo = receteSpan ? norm(receteSpan.textContent) : '';
+
+    const td = document.createElement('td');
+    td.className = 'kolay-list-badge';
+    td.setAttribute('align', 'center');
+
+    if (receteNo && analyzed[receteNo]) {
+      const info = analyzed[receteNo];
+      let color = '#22c55e';
+      let label = 'Uygun';
+      if (info.uygunsuz > 0) {
+        color = '#ef4444';
+        label = 'Uygun Değil';
+      } else if (info.supheli > 0) {
+        color = '#f97316';
+        label = 'Şüpheli';
+      }
+      const badge = document.createElement('span');
+      badge.style.cssText = 'display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;color:white;white-space:nowrap;background:' + color + ';';
+      badge.textContent = label;
+      td.appendChild(badge);
+    } else {
+      const label = document.createElement('span');
+      label.textContent = 'Kontrol Edilmedi';
+      label.style.cssText = 'display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;color:white;white-space:nowrap;background:#9ca3af;';
+      td.appendChild(label);
+    }
+
+    row.appendChild(td);
+  });
+})();
+`;
+}
 
 // Convert logo SVG to data URI for injection into webview
 const logoDataUri = `data:image/svg+xml,${encodeURIComponent(logoSvgRaw)}`;
@@ -151,17 +269,23 @@ export function BrowserView() {
   const [loginStatus, setLoginStatus] = useState<LoginStatus>(cachedLoginStatus);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isOnReceteDetay, setIsOnReceteDetay] = useState(false);
+  const [isOnReceteList, setIsOnReceteList] = useState(false);
   const [currentReceteNo, setCurrentReceteNo] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzingBarkod, setAnalyzingBarkod] = useState<string | null>(null);
   const [isReAnalyzing, setIsReAnalyzing] = useState(false);
   const [showKontrolSonuc, setShowKontrolSonuc] = useState(false);
   const [isAutoScraping, setIsAutoScraping] = useState(false);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [showQueue, setShowQueue] = useState(false);
   const loginAttemptRef = useRef(0);
   const autoLoginAttempted = useRef(cachedAutoLoginAttempted);
   const autoScrapedReceteRef = useRef<string | null>(null);
   const performLoginRef = useRef<(skipReload?: boolean) => void>(() => {});
   const analyzeSingleRef = useRef<(barkod: string) => void>(() => {});
+  const allAnalizRef = useRef<Record<string, Record<string, any>>>({});
+  const pendingListKontrolRef = useRef<string | null>(null);
+  const handleAnalyzeAllRef = useRef<() => void>(() => {});
   const { credentials } = useCredentials();
   const { showConfirmDialog } = useDialogContext();
   const navigate = useNavigate();
@@ -171,6 +295,8 @@ export function BrowserView() {
   const analizSonuclari = useAppSelector((s) =>
     currentReceteNo ? s.recete.analizSonuclari[currentReceteNo] ?? {} : {}
   );
+  const allAnalizSonuclari = useAppSelector((s) => s.recete.analizSonuclari);
+  allAnalizRef.current = allAnalizSonuclari;
   const detaylar = useAppSelector((s) => s.recete.detaylar);
   const currentIlaclar = currentReceteNo ? detaylar[currentReceteNo]?.ilaclar : undefined;
 
@@ -203,8 +329,34 @@ export function BrowserView() {
       if (isDetay) {
         const receteNo: string | null = await webview.executeJavaScript(GET_RECETE_NO_JS);
         setCurrentReceteNo(receteNo);
+        setIsOnReceteList(false);
+        // Auto-trigger analysis if navigated from list "Kontrol Et" button
+        if (receteNo && pendingListKontrolRef.current === receteNo) {
+          pendingListKontrolRef.current = null;
+          setTimeout(() => handleAnalyzeAllRef.current(), 500);
+        }
       } else {
         setCurrentReceteNo(null);
+        // Check if we're on the recete list page
+        const isList: boolean = await webview.executeJavaScript(DETECT_RECETE_LIST_JS);
+        setIsOnReceteList(isList);
+        // Load cached analysis from Dexie for visible receteNos, then inject
+        if (isList) {
+          try {
+            const receteNos: string[] = await webview.executeJavaScript(GET_LIST_RECETE_NOS_JS);
+            if (receteNos.length > 0) {
+              const cached = await getCachedAnalysis(receteNos);
+              if (Object.keys(cached).length > 0) {
+                dispatch(analizSonuclariLoaded(cached));
+                // Use freshly loaded data for injection
+                const merged = { ...allAnalizRef.current, ...cached };
+                await webview.executeJavaScript(buildInjectListStatusJS(merged));
+              } else {
+                await webview.executeJavaScript(buildInjectListStatusJS(allAnalizRef.current));
+              }
+            }
+          } catch { /* ignore */ }
+        }
       }
 
       // Auto-detect logged-in state & auto-login on first load
@@ -223,6 +375,7 @@ export function BrowserView() {
       }
     } catch {
       setIsOnReceteDetay(false);
+      setIsOnReceteList(false);
       setCurrentReceteNo(null);
     }
   }, [loginStatus, credentials]);
@@ -234,6 +387,7 @@ export function BrowserView() {
     const onDidNavigate = (e: Electron.DidNavigateEvent) => {
       setCurrentUrl(e.url);
       updateNavState();
+      checkPageState();
     };
 
     const onDidStartLoading = () => setIsLoading(true);
@@ -247,6 +401,25 @@ export function BrowserView() {
       if (e.message.startsWith("KOLAY_ANALYZE_MEDICINE:")) {
         const barkod = e.message.replace("KOLAY_ANALYZE_MEDICINE:", "");
         analyzeSingleRef.current(barkod);
+      }
+      if (e.message.startsWith("KOLAY_LIST_KONTROL:")) {
+        const receteNo = e.message.replace("KOLAY_LIST_KONTROL:", "");
+        // Click the row to navigate to detail, then auto-analyze
+        pendingListKontrolRef.current = receteNo;
+        webview.executeJavaScript(`
+          (() => {
+            const table = document.querySelector('#form1\\\\:tableExReceteList');
+            if (!table) return;
+            const spans = table.querySelectorAll('span[id$=":text88"]');
+            for (const s of spans) {
+              if ((s.textContent || '').replace(/\\u00a0/g, ' ').replace(/\\s+/g, ' ').trim() === '${receteNo}') {
+                const row = s.closest('tr');
+                if (row) row.click();
+                return;
+              }
+            }
+          })();
+        `).catch(() => {});
       }
     };
 
@@ -289,6 +462,20 @@ export function BrowserView() {
     injectAndAttach();
   }, [isOnReceteDetay, analizSonuclari, analyzingBarkod, isAnalyzing]);
 
+  // Inject status badges on recete list page for previously analyzed prescriptions
+  useEffect(() => {
+    if (!isOnReceteList) return;
+    const webview = webviewRef.current;
+    if (!webview) return;
+
+    const inject = async () => {
+      try {
+        await webview.executeJavaScript(buildInjectListStatusJS(allAnalizSonuclari));
+      } catch { /* ignore */ }
+    };
+    inject();
+  }, [isOnReceteList, allAnalizSonuclari]);
+
   // Auto-scrape prescription data in background when on Recete Detay page (Item 9)
   useEffect(() => {
     if (!isOnReceteDetay || !currentReceteNo) return;
@@ -327,30 +514,52 @@ export function BrowserView() {
     if (isAnalyzing || !currentReceteNo) return;
 
     setIsAnalyzing(true);
-    const toastId = toast.loading("Reçete verileri toplanıyor...");
+
+    const items: QueueItem[] = [
+      { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
+      { id: "analyze", label: "İlaçlar analiz ediliyor", status: "pending" },
+    ];
+    setQueueItems(items);
+    setShowQueue(true);
 
     try {
       // 1. Use Playwright to fetch full prescription detail (with rapor + detay)
-      toast.loading("Reçete detayları alınıyor...", { id: toastId });
       await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
+      setQueueItems((prev) =>
+        prev.map((i) =>
+          i.id === "fetch" ? { ...i, status: "done" } :
+          i.id === "analyze" ? { ...i, status: "running" } : i,
+        ),
+      );
 
       // 2. Run analysis for all raporlu medicines
-      toast.loading("İlaçlar analiz ediliyor...", { id: toastId });
       const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
 
       const count = Object.keys(results).length;
+      setQueueItems((prev) =>
+        prev.map((i) => (i.id === "analyze" ? { ...i, status: "done" } : i)),
+      );
       if (count > 0) {
-        toast.success(`Analiz tamamlandı (${count} ilaç)`, { id: toastId });
+        toast.success(`Analiz tamamlandı (${count} ilaç)`);
         setShowKontrolSonuc(true);
       } else {
-        toast.info("Bu reçetede analiz edilecek raporlu ilaç bulunamadı.", { id: toastId });
+        toast.info("Bu reçetede analiz edilecek raporlu ilaç bulunamadı.");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Analiz sırasında hata oluştu.", { id: toastId });
+      setQueueItems((prev) =>
+        prev.map((i) =>
+          i.status === "running" || i.status === "pending"
+            ? { ...i, status: "error", errorMessage: err?.message }
+            : i,
+        ),
+      );
+      toast.error(err?.message || "Analiz sırasında hata oluştu.");
     } finally {
       setIsAnalyzing(false);
     }
   };
+
+  handleAnalyzeAllRef.current = handleAnalyzeAll;
 
   /** Run analysis for a single medicine */
   const runAnalysisSingle = async (barkod: string) => {
@@ -358,15 +567,35 @@ export function BrowserView() {
 
     setIsAnalyzing(true);
     setAnalyzingBarkod(barkod);
-    const toastId = toast.loading("Analiz ediliyor...");
+
+    const items: QueueItem[] = [
+      { id: "fetch", label: "Reçete detayları alınıyor", status: "running" },
+      { id: `analyze-${barkod}`, label: `${barkod} analiz ediliyor`, status: "pending" },
+    ];
+    setQueueItems(items);
+    setShowQueue(true);
 
     try {
       const recete = await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo })).unwrap();
 
       if (!recete) {
-        toast.error("Reçete detayları bulunamadı.", { id: toastId });
+        setQueueItems((prev) =>
+          prev.map((i) =>
+            i.status === "running" || i.status === "pending"
+              ? { ...i, status: "error", errorMessage: "Reçete detayları bulunamadı" }
+              : i,
+          ),
+        );
+        toast.error("Reçete detayları bulunamadı.");
         return;
       }
+
+      setQueueItems((prev) =>
+        prev.map((i) =>
+          i.id === "fetch" ? { ...i, status: "done" } :
+          i.id === `analyze-${barkod}` ? { ...i, status: "running" } : i,
+        ),
+      );
 
       const result = await reportApiService.generateReport(barkod, recete);
 
@@ -376,13 +605,26 @@ export function BrowserView() {
           receteNo: currentReceteNo,
           sonuclar: { [barkod]: result.data },
         }));
-        toast.success("Analiz tamamlandı", { id: toastId });
+        setQueueItems((prev) =>
+          prev.map((i) => (i.id === `analyze-${barkod}` ? { ...i, status: "done" } : i)),
+        );
+        toast.success("Analiz tamamlandı");
         setShowKontrolSonuc(true);
       } else {
-        toast.info("Bu ilaç için analiz sonucu üretilemedi.", { id: toastId });
+        setQueueItems((prev) =>
+          prev.map((i) => (i.id === `analyze-${barkod}` ? { ...i, status: "done" } : i)),
+        );
+        toast.info("Bu ilaç için analiz sonucu üretilemedi.");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Analiz sırasında hata oluştu.", { id: toastId });
+      setQueueItems((prev) =>
+        prev.map((i) =>
+          i.status === "running" || i.status === "pending"
+            ? { ...i, status: "error", errorMessage: err?.message }
+            : i,
+        ),
+      );
+      toast.error(err?.message || "Analiz sırasında hata oluştu.");
     } finally {
       setIsAnalyzing(false);
       setAnalyzingBarkod(null);
@@ -417,11 +659,28 @@ export function BrowserView() {
     if (!currentReceteNo) return;
 
     setIsReAnalyzing(true);
+
+    const items: QueueItem[] = [
+      { id: "reanalyze", label: "Yeniden analiz ediliyor", status: "running" },
+    ];
+    setQueueItems(items);
+    setShowQueue(true);
+
     try {
       await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
       await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
+      setQueueItems((prev) =>
+        prev.map((i) => (i.id === "reanalyze" ? { ...i, status: "done" } : i)),
+      );
       toast.success("Yeniden analiz tamamlandı");
     } catch (err: any) {
+      setQueueItems((prev) =>
+        prev.map((i) =>
+          i.id === "reanalyze"
+            ? { ...i, status: "error", errorMessage: err?.message }
+            : i,
+        ),
+      );
       toast.error(err?.message || "Yeniden analiz sırasında hata oluştu.");
     } finally {
       setIsReAnalyzing(false);
@@ -691,6 +950,63 @@ export function BrowserView() {
         )}
       </div>
 
+      {/* Status bar — shows analysis progress or previous results */}
+      {isOnReceteDetay && (isAnalyzing || Object.keys(analizSonuclari).length > 0) && (
+        <div className="flex items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
+          {isAnalyzing ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin text-primary" />
+              <span className="text-muted-foreground">
+                {analyzingBarkod
+                  ? "İlaç analiz ediliyor..."
+                  : "Reçete kontrol ediliyor..."}
+              </span>
+            </>
+          ) : (
+            (() => {
+              const results = Object.values(analizSonuclari);
+              const total = results.length;
+              const uygun = results.filter((r: any) => r.score >= 80).length;
+              const supheli = results.filter((r: any) => r.score >= 60 && r.score < 80).length;
+              const uygunsuz = results.filter((r: any) => r.score < 60).length;
+              return (
+                <>
+                  <ShieldCheck className="h-3 w-3 text-green-600" />
+                  <span className="text-muted-foreground">
+                    {total} ilaç kontrol edildi
+                  </span>
+                  <span className="mx-1 text-muted-foreground/40">|</span>
+                  {uygun > 0 && (
+                    <span className="flex items-center gap-0.5 text-green-600">
+                      <CircleDot className="h-2.5 w-2.5" />
+                      {uygun} uygun
+                    </span>
+                  )}
+                  {supheli > 0 && (
+                    <span className="flex items-center gap-0.5 text-orange-500">
+                      <ShieldAlert className="h-2.5 w-2.5" />
+                      {supheli} şüpheli
+                    </span>
+                  )}
+                  {uygunsuz > 0 && (
+                    <span className="flex items-center gap-0.5 text-red-500">
+                      <ShieldX className="h-2.5 w-2.5" />
+                      {uygunsuz} uygun değil
+                    </span>
+                  )}
+                  <button
+                    className="ml-auto text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                    onClick={() => setShowKontrolSonuc(true)}
+                  >
+                    Detayları gör
+                  </button>
+                </>
+              );
+            })()
+          )}
+        </div>
+      )}
+
       {/* Login error message */}
       {loginError && (
         <div className="bg-destructive/10 text-destructive flex items-center gap-2 border-b px-3 py-1.5 text-sm">
@@ -700,13 +1016,22 @@ export function BrowserView() {
       )}
 
       {/* Webview */}
-      <webview
-        ref={webviewRef as any}
-        src={MEDULA_URL}
-        partition="persist:medula"
-        className="flex-1"
-        style={{ width: "100%", height: "100%" }}
-      />
+      <div className="relative flex-1">
+        <webview
+          ref={webviewRef as any}
+          src={MEDULA_URL}
+          partition="persist:medula"
+          className="h-full w-full"
+        />
+        <AnalysisQueuePanel
+          items={queueItems}
+          visible={showQueue}
+          onHidden={() => {
+            setShowQueue(false);
+            setQueueItems([]);
+          }}
+        />
+      </div>
 
       {/* Kontrol Sonucu Sheet */}
       <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc}>

@@ -132,6 +132,7 @@ type IlacBilgi = {
   tekDozMiktari: string;
   cinsiyeti: string;
   etkinMadde: string;
+  raporluMaksKullanimDoz?: string;
   sutBilgi?: SutBilgi;
   ozelDurumlar?: OzelDurum[];
   mesajlar?: IlacMesaj[];

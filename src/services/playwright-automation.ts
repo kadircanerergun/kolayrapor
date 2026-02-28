@@ -1225,6 +1225,9 @@ export class PlaywrightAutomationService {
     const etkinMadde =
       etkinMaddeKod && etkinMaddeAd ? `${etkinMaddeKod} - ${etkinMaddeAd}` : "";
 
+    // Raporlu maksimum kullanım dozu (form1:box9 text content)
+    const raporluMaksKullanimDoz = await getTextContent("#form1\\:box9");
+
     // SUT bilgilerini çıkar
     // const sutElements = await page
     //   .locator("#form1\\:tableEx1 > tr.rowClass1")
@@ -1305,6 +1308,7 @@ export class PlaywrightAutomationService {
       tekDozMiktari: this.normalizeText(tekDozMiktari),
       cinsiyeti: this.normalizeText(cinsiyeti),
       etkinMadde: this.normalizeText(etkinMadde),
+      raporluMaksKullanimDoz: this.normalizeText(raporluMaksKullanimDoz) || undefined,
       sutBilgi: sutBilgileri[0] || undefined,
       ozelDurumlar: ozelDurumlar.length > 0 ? ozelDurumlar : undefined,
       esdegerBilgi: esdegerBilgileri,

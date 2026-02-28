@@ -357,9 +357,7 @@ function SearchReport() {
                   </TableHead>
                   <SortableHead label="Reçete No" column="receteNo" />
                   <SortableHead label="Hasta" column="ad" />
-                  <SortableHead label="Kapsam" column="kapsam" />
                   <SortableHead label="Reçete Tarihi" column="receteTarihi" />
-                  <SortableHead label="Son İşlem Tarihi" column="sonIslemTarihi" />
                   <SortableHead label="Veriler Alındı" column="verilerAlindi" className="text-center" />
                   <SortableHead label="Analiz Edildi" column="analizEdildi" className="text-center" />
                   <TableHead className="text-right">İşlemler</TableHead>
@@ -397,8 +395,6 @@ function SearchReport() {
                       <TableCell>
                         {recete.ad} {recete.soyad}
                       </TableCell>
-                      <TableCell>{recete.kapsam}</TableCell>
-                      <TableCell>{recete.receteTarihi}</TableCell>
                       <TableCell>{recete.sonIslemTarihi}</TableCell>
 
                       {/* Veriler Alındı column */}
