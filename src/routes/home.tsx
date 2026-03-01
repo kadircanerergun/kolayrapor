@@ -93,7 +93,7 @@ function KontrolMerkezi() {
                 gerekmektedir.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 flex flex-col">
               <p className="text-sm text-muted-foreground">
                 Reçete sorgulama, rapor doğrulama ve diğer işlemleri
                 yapabilmek için eczanenizin sistemde kayıtlı olması
@@ -101,7 +101,7 @@ function KontrolMerkezi() {
                 özelliklere erişebilirsiniz.
               </p>
               {ipAddress && (
-                <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                <p className="text-lg text-muted-foreground font-mono px-2 py-1 rounded inline-block w-fit">
                   IP Adresiniz: {ipAddress}
                 </p>
               )}

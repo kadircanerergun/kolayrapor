@@ -196,10 +196,6 @@ export function KontrolSonucPanel({
                       ? new Date(report.processedAt).toLocaleString("tr-TR")
                       : "—"}
                   </div>
-                  <div>
-                    <span className="font-medium">Eczane ID:</span>{" "}
-                    {report.pharmacyId || "—"}
-                  </div>
                 </div>
 
                 {/* Feedback / Rating */}

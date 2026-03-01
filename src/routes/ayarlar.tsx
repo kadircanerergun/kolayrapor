@@ -26,6 +26,8 @@ import {
   Hash,
   MapPin,
   Mail,
+  ScrollText,
+  FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,7 +44,18 @@ import { CreditPackagesModal } from "@/components/credit-packages-modal";
 import { toast } from "sonner";
 import { ModalProvider } from "@/components/modal-provider";
 import { useState, useEffect, useCallback } from "react";
-import { subscriptionApiService } from "@/services/subscription-api";
+import { useForm } from "react-hook-form";
+import {
+  subscriptionApiService,
+  type AgreementStatus,
+} from "@/services/subscription-api";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useCredentials } from "@/contexts/credentials-context";
 import { ipc } from "@/ipc/manager";
 import { version as appVersion } from "../../package.json";
@@ -51,7 +64,7 @@ import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
 import { SYNC_DEFAULT_LOOKBACK_DAYS } from "@/lib/constants";
 
-type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "senkronizasyon" | "uygulama";
+type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "senkronizasyon" | "sozlesmeler" | "uygulama";
 
 interface SidebarItem {
   id: SettingsSection;
@@ -90,6 +103,12 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     label: "Senkronizasyon",
     icon: RefreshCw,
     description: "Veri senkronizasyonu",
+  },
+  {
+    id: "sozlesmeler",
+    label: "Sözleşmeler",
+    icon: ScrollText,
+    description: "Kabul edilen sözleşmeler",
   },
   {
     id: "uygulama",
@@ -131,6 +150,52 @@ function SettingsPage() {
     "idle" | "up-to-date" | "update-available" | "error" | "dev"
   >("idle");
   const [updateMessage, setUpdateMessage] = useState("");
+
+  // Agreements state
+  const [agreementStatuses, setAgreementStatuses] = useState<AgreementStatus[]>([]);
+  const [agreementsLoading, setAgreementsLoading] = useState(false);
+  const [previewContent, setPreviewContent] = useState<{
+    title: string;
+    version: string;
+    categoryName: string;
+    content: string;
+  } | null>(null);
+
+  const fetchAgreementStatuses = useCallback(async () => {
+    if (!pharmacy || !pharmacy.isActive) return;
+    setAgreementsLoading(true);
+    try {
+      const statuses = await subscriptionApiService.getAgreementStatus();
+      setAgreementStatuses(statuses);
+    } catch {
+      /* empty */
+    }
+    setAgreementsLoading(false);
+  }, [pharmacy]);
+
+  useEffect(() => {
+    if (activeSection === "sozlesmeler") {
+      fetchAgreementStatuses();
+    }
+  }, [activeSection, fetchAgreementStatuses]);
+
+  const handleViewAgreement = async (status: AgreementStatus) => {
+    try {
+      const version = await subscriptionApiService.getAgreementVersion(
+        status.activeVersionId,
+      );
+      if (version) {
+        setPreviewContent({
+          title: version.title,
+          version: version.version,
+          categoryName: status.categoryName,
+          content: version.content,
+        });
+      }
+    } catch {
+      /* empty */
+    }
+  };
 
   // Sync state
   const SYNC_KEY = "kolayrapor_lastSyncedAt";
@@ -433,23 +498,42 @@ function SettingsPage() {
     }
   };
 
-  // ─── Pharmacy Edit State ────────────────────────────────
-  const [pharmacyForm, setPharmacyForm] = useState({
-    name: pharmacy?.name || "",
-    nameSurname: pharmacy?.nameSurname || "",
-    pharmacyPhone: pharmacy?.pharmacyPhone || "",
-    glnNumber: pharmacy?.glnNumber || "",
-    address: pharmacy?.address || "",
-    phone: pharmacy?.phone || "",
-    email: pharmacy?.email || "",
+  // ─── Pharmacy Edit Form ────────────────────────────────
+  interface PharmacyFormValues {
+    name: string;
+    nameSurname: string;
+    tcNumber: string;
+    pharmacyPhone: string;
+    glnNumber: string;
+    address: string;
+    phone: string;
+    email: string;
+  }
+
+  const {
+    register: registerPharmacy,
+    handleSubmit: handlePharmacySubmit,
+    reset: resetPharmacyForm,
+    formState: { errors: pharmacyErrors, isSubmitting: savingPharmacy },
+  } = useForm<PharmacyFormValues>({
+    defaultValues: {
+      name: pharmacy?.name || "",
+      nameSurname: pharmacy?.nameSurname || "",
+      tcNumber: pharmacy?.tcNumber || "",
+      pharmacyPhone: pharmacy?.pharmacyPhone || "",
+      glnNumber: pharmacy?.glnNumber || "",
+      address: pharmacy?.address || "",
+      phone: pharmacy?.phone || "",
+      email: pharmacy?.email || "",
+    },
   });
-  const [savingPharmacy, setSavingPharmacy] = useState(false);
 
   useEffect(() => {
     if (pharmacy) {
-      setPharmacyForm({
+      resetPharmacyForm({
         name: pharmacy.name || "",
         nameSurname: pharmacy.nameSurname || "",
+        tcNumber: pharmacy.tcNumber || "",
         pharmacyPhone: pharmacy.pharmacyPhone || "",
         glnNumber: pharmacy.glnNumber || "",
         address: pharmacy.address || "",
@@ -457,7 +541,7 @@ function SettingsPage() {
         email: pharmacy.email || "",
       });
     }
-  }, [pharmacy]);
+  }, [pharmacy, resetPharmacyForm]);
 
   if (loading) {
     return (
@@ -467,28 +551,22 @@ function SettingsPage() {
     );
   }
 
-  const handleSavePharmacy = async () => {
-    if (!pharmacyForm.name.trim() || !pharmacyForm.nameSurname.trim() || !pharmacyForm.pharmacyPhone.trim() || !pharmacyForm.glnNumber.trim()) {
-      toast.warning("Eczane adi, ad soyad, eczane telefonu ve GLN numarasi zorunludur.");
-      return;
-    }
-    setSavingPharmacy(true);
+  const onPharmacySubmit = async (data: PharmacyFormValues) => {
     try {
       await subscriptionApiService.updateMyPharmacy({
-        name: pharmacyForm.name.trim(),
-        nameSurname: pharmacyForm.nameSurname.trim(),
-        pharmacyPhone: pharmacyForm.pharmacyPhone.trim(),
-        glnNumber: pharmacyForm.glnNumber.trim(),
-        address: pharmacyForm.address.trim() || undefined,
-        phone: pharmacyForm.phone.trim() || undefined,
-        email: pharmacyForm.email.trim() || undefined,
+        name: data.name.trim(),
+        nameSurname: data.nameSurname.trim(),
+        tcNumber: data.tcNumber.trim(),
+        pharmacyPhone: data.pharmacyPhone.trim(),
+        glnNumber: data.glnNumber.trim(),
+        address: data.address.trim() || undefined,
+        phone: data.phone.trim() || undefined,
+        email: data.email.trim() || undefined,
       });
       toast.success("Eczane bilgileri guncellendi.");
       await refresh();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Guncelleme sirasinda hata olustu.");
-    } finally {
-      setSavingPharmacy(false);
     }
   };
 
@@ -508,14 +586,14 @@ function SettingsPage() {
           <CardContent className="py-6">
             <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
               <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-              <div className="space-y-2">
+              <div className="space-y-2 flex flex-col">
                 <p className="text-sm font-medium">Eczane kaydi bulunamadi</p>
                 <p className="text-sm text-muted-foreground">
                   Bilgilerinizi duzenlemek icin once eczanenizi kaydedin.
                 </p>
                 {ipAddress && (
-                  <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
-                    IP Adresiniz: {ipAddress}
+                  <p className="text-xs text-muted-foreground font-mono px-2 py-1 rounded inline-block">
+                    IP Adresiniz: <strong className={'text-md'}>{ipAddress}</strong>
                   </p>
                 )}
                 <Link to="/kayit">
@@ -544,115 +622,143 @@ function SettingsPage() {
         </Card>
       ) : (
         <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={handlePharmacySubmit(onPharmacySubmit)}>
+            <CardContent className="pt-6 space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ph-name">
+                    Eczane Adi <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ph-name"
+                    {...registerPharmacy("name", { required: "Eczane adi zorunludur" })}
+                    placeholder="Eczane adi"
+                  />
+                  {pharmacyErrors.name && (
+                    <p className="text-xs text-destructive">{pharmacyErrors.name.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ph-nameSurname">
+                    Ad Soyad <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ph-nameSurname"
+                    {...registerPharmacy("nameSurname", { required: "Ad soyad zorunludur" })}
+                    placeholder="Eczaci ad soyad"
+                  />
+                  {pharmacyErrors.nameSurname && (
+                    <p className="text-xs text-destructive">{pharmacyErrors.nameSurname.message}</p>
+                  )}
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="ph-name">
-                  Eczane Adi <span className="text-destructive">*</span>
+                <Label htmlFor="ph-tcNumber">
+                  TC Kimlik No <span className="text-destructive">*</span>
                 </Label>
                 <Input
-                  id="ph-name"
-                  value={pharmacyForm.name}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, name: e.target.value })}
-                  placeholder="Eczane adi"
+                  id="ph-tcNumber"
+                  {...registerPharmacy("tcNumber", {
+                    required: "TC Kimlik No zorunludur",
+                    pattern: {
+                      value: /^\d{11}$/,
+                      message: "TC Kimlik No 11 haneli olmalidir",
+                    },
+                  })}
+                  placeholder="12345678901"
+                  maxLength={11}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ph-nameSurname">
-                  Ad Soyad <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="ph-nameSurname"
-                  value={pharmacyForm.nameSurname}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, nameSurname: e.target.value })}
-                  placeholder="Eczaci ad soyad"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="ph-pharmacyPhone">
-                  Eczane Telefonu <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="ph-pharmacyPhone"
-                  type="tel"
-                  value={pharmacyForm.pharmacyPhone}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, pharmacyPhone: e.target.value })}
-                  placeholder="0 (2XX) XXX XX XX"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ph-glnNumber">
-                  GLN Numarasi <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="ph-glnNumber"
-                  value={pharmacyForm.glnNumber}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, glnNumber: e.target.value })}
-                  placeholder="GLN numarasi"
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="ph-address">Adres</Label>
-                <Input
-                  id="ph-address"
-                  value={pharmacyForm.address}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, address: e.target.value })}
-                  placeholder="Eczane adresi"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ph-phone">Telefon (Kisisel)</Label>
-                <Input
-                  id="ph-phone"
-                  type="tel"
-                  value={pharmacyForm.phone}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, phone: e.target.value })}
-                  placeholder="0 (5XX) XXX XX XX"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="ph-email">E-posta</Label>
-                <Input
-                  id="ph-email"
-                  type="email"
-                  value={pharmacyForm.email}
-                  onChange={(e) => setPharmacyForm({ ...pharmacyForm, email: e.target.value })}
-                  placeholder="eczane@ornek.com"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={handleSavePharmacy}
-                disabled={savingPharmacy || !pharmacyForm.name.trim() || !pharmacyForm.nameSurname.trim() || !pharmacyForm.pharmacyPhone.trim() || !pharmacyForm.glnNumber.trim()}
-                size="sm"
-              >
-                {savingPharmacy ? (
-                  <>
-                    <Spinner size="sm" className="mr-2" />
-                    Kaydediliyor...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Kaydet
-                  </>
+                {pharmacyErrors.tcNumber && (
+                  <p className="text-xs text-destructive">{pharmacyErrors.tcNumber.message}</p>
                 )}
-              </Button>
-            </div>
-          </CardContent>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ph-pharmacyPhone">
+                    Eczane Telefonu <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ph-pharmacyPhone"
+                    type="tel"
+                    {...registerPharmacy("pharmacyPhone", { required: "Eczane telefonu zorunludur" })}
+                    placeholder="0 (2XX) XXX XX XX"
+                  />
+                  {pharmacyErrors.pharmacyPhone && (
+                    <p className="text-xs text-destructive">{pharmacyErrors.pharmacyPhone.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ph-glnNumber">
+                    GLN Numarasi <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ph-glnNumber"
+                    {...registerPharmacy("glnNumber", { required: "GLN numarasi zorunludur" })}
+                    placeholder="GLN numarasi"
+                  />
+                  {pharmacyErrors.glnNumber && (
+                    <p className="text-xs text-destructive">{pharmacyErrors.glnNumber.message}</p>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ph-address">Adres</Label>
+                  <Input
+                    id="ph-address"
+                    {...registerPharmacy("address")}
+                    placeholder="Eczane adresi"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ph-phone">Telefon (Kisisel)</Label>
+                  <Input
+                    id="ph-phone"
+                    type="tel"
+                    {...registerPharmacy("phone")}
+                    placeholder="0 (5XX) XXX XX XX"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ph-email">E-posta</Label>
+                  <Input
+                    id="ph-email"
+                    type="email"
+                    {...registerPharmacy("email")}
+                    placeholder="eczane@ornek.com"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  type="submit"
+                  disabled={savingPharmacy}
+                  size="sm"
+                >
+                  {savingPharmacy ? (
+                    <>
+                      <Spinner size="sm" className="mr-2" />
+                      Kaydediliyor...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Kaydet
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </form>
         </Card>
       )}
     </div>
@@ -672,7 +778,7 @@ function SettingsPage() {
           <CardContent className="py-6">
             <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
               <Building2 className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-              <div className="space-y-2">
+              <div className="space-y-2 flex flex-col">
                 <p className="text-sm font-medium">Eczane kaydı bulunamadı</p>
                 <p className="text-sm text-muted-foreground">
                   SGK kimlik bilgilerinizi kaydetmek için önce eczanenizi
@@ -683,7 +789,7 @@ function SettingsPage() {
                     IP Adresiniz: {ipAddress}
                   </p>
                 )}
-                <Link to="/kayit">
+                <Link to="/kayit" className={'flex'}>
                   <Button variant="outline" size="sm">
                     <Building2 className="h-4 w-4 mr-2" />
                     Eczane Kaydına Git
@@ -1150,7 +1256,7 @@ function SettingsPage() {
           <CardContent className="py-6">
             <div className="flex items-start gap-3 rounded-lg border p-4 bg-muted/50">
               <CreditCard className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-              <div className="space-y-1">
+              <div className="space-y-1 flex flex-col">
                 <p className="text-sm font-medium">
                   {isPending
                     ? "Eczane kaydınız onay bekliyor"
@@ -1162,7 +1268,7 @@ function SettingsPage() {
                     : "Kart kaydetmek için önce eczanenizi kaydedin."}
                 </p>
                 {!isPending && ipAddress && (
-                  <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded inline-block">
+                  <p className="text-xs text-muted-foreground font-mono px-2 py-1 rounded inline-block">
                     IP Adresiniz: {ipAddress}
                   </p>
                 )}
@@ -1458,6 +1564,98 @@ function SettingsPage() {
     </div>
   );
 
+  const renderSozlesmelerSection = () => (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold">Sözleşmeler</h2>
+        <p className="text-sm text-muted-foreground">
+          Kabul ettiğiniz sözleşmelerin durumu
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {agreementsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner size="lg" />
+            </div>
+          ) : agreementStatuses.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Henüz sözleşme bulunmuyor.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {agreementStatuses.map((status) => (
+                <div
+                  key={status.categoryId}
+                  className="flex items-center justify-between rounded-lg border p-4"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {status.categoryName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {status.activeVersionTitle}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      variant={status.accepted ? "default" : "destructive"}
+                      className="gap-1"
+                    >
+                      {status.accepted ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3" />
+                          Kabul Edildi
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-3 w-3" />
+                          Kabul Edilmedi
+                        </>
+                      )}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleViewAgreement(status)}
+                    >
+                      <FileText className="mr-1 h-3.5 w-3.5" />
+                      Görüntüle
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!previewContent}
+        onOpenChange={() => setPreviewContent(null)}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{previewContent?.title}</DialogTitle>
+            <DialogDescription>
+              {previewContent?.categoryName} — Sürüm {previewContent?.version}
+            </DialogDescription>
+          </DialogHeader>
+          <div
+            className="max-h-96 overflow-y-auto rounded-md border p-4 text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{
+              __html: previewContent?.content || "",
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+
   const renderUygulamaSection = () => (
     <div className="space-y-4">
       <div>
@@ -1535,6 +1733,8 @@ function SettingsPage() {
         return renderOdemeSection();
       case "senkronizasyon":
         return renderSenkronizasyonSection();
+      case "sozlesmeler":
+        return renderSozlesmelerSection();
       case "uygulama":
         return renderUygulamaSection();
     }

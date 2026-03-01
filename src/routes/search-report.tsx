@@ -1,38 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchByDateRange } from "@/blocks/search-by-date-range";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Recete, ReceteOzet } from "@/types/recete";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
+import { useRef, useState } from "react";
+import { Recete } from "@/types/recete";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Database, Eye, FlaskConical, Loader2, StopCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  ChevronDown,
+  Database,
+  FlaskConical,
+  Loader2,
+  StopCircle,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
 import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { useModal } from "@/hooks/useModal";
@@ -45,10 +28,13 @@ import {
   clearReceteSelection,
   setBulkProgress,
 } from "@/store/slices/receteSlice";
-import { searchPrescriptionDetail, analyzePrescription } from "@/store/slices/playwrightSlice";
+import {
+  searchPrescriptionDetail,
+  analyzePrescription,
+} from "@/store/slices/playwrightSlice";
 import type { ReceteReportResponse } from "@/services/report-api";
-import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 import { PharmacyRequired } from "@/components/pharmacy-required";
+import { ReceteTable } from "@/components/recete-table";
 
 function SearchReport() {
   const dispatch = useAppDispatch();
@@ -66,54 +52,61 @@ function SearchReport() {
   const modal = useModal();
   const pageSize = 40;
 
-  const [analizSheetReceteNo, setAnalizSheetReceteNo] = useState<string | null>(null);
   const bulkCancelRef = useRef(false);
 
-  type SortKey = keyof ReceteOzet | "verilerAlindi" | "analizEdildi";
-  type SortDir = "asc" | "desc";
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const openDetailModal = (prescriptionData: Recete) => {
+    modal.openModal(
+      <PrescriptionMedicinesModal
+        prescriptionData={prescriptionData}
+        onQueryMedicine={(medicine) => {
+          console.log("Querying medicine:", medicine);
+        }}
+      />,
+      {
+        title: "Reçete Detayları",
+        size: "6xl",
+      },
+    );
+  };
 
-  const handleSort = useCallback((key: SortKey) => {
-    setSortDir((prev) => (sortKey === key ? (prev === "asc" ? "desc" : "asc") : "asc"));
-    setSortKey(key);
-    dispatch(setCurrentPage(1));
-  }, [sortKey, dispatch]);
+  const handleSorgula = async (receteNo: string, force: boolean) => {
+    const result = await dispatch(
+      searchPrescriptionDetail({ receteNo, force }),
+    );
 
-  const sortedReceteler = useMemo(() => {
-    if (!sortKey) return receteler;
-    return [...receteler].sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
+    if (searchPrescriptionDetail.fulfilled.match(result)) {
+      openDetailModal(result.payload as Recete);
+    } else {
+      dialog.showAlert({
+        title: "Hata",
+        description: `SGK portalına giderken hata: ${result.error?.message || "Bilinmeyen hata"}`,
+      });
+    }
+  };
 
-      if (sortKey === "verilerAlindi") {
-        aVal = detaylar[a.receteNo] ? 1 : 0;
-        bVal = detaylar[b.receteNo] ? 1 : 0;
-      } else if (sortKey === "analizEdildi") {
-        // Sort by analysis completeness: 0 = none, 0.x = partial, 1 = full
-        const aAnalyzed = Object.keys(analizSonuclari[a.receteNo] ?? {}).length;
-        const aTotal = detaylar[a.receteNo]?.ilaclar?.filter((m) => m.raporluMu).length ?? 0;
-        const bAnalyzed = Object.keys(analizSonuclari[b.receteNo] ?? {}).length;
-        const bTotal = detaylar[b.receteNo]?.ilaclar?.filter((m) => m.raporluMu).length ?? 0;
-        aVal = aAnalyzed === 0 ? 0 : aTotal > 0 ? aAnalyzed / aTotal : 1;
-        bVal = bAnalyzed === 0 ? 0 : bTotal > 0 ? bAnalyzed / bTotal : 1;
-      } else {
-        aVal = a[sortKey] ?? "";
-        bVal = b[sortKey] ?? "";
+  const handleDetay = (receteNo: string) => {
+    const cached = detaylar[receteNo];
+    if (cached) openDetailModal(cached);
+  };
+
+  const handleAnalizEt = async (receteNo: string, force: boolean) => {
+    const result = await dispatch(analyzePrescription({ receteNo, force }));
+    if (analyzePrescription.fulfilled.match(result)) {
+      const sonuclar = result.payload as Record<string, ReceteReportResponse>;
+      const count = Object.keys(sonuclar).length;
+      if (count === 0) {
+        dialog.showAlert({
+          title: "Analiz Tamamlandı",
+          description: "Raporlu ilaç bulunamadı.",
+        });
       }
-
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [receteler, sortKey, sortDir, detaylar, analizSonuclari]);
-
-  const totalPages = sortedReceteler.length ? Math.ceil(sortedReceteler.length / pageSize) : 0;
-  const paginatedReceteler = useMemo(() => {
-    if (!sortedReceteler.length) return [];
-    const start = (currentPage - 1) * pageSize;
-    return sortedReceteler.slice(start, start + pageSize);
-  }, [sortedReceteler, currentPage]);
+    } else {
+      dialog.showAlert({
+        title: "Hata",
+        description: `Analiz sırasında hata: ${result.error?.message || "Bilinmeyen hata"}`,
+      });
+    }
+  };
 
   const handleSelectRecete = (receteNo: string, checked: boolean) => {
     if (checked) {
@@ -135,69 +128,19 @@ function SearchReport() {
     }
   };
 
-  const openDetailModal = (prescriptionData: Recete) => {
-    modal.openModal(
-      <PrescriptionMedicinesModal
-        prescriptionData={prescriptionData}
-        onQueryMedicine={(medicine) => {
-          console.log("Querying medicine:", medicine);
-        }}
-      />,
-      {
-        title: "Reçete Detayları",
-        size: "6xl",
-      },
-    );
-  };
-
-  const handleSorgula = async (receteNo: string, force = false) => {
-    const result = await dispatch(searchPrescriptionDetail({ receteNo, force }));
-
-    if (searchPrescriptionDetail.fulfilled.match(result)) {
-      openDetailModal(result.payload as Recete);
-    } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `SGK portalına giderken hata: ${result.error?.message || "Bilinmeyen hata"}`,
-      });
-    }
-  };
-
-  const handleDetay = (receteNo: string) => {
-    const cached = detaylar[receteNo];
-    if (cached) openDetailModal(cached);
-  };
-
-  const handleAnalizEt = async (receteNo: string, force = false) => {
-    const result = await dispatch(analyzePrescription({ receteNo, force }));
-    if (analyzePrescription.fulfilled.match(result)) {
-      const sonuclar = result.payload as Record<string, ReceteReportResponse>;
-      const count = Object.keys(sonuclar).length;
-      if (count === 0) {
-        dialog.showAlert({
-          title: "Analiz Tamamlandı",
-          description: "Raporlu ilaç bulunamadı.",
-        });
-      }
-    } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `Analiz sırasında hata: ${result.error?.message || "Bilinmeyen hata"}`,
-      });
-    }
-  };
-
-  const handleAnalizSonuclariGoster = (receteNo: string) => {
-    setAnalizSheetReceteNo(receteNo);
-  };
-
-
   const handleBulkVerileriAl = async () => {
     bulkCancelRef.current = false;
     const selected = [...selectedRecetes];
     for (let i = 0; i < selected.length; i++) {
       if (bulkCancelRef.current) break;
-      dispatch(setBulkProgress({ type: "verileriAl", current: i + 1, total: selected.length, currentReceteNo: selected[i] }));
+      dispatch(
+        setBulkProgress({
+          type: "verileriAl",
+          current: i + 1,
+          total: selected.length,
+          currentReceteNo: selected[i],
+        }),
+      );
       await dispatch(searchPrescriptionDetail({ receteNo: selected[i] }));
     }
     dispatch(setBulkProgress(null));
@@ -208,7 +151,14 @@ function SearchReport() {
     const selected = [...selectedRecetes];
     for (let i = 0; i < selected.length; i++) {
       if (bulkCancelRef.current) break;
-      dispatch(setBulkProgress({ type: "analizEt", current: i + 1, total: selected.length, currentReceteNo: selected[i] }));
+      dispatch(
+        setBulkProgress({
+          type: "analizEt",
+          current: i + 1,
+          total: selected.length,
+          currentReceteNo: selected[i],
+        }),
+      );
       await dispatch(analyzePrescription({ receteNo: selected[i] }));
     }
     dispatch(setBulkProgress(null));
@@ -218,326 +168,116 @@ function SearchReport() {
     bulkCancelRef.current = true;
   };
 
-
-  const SortableHead = ({ label, column, className }: { label: string; column: SortKey; className?: string }) => (
-    <TableHead className={className}>
-      <button
-        className="flex items-center gap-1 hover:text-foreground transition-colors"
-        onClick={() => handleSort(column)}
-      >
-        {label}
-        <ArrowUpDown className={`h-3 w-3 ${sortKey === column ? "text-foreground" : "text-muted-foreground/50"}`} />
-      </button>
-    </TableHead>
-  );
-
-  const isAllSelected = receteler.length > 0 && selectedRecetes.length === receteler.length;
-  const isSomeSelected = selectedRecetes.length > 0 && selectedRecetes.length < receteler.length;
+  const isBusy =
+    loadingRecete !== null || analyzingRecete !== null || bulkProgress !== null;
 
   return (
     <PharmacyRequired>
-    <div className="p-6">
-      <div className="mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">Toplu Kontrol</h1>
-          <p className="text-muted-foreground">
-            SGK sisteminde reçete bilgilerini sorgulayın
-          </p>
-        </div>
-        <div className={"flex flex-row gap-3 overflow-y-hidden"}>
-          <SearchByDateRange />
-        </div>
-        {totalPages > 1 && (
-          <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-            <span className="text-muted-foreground text-sm">
-              {receteler.length} sonuctan {(currentPage - 1) * pageSize + 1}-
-              {Math.min(currentPage * pageSize, receteler.length)} arasi
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === 1}
-                onClick={() => dispatch(setCurrentPage(currentPage - 1))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Onceki
-              </Button>
-              <span className="text-sm font-medium">
-                {currentPage} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage === totalPages}
-                onClick={() => dispatch(setCurrentPage(currentPage + 1))}
-              >
-                Sonraki
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+      <div className="p-6">
+        <div className="mx-auto">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold">Toplu Kontrol</h1>
+            <p className="text-muted-foreground">
+              SGK sisteminde reçete bilgilerini sorgulayın
+            </p>
           </div>
-        )}
-        {receteler.length > 0 && (
-          <div className="mt-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">
-                Bulunan Reçeteler ({receteler.length})
-              </h2>
-              {selectedRecetes.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" disabled={!!bulkProgress}>
-                      Toplu İşlem ({selectedRecetes.length})
-                      <ChevronDown className="ml-1 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64">
-                    <DropdownMenuItem onClick={handleBulkVerileriAl}>
-                      <Database className="h-4 w-4 text-blue-500" />
-                      Sorgula
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleBulkAnalizEt}>
-                      <FlaskConical className="h-4 w-4 text-purple-500" />
-                      Kontrol Et
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
+          <div className={"flex flex-row gap-3 overflow-y-hidden"}>
+            <SearchByDateRange />
+          </div>
 
-            {bulkProgress && (
-              <div className="mb-4 rounded-lg border bg-muted/30 p-3">
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {bulkProgress.type === "verileriAl" && "Veriler alınıyor..."}
-                    {bulkProgress.type === "analizEt" && "Analiz ediliyor..."}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground font-medium">
-                      {bulkProgress.current}/{bulkProgress.total}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-7 px-2 text-xs"
-                      onClick={handleBulkCancel}
-                    >
-                      <StopCircle className="h-3.5 w-3.5 mr-1" />
-                      Durdur
-                    </Button>
-                  </div>
-                </div>
-                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all duration-300"
-                    style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  İşleniyor: {bulkProgress.currentReceteNo}
-                </p>
+          {receteler.length > 0 && (
+            <div className="mt-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  Bulunan Reçeteler ({receteler.length})
+                </h2>
+                {selectedRecetes.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" disabled={!!bulkProgress}>
+                        Toplu İşlem ({selectedRecetes.length})
+                        <ChevronDown className="ml-1 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <DropdownMenuItem onClick={handleBulkVerileriAl}>
+                        <Database className="h-4 w-4 text-blue-500" />
+                        Sorgula
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleBulkAnalizEt}>
+                        <FlaskConical className="h-4 w-4 text-purple-500" />
+                        Kontrol Et
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
-            )}
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={isAllSelected}
-                      onCheckedChange={handleSelectAll}
-                      ref={(checkbox) => {
-                        if (checkbox) {
-                          checkbox.indeterminate = isSomeSelected;
-                        }
+              {bulkProgress && (
+                <div className="mb-4 rounded-lg border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {bulkProgress.type === "verileriAl" &&
+                        "Veriler alınıyor..."}
+                      {bulkProgress.type === "analizEt" &&
+                        "Analiz ediliyor..."}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground font-medium">
+                        {bulkProgress.current}/{bulkProgress.total}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 px-2 text-xs"
+                        onClick={handleBulkCancel}
+                      >
+                        <StopCircle className="h-3.5 w-3.5 mr-1" />
+                        Durdur
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-300"
+                      style={{
+                        width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
                       }}
                     />
-                  </TableHead>
-                  <SortableHead label="Reçete No" column="receteNo" />
-                  <SortableHead label="Hasta" column="ad" />
-                  <SortableHead label="Reçete Tarihi" column="receteTarihi" />
-                  <SortableHead label="Veriler Alındı" column="verilerAlindi" className="text-center" />
-                  <SortableHead label="Analiz Edildi" column="analizEdildi" className="text-center" />
-                  <TableHead className="text-right">İşlemler</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedReceteler.map((recete) => {
-                  const hasCachedDetail = !!detaylar[recete.receteNo];
-                  const isLoadingDetail = loadingRecete === recete.receteNo;
-                  const isAnalyzing = analyzingRecete === recete.receteNo;
-                  const isBusy = loadingRecete !== null || analyzingRecete !== null || bulkProgress !== null;
-
-                  // Partial analysis detection
-                  const analyzedBarkods = analizSonuclari[recete.receteNo];
-                  const analyzedCount = analyzedBarkods ? Object.keys(analyzedBarkods).length : 0;
-                  const raporluIlaclar = detaylar[recete.receteNo]?.ilaclar?.filter((m) => m.raporluMu) ?? [];
-                  const totalRaporlu = raporluIlaclar.length;
-                  const hasAnalysis = analyzedCount > 0;
-                  const isFullyAnalyzed = hasAnalysis && totalRaporlu > 0 && analyzedCount >= totalRaporlu;
-                  const isPartiallyAnalyzed = hasAnalysis && totalRaporlu > 0 && analyzedCount < totalRaporlu;
-
-                  return (
-                    <TableRow key={recete.receteNo}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedRecetes.includes(recete.receteNo)}
-                          onCheckedChange={(checked) =>
-                            handleSelectRecete(recete.receteNo, !!checked)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {recete.receteNo}
-                      </TableCell>
-                      <TableCell>
-                        {recete.ad} {recete.soyad}
-                      </TableCell>
-                      <TableCell>{recete.sonIslemTarihi}</TableCell>
-
-                      {/* Veriler Alındı column */}
-                      <TableCell className="text-center">
-                        {isLoadingDetail ? (
-                          <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : hasCachedDetail ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => handleDetay(recete.receteNo)}
-                                  className="mx-auto flex cursor-pointer items-center justify-center"
-                                >
-                                  <Eye className="h-5 w-5 text-green-500" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Detayları görüntüle</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          <Circle className="mx-auto h-5 w-5 text-muted-foreground/30" />
-                        )}
-                      </TableCell>
-
-                      {/* Analiz Edildi column */}
-                      <TableCell className="text-center">
-                        {isAnalyzing ? (
-                          <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : hasAnalysis ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => handleAnalizSonuclariGoster(recete.receteNo)}
-                                  className="mx-auto flex cursor-pointer items-center justify-center gap-1"
-                                >
-                                  {isPartiallyAnalyzed ? (
-                                    <>
-                                      <CircleDot className="h-5 w-5 text-yellow-500" />
-                                      <span className="text-xs text-yellow-600 font-medium">
-                                        {analyzedCount}/{totalRaporlu}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <Eye className="h-5 w-5 text-green-500" />
-                                  )}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {isPartiallyAnalyzed
-                                  ? `${analyzedCount}/${totalRaporlu} raporlu ilaç analiz edildi`
-                                  : "Analiz sonuçlarını görüntüle"}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          <Circle className="mx-auto h-5 w-5 text-muted-foreground/30" />
-                        )}
-                      </TableCell>
-
-                      {/* İşlemler column */}
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant={hasCachedDetail ? "ghost" : "default"}
-                            onClick={() => handleSorgula(recete.receteNo, hasCachedDetail)}
-                            disabled={isBusy}
-                          >
-                            Sorgula
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAnalizEt(recete.receteNo, hasAnalysis)}
-                            disabled={isBusy}
-                          >
-                            <FlaskConical className="h-4 w-4" />
-                            {hasAnalysis ? "Yeniden Kontrol Et" : "Kontrol Et"}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-
-            {totalPages > 1 && (
-              <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-                <span className="text-muted-foreground text-sm">
-                  {receteler.length} sonuctan {(currentPage - 1) * pageSize + 1}
-                  -{Math.min(currentPage * pageSize, receteler.length)} arasi
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage === 1}
-                    onClick={() => dispatch(setCurrentPage(currentPage - 1))}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Onceki
-                  </Button>
-                  <span className="text-sm font-medium">
-                    {currentPage} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={currentPage === totalPages}
-                    onClick={() => dispatch(setCurrentPage(currentPage + 1))}
-                  >
-                    Sonraki
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    İşleniyor: {bulkProgress.currentReceteNo}
+                  </p>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <ModalProvider modal={modal.modal} onClose={modal.closeModal} />
+              )}
 
-      <Sheet open={!!analizSheetReceteNo} onOpenChange={(open) => !open && setAnalizSheetReceteNo(null)}>
-        <SheetContent className="sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Kontrol Sonucu</SheetTitle>
-            <SheetDescription>Reçete: {analizSheetReceteNo}</SheetDescription>
-          </SheetHeader>
-          <div className="mt-4">
-            <KontrolSonucPanel
-              receteNo={analizSheetReceteNo || ""}
-              sonuclar={analizSheetReceteNo ? analizSonuclari[analizSheetReceteNo] ?? {} : {}}
-              ilaclar={analizSheetReceteNo ? detaylar[analizSheetReceteNo]?.ilaclar : undefined}
-              onReAnalyze={() => analizSheetReceteNo && handleAnalizEt(analizSheetReceteNo, true)}
-              isReAnalyzing={analyzingRecete === analizSheetReceteNo}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
-    </div>
+              <ReceteTable
+                rows={receteler}
+                analizSonuclari={analizSonuclari}
+                detaylar={detaylar}
+                loadingRecete={loadingRecete}
+                analyzingRecete={analyzingRecete}
+                selectable
+                selectedRecetes={selectedRecetes}
+                onSelectRecete={handleSelectRecete}
+                onSelectAll={handleSelectAll}
+                showHasta
+                showFilters
+                compact
+                onSorgula={handleSorgula}
+                onAnalizEt={handleAnalizEt}
+                onDetay={handleDetay}
+                pageSize={pageSize}
+                currentPage={currentPage}
+                onPageChange={(page) => dispatch(setCurrentPage(page))}
+                isBusy={isBusy}
+              />
+            </div>
+          )}
+        </div>
+        <ModalProvider modal={modal.modal} onClose={modal.closeModal} />
+      </div>
     </PharmacyRequired>
   );
 }

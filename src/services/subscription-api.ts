@@ -61,6 +61,7 @@ export interface ApiPharmacy {
   nameSurname: string;
   pharmacyPhone: string;
   glnNumber: string;
+  tcNumber: string | null;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -78,10 +79,37 @@ export interface RegisterPharmacyData {
   nameSurname: string;
   pharmacyPhone: string;
   glnNumber: string;
+  tcNumber?: string;
   address?: string;
   phone?: string;
   email?: string;
   ipAddress?: string;
+  acceptedAgreementVersionIds?: string[];
+}
+
+export interface PendingAgreement {
+  id: string;
+  categoryId: string;
+  version: string;
+  title: string;
+  content: string;
+  requiresReApproval: boolean;
+  isActive: boolean;
+  publishedAt: string;
+  category?: {
+    id: string;
+    slug: string;
+    name: string;
+  };
+}
+
+export interface AgreementStatus {
+  categoryId: string;
+  categoryName: string;
+  categorySlug: string;
+  activeVersionId: string;
+  activeVersionTitle: string;
+  accepted: boolean;
 }
 
 class SubscriptionApiService {
@@ -108,7 +136,7 @@ class SubscriptionApiService {
   }
 
   async updateMyPharmacy(
-    data: Partial<Pick<ApiPharmacy, "name" | "nameSurname" | "pharmacyPhone" | "glnNumber" | "address" | "phone" | "email">>,
+    data: Partial<Pick<ApiPharmacy, "name" | "nameSurname" | "pharmacyPhone" | "glnNumber" | "tcNumber" | "address" | "phone" | "email">>,
   ): Promise<ApiPharmacy> {
     const response = await apiClient.patch<ApiPharmacy>(
       `${API_BASE_URL}/my-pharmacy`,
@@ -271,6 +299,68 @@ class SubscriptionApiService {
           error.message ||
           "İptal işlemi başarısız oldu",
       };
+    }
+  }
+
+  // ─── Agreements ──────────────────────────────────────────
+
+  async getRegistrationAgreements(
+    slugs?: string[],
+  ): Promise<PendingAgreement[]> {
+    try {
+      const params = slugs?.length ? `?slugs=${slugs.join(",")}` : "";
+      const response = await apiClient.get<PendingAgreement[]>(
+        `${API_BASE_URL}/my-pharmacy/registration-agreements${params}`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
+  }
+
+  async getAgreementVersion(
+    versionId: string,
+  ): Promise<PendingAgreement | null> {
+    try {
+      const response = await apiClient.get<PendingAgreement>(
+        `${API_BASE_URL}/my-pharmacy/agreements/versions/${versionId}`,
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async getPendingAgreements(): Promise<PendingAgreement[]> {
+    try {
+      const response = await apiClient.get<PendingAgreement[]>(
+        `${API_BASE_URL}/my-pharmacy/agreements/pending`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
+  }
+
+  async getAgreementStatus(): Promise<AgreementStatus[]> {
+    try {
+      const response = await apiClient.get<AgreementStatus[]>(
+        `${API_BASE_URL}/my-pharmacy/agreements/status`,
+      );
+      return response.data;
+    } catch {
+      return [];
+    }
+  }
+
+  async acceptAgreement(versionId: string): Promise<boolean> {
+    try {
+      await apiClient.post(
+        `${API_BASE_URL}/my-pharmacy/agreements/${versionId}/accept`,
+      );
+      return true;
+    } catch {
+      return false;
     }
   }
 

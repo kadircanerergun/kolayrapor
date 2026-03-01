@@ -224,7 +224,7 @@ function OdemePage() {
 
   if (!pharmacy || isPending) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 space-y-4">
+      <div className="flex flex-col p-12 space-y-4">
         <p className="text-muted-foreground">
           {isPending
             ? "Eczane kaydınız henüz onaylanmadı. Onay sonrası ödeme yapabilirsiniz."
