@@ -1002,7 +1002,7 @@ export class PlaywrightAutomationService {
       const msj = row.locator(`span[id="f:tbl1:${i}:t11"]`);
 
       const periyotValue = (await periyotTipi.count())
-        ? await periyotTipi.inputValue()
+        ? await periyotTipi.locator('option:checked').textContent()
         : "";
       const adValue = await adi.textContent();
       const barkodValue = await barkodInput.first().inputValue();
