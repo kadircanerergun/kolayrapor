@@ -33,6 +33,7 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
+import { GlobalTaskPanel } from "@/components/global-task-panel";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -381,10 +382,10 @@ export default function MainLayout({
             </div>
           </SidebarContent>
 
-          <SidebarFooter className={cn("space-y-2 mb-4", collapsed && "px-2")}>
+          <SidebarFooter className={cn(collapsed && "px-2")}>
 
             {/* Debug Mode Toggle */}
-            <div className="space-y-2">
+          {/*  <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -420,7 +421,7 @@ export default function MainLayout({
                   </p>
                 </>
               )}
-            </div>
+            </div>*/}
 
           </SidebarFooter>
         </Sidebar>
@@ -445,6 +446,7 @@ export default function MainLayout({
           </div>
         </main>
       </div>
+      <GlobalTaskPanel />
     </TooltipProvider>
   );
 }

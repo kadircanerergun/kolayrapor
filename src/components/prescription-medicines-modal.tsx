@@ -23,6 +23,7 @@ import { CircleCheck, Eye, FlaskConical, Loader2, RefreshCw } from 'lucide-react
 import { cacheAnalysis } from '@/lib/db';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { analizCompleted } from '@/store/slices/receteSlice';
+import { addGroup, updateTask } from '@/store/slices/taskQueueSlice';
 
 interface PrescriptionMedicinesModalProps {
   prescriptionData: Recete;
@@ -47,23 +48,33 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
   const handleQueryMedicine = async (medicine: ReceteIlac) => {
     setLoadingMedicine(medicine.barkod);
     setError(null);
+    const groupId = `medicine-${prescriptionData.receteNo}-${medicine.barkod}`;
+
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${prescriptionData.receteNo}`,
+      receteNo: prescriptionData.receteNo,
+      items: [{ id: medicine.barkod, label: medicine.ad || medicine.barkod, status: "running" }],
+    }));
 
     try {
       const result = await reportApiService.generateReport(medicine.barkod, prescriptionData);
 
       if (result.success && result.data) {
-        // Save to Dexie cache and Redux
         await cacheAnalysis(prescriptionData.receteNo, medicine.barkod, result.data);
         dispatch(analizCompleted({
           receteNo: prescriptionData.receteNo,
           sonuclar: { [medicine.barkod]: result.data },
         }));
+        dispatch(updateTask({ groupId, taskId: medicine.barkod, status: "done" }));
         setFocusBarkod(medicine.barkod);
         setShowKontrolSheet(true);
       } else {
+        dispatch(updateTask({ groupId, taskId: medicine.barkod, status: "error", errorMessage: result.error }));
         setError(result.error || 'Rapor oluşturulurken bir hata oluştu');
       }
     } catch (error) {
+      dispatch(updateTask({ groupId, taskId: medicine.barkod, status: "error", errorMessage: "Beklenmeyen bir hata oluştu" }));
       setError('Beklenmeyen bir hata oluştu');
     } finally {
       setLoadingMedicine(null);

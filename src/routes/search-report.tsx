@@ -30,9 +30,11 @@ import {
 } from "@/store/slices/receteSlice";
 import {
   searchPrescriptionDetail,
-  analyzePrescription,
 } from "@/store/slices/playwrightSlice";
-import type { ReceteReportResponse } from "@/services/report-api";
+import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
+import { cacheAnalysis } from "@/lib/db";
+import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
+import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { ReceteTable } from "@/components/recete-table";
 
@@ -89,22 +91,63 @@ function SearchReport() {
     if (cached) openDetailModal(cached);
   };
 
-  const handleAnalizEt = async (receteNo: string, force: boolean) => {
-    const result = await dispatch(analyzePrescription({ receteNo, force }));
-    if (analyzePrescription.fulfilled.match(result)) {
-      const sonuclar = result.payload as Record<string, ReceteReportResponse>;
-      const count = Object.keys(sonuclar).length;
-      if (count === 0) {
-        dialog.showAlert({
-          title: "Analiz Tamamlandı",
-          description: "Raporlu ilaç bulunamadı.",
-        });
+  const handleAnalizEt = async (receteNo: string, _force: boolean) => {
+    const groupId = `analyze-${receteNo}`;
+    dispatch(setAnalyzingRecete(receteNo));
+
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${receteNo}`,
+      receteNo,
+      items: [{ id: "fetch", label: "Reçete verileri toplanıyor", status: "running" }],
+    }));
+
+    try {
+      // 1. Fetch prescription detail
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo })).unwrap();
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+      const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
+      if (raporluIlaclar.length === 0) {
+        dialog.showAlert({ title: "Analiz Tamamlandı", description: "Raporlu ilaç bulunamadı." });
+        return;
       }
-    } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `Analiz sırasında hata: ${result.error?.message || "Bilinmeyen hata"}`,
-      });
+
+      // 2. Add per-medicine tasks
+      dispatch(addGroup({
+        id: groupId,
+        title: `Reçete ${receteNo}`,
+      receteNo,
+        items: [
+          { id: "fetch", label: "Reçete verileri toplanıyor", status: "done" },
+          ...raporluIlaclar.map((m: any, idx: number) => ({
+            id: m.barkod,
+            label: m.ad || m.barkod,
+            status: (idx === 0 ? "running" : "pending") as "running" | "pending",
+          })),
+        ],
+      }));
+
+      // 3. Analyze one by one
+      for (let i = 0; i < raporluIlaclar.length; i++) {
+        const ilac = raporluIlaclar[i];
+        dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "running" }));
+        try {
+          const result = await reportApiService.generateReport(ilac.barkod, recete);
+          if (result.success && result.data) {
+            await cacheAnalysis(receteNo, ilac.barkod, result.data);
+            dispatch(analizCompleted({ receteNo, sonuclar: { [ilac.barkod]: result.data } }));
+          }
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
+        } catch (err: any) {
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: err?.message }));
+        }
+      }
+    } catch (err: any) {
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
+      dialog.showAlert({ title: "Hata", description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}` });
+    } finally {
+      dispatch(setAnalyzingRecete(null));
     }
   };
 
@@ -159,7 +202,7 @@ function SearchReport() {
           currentReceteNo: selected[i],
         }),
       );
-      await dispatch(analyzePrescription({ receteNo: selected[i] }));
+      await handleAnalizEt(selected[i], true);
     }
     dispatch(setBulkProgress(null));
   };

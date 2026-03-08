@@ -7,12 +7,13 @@ import { useDialogContext } from "@/contexts/dialog-context";
 import { useModal } from "@/hooks/useModal";
 import { ModalProvider } from "@/components/modal-provider";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { detayFetched, analizCompleted } from "@/store/slices/receteSlice";
+import { detayFetched, analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
 import {
   searchPrescriptionDetail,
-  analyzePrescription,
 } from "@/store/slices/playwrightSlice";
-import type { ReceteReportResponse } from "@/services/report-api";
+import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
+import { cacheAnalysis } from "@/lib/db";
+import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import {
   type CachedRecete,
   getAllCachedReceteler,
@@ -150,21 +151,66 @@ export function SonIslemlerTable({
   };
 
   const handleAnalizEt = async (receteNo: string, _force: boolean) => {
-    const result = await dispatch(
-      analyzePrescription({ receteNo, force: true }),
-    );
-    if (analyzePrescription.fulfilled.match(result)) {
+    const groupId = `analyze-${receteNo}`;
+    dispatch(setAnalyzingRecete(receteNo));
+
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${receteNo}`,
+      receteNo,
+      items: [{ id: "fetch", label: "Reçete verileri toplanıyor", status: "running" }],
+    }));
+
+    try {
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo, force: true })).unwrap();
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+      const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
+      if (raporluIlaclar.length === 0) return;
+
+      dispatch(addGroup({
+        id: groupId,
+        title: `Reçete ${receteNo}`,
+        receteNo,
+        items: [
+          { id: "fetch", label: "Reçete verileri toplanıyor", status: "done" },
+          ...raporluIlaclar.map((m: any, idx: number) => ({
+            id: m.barkod,
+            label: m.ad || m.barkod,
+            status: (idx === 0 ? "running" : "pending") as "running" | "pending",
+          })),
+        ],
+      }));
+
+      for (let i = 0; i < raporluIlaclar.length; i++) {
+        const ilac = raporluIlaclar[i];
+        dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "running" }));
+        try {
+          const result = await reportApiService.generateReport(ilac.barkod, recete);
+          if (result.success && result.data) {
+            await cacheAnalysis(receteNo, ilac.barkod, result.data);
+            dispatch(analizCompleted({ receteNo, sonuclar: { [ilac.barkod]: result.data } }));
+          }
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
+        } catch (err: any) {
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: err?.message }));
+        }
+      }
+
       const [updatedAnaliz, updatedTimestamps] = await Promise.all([
         getAllCachedAnalysis(),
         getLatestAnalysisTimestamps(),
       ]);
       setLocalAnalizSonuclari(updatedAnaliz);
       setAnalysisTimestamps(updatedTimestamps);
-    } else {
+    } catch (err: any) {
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
       dialog.showAlert({
         title: "Hata",
-        description: `Analiz sırasında hata: ${result.error?.message || "Bilinmeyen hata"}`,
+        description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}`,
       });
+    } finally {
+      dispatch(setAnalyzingRecete(null));
     }
   };
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReceteIlac, Recete } from "@/types/recete";
 import {
   Table,
@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/sheet";
 import type { ReceteReportResponse } from "@/services/report-api";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
+import { useAppSelector, useAppDispatch } from "@/store";
+import { setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
 
 export interface ReceteTableRow {
   receteNo: string;
@@ -186,6 +188,16 @@ export function ReceteTable({
   const [analizSheetReceteNo, setAnalizSheetReceteNo] = useState<
     string | null
   >(null);
+
+  const taskQueueDispatch = useAppDispatch();
+  const showResultReceteNo = useAppSelector((s) => s.taskQueue.showResultReceteNo);
+
+  useEffect(() => {
+    if (showResultReceteNo && rows.some((r) => r.receteNo === showResultReceteNo)) {
+      setAnalizSheetReceteNo(showResultReceteNo);
+      taskQueueDispatch(setShowResultReceteNo(null));
+    }
+  }, [showResultReceteNo, rows, taskQueueDispatch]);
 
   const handleSort = useCallback(
     (key: SortKey) => {

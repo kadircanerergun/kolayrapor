@@ -28,7 +28,7 @@ import { analizCompleted, analizSonuclariLoaded } from "@/store/slices/receteSli
 import { reportApiService } from "@/services/report-api";
 import { cacheAnalysis, getCachedAnalysis } from "@/lib/db";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
-import { AnalysisQueuePanel, type QueueItem } from "@/components/analysis-queue-panel";
+import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import {
   Sheet,
   SheetContent,
@@ -276,8 +276,6 @@ export function BrowserView() {
   const [isReAnalyzing, setIsReAnalyzing] = useState(false);
   const [showKontrolSonuc, setShowKontrolSonuc] = useState(false);
   const [isAutoScraping, setIsAutoScraping] = useState(false);
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [showQueue, setShowQueue] = useState(false);
   const loginAttemptRef = useRef(0);
   const autoLoginAttempted = useRef(cachedAutoLoginAttempted);
   const autoScrapedReceteRef = useRef<string | null>(null);
@@ -514,45 +512,67 @@ export function BrowserView() {
     if (isAnalyzing || !currentReceteNo) return;
 
     setIsAnalyzing(true);
+    const groupId = `analyze-all-${currentReceteNo}`;
 
-    const items: QueueItem[] = [
-      { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
-      { id: "analyze", label: "İlaçlar analiz ediliyor", status: "pending" },
-    ];
-    setQueueItems(items);
-    setShowQueue(true);
+    // First fetch prescription to know which medicines we'll analyze
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${currentReceteNo}`,
+      receteNo: currentReceteNo,
+      items: [
+        { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
+      ],
+    }));
 
     try {
-      // 1. Use Playwright to fetch full prescription detail (with rapor + detay)
-      await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
-      setQueueItems((prev) =>
-        prev.map((i) =>
-          i.id === "fetch" ? { ...i, status: "done" } :
-          i.id === "analyze" ? { ...i, status: "running" } : i,
-        ),
-      );
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
 
-      // 2. Run analysis for all raporlu medicines
-      const results = await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
-
-      const count = Object.keys(results).length;
-      setQueueItems((prev) =>
-        prev.map((i) => (i.id === "analyze" ? { ...i, status: "done" } : i)),
-      );
-      if (count > 0) {
-        toast.success(`Analiz tamamlandı (${count} ilaç)`);
-        setShowKontrolSonuc(true);
-      } else {
+      const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
+      if (raporluIlaclar.length === 0) {
         toast.info("Bu reçetede analiz edilecek raporlu ilaç bulunamadı.");
+        return;
       }
+
+      // Add medicine tasks to the group
+      dispatch(addGroup({
+        id: groupId,
+        title: `Reçete ${currentReceteNo}`,
+        receteNo: currentReceteNo,
+        items: [
+          { id: "fetch", label: "Reçete verileri toplanıyor", status: "done" },
+          ...raporluIlaclar.map((m: any, idx: number) => ({
+            id: m.barkod,
+            label: m.ad || m.barkod,
+            status: (idx === 0 ? "running" : "pending") as "running" | "pending",
+          })),
+        ],
+      }));
+
+      // Analyze one by one
+      for (let i = 0; i < raporluIlaclar.length; i++) {
+        const ilac = raporluIlaclar[i];
+        dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "running" }));
+
+        try {
+          const result = await reportApiService.generateReport(ilac.barkod, recete);
+          if (result.success && result.data) {
+            await cacheAnalysis(currentReceteNo, ilac.barkod, result.data);
+            dispatch(analizCompleted({
+              receteNo: currentReceteNo,
+              sonuclar: { [ilac.barkod]: result.data },
+            }));
+          }
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
+        } catch (err: any) {
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: err?.message }));
+        }
+      }
+
+      toast.success(`Analiz tamamlandı (${raporluIlaclar.length} ilaç)`);
+      setShowKontrolSonuc(true);
     } catch (err: any) {
-      setQueueItems((prev) =>
-        prev.map((i) =>
-          i.status === "running" || i.status === "pending"
-            ? { ...i, status: "error", errorMessage: err?.message }
-            : i,
-        ),
-      );
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
       toast.error(err?.message || "Analiz sırasında hata oluştu.");
     } finally {
       setIsAnalyzing(false);
@@ -567,35 +587,30 @@ export function BrowserView() {
 
     setIsAnalyzing(true);
     setAnalyzingBarkod(barkod);
+    const groupId = `analyze-single-${currentReceteNo}-${barkod}`;
 
-    const items: QueueItem[] = [
-      { id: "fetch", label: "Reçete detayları alınıyor", status: "running" },
-      { id: `analyze-${barkod}`, label: `${barkod} analiz ediliyor`, status: "pending" },
-    ];
-    setQueueItems(items);
-    setShowQueue(true);
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${currentReceteNo}`,
+      receteNo: currentReceteNo,
+      items: [
+        { id: "fetch", label: "Reçete detayları alınıyor", status: "running" },
+        { id: barkod, label: `${barkod} analiz ediliyor`, status: "pending" },
+      ],
+    }));
 
     try {
       const recete = await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo })).unwrap();
 
       if (!recete) {
-        setQueueItems((prev) =>
-          prev.map((i) =>
-            i.status === "running" || i.status === "pending"
-              ? { ...i, status: "error", errorMessage: "Reçete detayları bulunamadı" }
-              : i,
-          ),
-        );
+        dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "Reçete detayları bulunamadı" }));
+        dispatch(updateTask({ groupId, taskId: barkod, status: "error" }));
         toast.error("Reçete detayları bulunamadı.");
         return;
       }
 
-      setQueueItems((prev) =>
-        prev.map((i) =>
-          i.id === "fetch" ? { ...i, status: "done" } :
-          i.id === `analyze-${barkod}` ? { ...i, status: "running" } : i,
-        ),
-      );
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+      dispatch(updateTask({ groupId, taskId: barkod, status: "running" }));
 
       const result = await reportApiService.generateReport(barkod, recete);
 
@@ -605,25 +620,16 @@ export function BrowserView() {
           receteNo: currentReceteNo,
           sonuclar: { [barkod]: result.data },
         }));
-        setQueueItems((prev) =>
-          prev.map((i) => (i.id === `analyze-${barkod}` ? { ...i, status: "done" } : i)),
-        );
+        dispatch(updateTask({ groupId, taskId: barkod, status: "done" }));
         toast.success("Analiz tamamlandı");
         setShowKontrolSonuc(true);
       } else {
-        setQueueItems((prev) =>
-          prev.map((i) => (i.id === `analyze-${barkod}` ? { ...i, status: "done" } : i)),
-        );
+        dispatch(updateTask({ groupId, taskId: barkod, status: "done" }));
         toast.info("Bu ilaç için analiz sonucu üretilemedi.");
       }
     } catch (err: any) {
-      setQueueItems((prev) =>
-        prev.map((i) =>
-          i.status === "running" || i.status === "pending"
-            ? { ...i, status: "error", errorMessage: err?.message }
-            : i,
-        ),
-      );
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
+      dispatch(updateTask({ groupId, taskId: barkod, status: "error", errorMessage: err?.message }));
       toast.error(err?.message || "Analiz sırasında hata oluştu.");
     } finally {
       setIsAnalyzing(false);
@@ -654,33 +660,47 @@ export function BrowserView() {
   // Keep ref updated so console-message listener always calls latest version
   analyzeSingleRef.current = handleAnalyzeSingleMedicine;
 
-  /** Re-analyze: re-fetch prescription data then re-run analysis */
-  const handleReAnalyze = async (_barkod?: string) => {
+  /** Re-analyze a single medicine or all */
+  const handleReAnalyze = async (barkod?: string) => {
     if (!currentReceteNo) return;
 
     setIsReAnalyzing(true);
+    const groupId = `reanalyze-${currentReceteNo}-${barkod || "all"}`;
 
-    const items: QueueItem[] = [
-      { id: "reanalyze", label: "Yeniden analiz ediliyor", status: "running" },
-    ];
-    setQueueItems(items);
-    setShowQueue(true);
+    dispatch(addGroup({
+      id: groupId,
+      title: `Yeniden Kontrol — ${currentReceteNo}`,
+      receteNo: currentReceteNo,
+      items: [
+        { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
+        { id: "analyze", label: barkod ? `${barkod} analiz ediliyor` : "İlaçlar analiz ediliyor", status: "pending" },
+      ],
+    }));
 
     try {
-      await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
-      await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
-      setQueueItems((prev) =>
-        prev.map((i) => (i.id === "reanalyze" ? { ...i, status: "done" } : i)),
-      );
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo: currentReceteNo, force: true })).unwrap();
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+      if (barkod) {
+        dispatch(updateTask({ groupId, taskId: "analyze", status: "running" }));
+        const result = await reportApiService.generateReport(barkod, recete);
+        if (result.success && result.data) {
+          await cacheAnalysis(currentReceteNo, barkod, result.data);
+          dispatch(analizCompleted({
+            receteNo: currentReceteNo,
+            sonuclar: { [barkod]: result.data },
+          }));
+        }
+        dispatch(updateTask({ groupId, taskId: "analyze", status: "done" }));
+      } else {
+        dispatch(updateTask({ groupId, taskId: "analyze", status: "running" }));
+        await dispatch(analyzePrescription({ receteNo: currentReceteNo, force: true })).unwrap();
+        dispatch(updateTask({ groupId, taskId: "analyze", status: "done" }));
+      }
       toast.success("Yeniden analiz tamamlandı");
     } catch (err: any) {
-      setQueueItems((prev) =>
-        prev.map((i) =>
-          i.id === "reanalyze"
-            ? { ...i, status: "error", errorMessage: err?.message }
-            : i,
-        ),
-      );
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
+      dispatch(updateTask({ groupId, taskId: "analyze", status: "error", errorMessage: err?.message }));
       toast.error(err?.message || "Yeniden analiz sırasında hata oluştu.");
     } finally {
       setIsReAnalyzing(false);
@@ -1022,14 +1042,6 @@ export function BrowserView() {
           src={MEDULA_URL}
           partition="persist:medula"
           className="h-full w-full"
-        />
-        <AnalysisQueuePanel
-          items={queueItems}
-          visible={showQueue}
-          onHidden={() => {
-            setShowQueue(false);
-            setQueueItems([]);
-          }}
         />
       </div>
 
