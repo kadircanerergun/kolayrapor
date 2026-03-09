@@ -209,11 +209,6 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
           {state.status === "ready" && (
             <div className="text-xs text-muted-foreground">
               <p>Sistem hazır, sorgulama yapabilirsiniz.</p>
-              {state.currentUrl && (
-                <p className="mt-1 truncate" title={state.currentUrl}>
-                  URL: {state.currentUrl}
-                </p>
-              )}
             </div>
           )}
         </div>

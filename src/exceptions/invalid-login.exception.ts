@@ -1,3 +1,6 @@
-class InvalidLoginException extends Error {}
+class InvalidLoginException extends Error {
+  constructor() {
+    super("Kullanıcı adı veya şifre yanlış. Lütfen bilgilerinizi kontrol edin.");
+  }
+}
 export { InvalidLoginException };
-// Giriş başarısız - maksimum deneme sayısına ulaşıldı. Lütfen bilgilerinizi kontrol edip tekrar deneyin.

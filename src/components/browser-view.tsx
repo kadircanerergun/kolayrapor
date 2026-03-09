@@ -595,7 +595,7 @@ export function BrowserView() {
       receteNo: currentReceteNo,
       items: [
         { id: "fetch", label: "Reçete detayları alınıyor", status: "running" },
-        { id: barkod, label: `${barkod} analiz ediliyor`, status: "pending" },
+        { id: barkod, label: `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor`, status: "pending" },
       ],
     }));
 
@@ -673,7 +673,7 @@ export function BrowserView() {
       receteNo: currentReceteNo,
       items: [
         { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
-        { id: "analyze", label: barkod ? `${barkod} analiz ediliyor` : "İlaçlar analiz ediliyor", status: "pending" },
+        { id: "analyze", label: barkod ? `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor` : "İlaçlar analiz ediliyor", status: "pending" },
       ],
     }));
 
@@ -849,6 +849,11 @@ export function BrowserView() {
         if (errorText.includes("IP bu eczane için giriş yapmaya yetkili değildir")) {
           setLoginStatus("error");
           setLoginError("IP adresi bu eczane için yetkili değil.");
+          return;
+        }
+        if (errorText.includes("Kullanıcı Adı veya Şifre Yanlış") || errorText.includes("Yeniden giriş")) {
+          setLoginStatus("error");
+          setLoginError("Kullanıcı adı veya şifre yanlış. Lütfen bilgilerinizi kontrol edin.");
           return;
         }
         if (errorText.includes("Geçersiz güvenlik kodu")) {

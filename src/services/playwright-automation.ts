@@ -558,7 +558,16 @@ export class PlaywrightAutomationService {
     // Handle captcha
     const captchaResult = await this.handleCaptcha();
     if (!captchaResult.success) {
-      throw new Error(`Captcha handling failed: ${captchaResult.error}`);
+      console.warn(`[Playwright] Captcha failed: ${captchaResult.error}, retrying login...`);
+      this.loginCounter += 1;
+      if (this.loginCounter >= 5) {
+        this.loginCounter = 0;
+        throw new UnsuccessfulLoginException();
+      }
+      await this.page.context().clearCookies();
+      await this.page.goto(URLS.MEDULA_HOME);
+      await this.page.waitForLoadState("load");
+      return await this.performLogin(credentials);
     }
 
     // Fill captcha solution
@@ -588,13 +597,31 @@ export class PlaywrightAutomationService {
       throw new Error("Could not find login button");
     }
 
-    await Promise.all([loginButton.click()]);
+    await loginButton.click();
+    await this.page.waitForLoadState("load");
 
     try {
       await this.checkPageError(this.page);
     } catch (error) {
       if (error instanceof WrongIpException) {
         throw error;
+      }
+      if (error instanceof InvalidLoginException) {
+        this.loginCounter = 0;
+        throw new InvalidLoginException();
+      }
+      // Wrong captcha or other page errors — retry login
+      if (error instanceof WrongCaptchaException) {
+        console.warn("[Playwright] Wrong captcha code, retrying login...");
+        this.loginCounter += 1;
+        if (this.loginCounter >= 5) {
+          this.loginCounter = 0;
+          throw new UnsuccessfulLoginException();
+        }
+        await this.page.context().clearCookies();
+        await this.page.goto(URLS.MEDULA_HOME);
+        await this.page.waitForLoadState("load");
+        return await this.performLogin(credentials);
       }
     }
     await this.page.goto(URLS.MEDULA_HOME);
@@ -755,7 +782,15 @@ export class PlaywrightAutomationService {
         currentUrl: this.page.url(),
         prescriptionData: recete,
       };
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("Cannot find context")) {
+        console.warn("[Playwright] Context lost during prescription search, retrying...");
+        try {
+          return await this.searchPrescription(prescriptionNumber);
+        } catch {
+          // fall through to error return below
+        }
+      }
       return {
         success: false,
         error:
@@ -854,10 +889,22 @@ export class PlaywrightAutomationService {
     };
   }
 
-  async getRecipesByPeriod(period: string): Promise<ReceteOzet[]> {
+  async getRecipesByPeriod(period: string, retried = false): Promise<ReceteOzet[]> {
     if (!this.page) {
       throw new Error("System is not ready.");
     }
+    try {
+      return await this._getRecipesByPeriodInner(period);
+    } catch (err: any) {
+      if (!retried && err?.message?.includes("Cannot find context")) {
+        console.warn("[Playwright] Context lost, retrying period query...");
+        return await this.getRecipesByPeriod(period, true);
+      }
+      throw err;
+    }
+  }
+
+  private async _getRecipesByPeriodInner(period: string): Promise<ReceteOzet[]> {
     await this.navigateToSGKPortal();
     await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
     const menu = this.page
@@ -1274,32 +1321,39 @@ export class PlaywrightAutomationService {
       });
       //form1:tableExIlacMesajListesi
     }
-    const mesajlarElements = await page
-      .locator(
-        "#form1\\:tableExIlacMesajListesi tr.rowClass1, #form1\\:tableExIlacMesajListesi tr.rowClass2",
-      )
-      .all();
     const mesajlar: IlacMesaj[] = [];
-    for (const msgRow of mesajlarElements) {
-      const msgCells = await msgRow.locator("td").all();
-      const msgText = await msgCells?.[1]?.textContent();
-      const mesaj: IlacMesaj = {
-        baslik: msgText?.trim() || "",
-        mesaj: "",
-      };
-      await msgCells[1]?.click();
-      await page.waitForSelector("div#form1\\:dialog1");
-      const dialogElement = page.locator("div#form1\\:dialog1");
-      const textAreaElement = dialogElement.locator(
-        "textarea[name='form1:textarea1']",
-      );
-      const detayText = await textAreaElement.textContent();
-      mesaj.mesaj = detayText?.trim() || "";
-      mesajlar.push(mesaj);
-      const closeDialogButton = dialogElement.locator(
-        "input[name='form1\\:buttonKapat']",
-      );
-      await closeDialogButton.click();
+    const mesajTable = page.locator("#form1\\:tableExIlacMesajListesi");
+    if ((await mesajTable.count()) > 0) {
+      const mesajlarElements = await mesajTable
+        .locator("tr.rowClass1, tr.rowClass2")
+        .all();
+      for (const msgRow of mesajlarElements) {
+        const msgCells = await msgRow.locator("td").all();
+        if (!msgCells[1]) continue;
+        const msgText = await msgCells[1].textContent();
+        const mesaj: IlacMesaj = {
+          baslik: msgText?.trim() || "",
+          mesaj: "",
+        };
+        try {
+          await msgCells[1].click();
+          const dialogElement = page.locator("div#form1\\:dialog1");
+          await dialogElement.waitFor({ state: "visible", timeout: 5000 });
+          const textAreaElement = dialogElement.locator(
+            "textarea[name='form1:textarea1']",
+          );
+          const detayText = await textAreaElement.textContent();
+          mesaj.mesaj = detayText?.trim() || "";
+          const closeDialogButton = dialogElement.locator(
+            "input[name='form1:buttonKapat']",
+          );
+          await closeDialogButton.click();
+          await dialogElement.waitFor({ state: "hidden", timeout: 3000 });
+        } catch (e) {
+          console.warn("[Playwright] Failed to read message detail:", e);
+        }
+        mesajlar.push(mesaj);
+      }
     }
 
     return {
@@ -1466,7 +1520,7 @@ export class PlaywrightAutomationService {
       if (message.includes("Geçersiz güvenlik kodu")) {
         return new WrongCaptchaException();
       }
-      if (message.includes("Yeniden giriş")) {
+      if (message.includes("Kullanıcı Adı veya Şifre Yanlış") || message.includes("Yeniden giriş")) {
         const context = await page.context();
         await context.clearCookies();
         return new InvalidLoginException();
