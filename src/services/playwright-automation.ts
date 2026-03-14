@@ -776,7 +776,6 @@ export class PlaywrightAutomationService {
       // Parse recete from current page
       const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
       await this.ilaclaraRaporEkle(recete);
-      console.log("Parsed prescription data: ", JSON.stringify(recete));
       return {
         success: true,
         currentUrl: this.page.url(),
@@ -1427,10 +1426,10 @@ export class PlaywrightAutomationService {
     const tanilar: RaporTani[] = [];
 
     for (const row of taniRows) {
-      const cells = await row.locator("td").all();
+      const cells = await row.locator(":scope > td").all();
       const taniKodu = await cells?.[0]?.textContent();
-      const baslangicTarihi = await cells?.[1]?.textContent();
-      const bitisTarihi = await cells?.[2]?.textContent();
+      const baslangicTarihi = await cells?.[2]?.textContent();
+      const bitisTarihi = await cells?.[3]?.textContent();
       if (taniKodu && taniKodu.trim()) {
         tanilar.push({
           tani: taniKodu.trim(),
