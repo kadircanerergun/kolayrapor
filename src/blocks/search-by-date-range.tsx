@@ -82,22 +82,13 @@ const SearchByDateRange = () => {
   };
 
   return (
-    <Card className={"flex-1"}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarIcon className="h-5 w-5" />
-          Toplu Kontrol
-        </CardTitle>
-        <CardDescription>
-          Baslangic ve bitis tarihi secin ve recete arayin
-        </CardDescription>
-      </CardHeader>
+    <Card className={"flex-1 p-3"}>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
           <div className="flex items-center gap-3">
             {/* Start Date Picker */}
             <div className="flex-1 space-y-1.5">
-              <label className="text-sm font-medium">Baslangic Tarihi</label>
+              <label className="text-sm font-medium">Başlangıç Tarihi</label>
               <Popover open={fromOpen} onOpenChange={setFromOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -110,7 +101,7 @@ const SearchByDateRange = () => {
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {fromDate
                       ? format(fromDate, "dd MMMM yyyy", { locale: tr })
-                      : "Tarih secin"}
+                      : "Tarih seçin"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -133,7 +124,7 @@ const SearchByDateRange = () => {
 
             {/* End Date Picker */}
             <div className="flex-1 space-y-1.5">
-              <label className="text-sm font-medium">Bitis Tarihi</label>
+              <label className="text-sm font-medium">Bitiş Tarihi</label>
               <Popover open={toOpen} onOpenChange={setToOpen}>
                 <PopoverTrigger asChild>
                   <Button

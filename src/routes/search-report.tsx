@@ -248,7 +248,7 @@ function SearchReport() {
                         Sorgula
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={handleBulkAnalizEt}>
-                        <FlaskConical className="h-4 w-4 text-purple-500" />
+                        <FlaskConical className="h-4 w-4 text-primary" />
                         Kontrol Et
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -302,6 +302,7 @@ function SearchReport() {
                 loadingRecete={loadingRecete}
                 analyzingRecete={analyzingRecete}
                 selectable
+                showSonIslemTarihi={false}
                 selectedRecetes={selectedRecetes}
                 onSelectRecete={handleSelectRecete}
                 onSelectAll={handleSelectAll}

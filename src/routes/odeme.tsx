@@ -23,6 +23,14 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
@@ -70,6 +78,10 @@ function OdemePage() {
   const [creditPackage, setCreditPackage] = useState<CreditPackage | null>(
     null,
   );
+
+  // Success modal
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     loadData();
@@ -136,12 +148,11 @@ function OdemePage() {
               });
 
         if (result.success) {
-          showAlert({
-            title: "Başarılı",
-            description: result.message || "Abonelik başarıyla oluşturuldu!",
-          });
           await refresh();
-          navigate({ to: "/ayarlar" });
+          setSuccessMessage(
+            result.message || "Abonelik başarıyla oluşturuldu!",
+          );
+          setSuccessOpen(true);
         } else {
           showAlert({
             title: "Hata",
@@ -163,14 +174,12 @@ function OdemePage() {
               );
 
         if (result.success) {
-          showAlert({
-            title: "Başarılı",
-            description:
-              result.message ||
-              "Kredi satın alma işlemi başarıyla tamamlandı.",
-          });
           await refresh();
-          navigate({ to: "/ayarlar" });
+          setSuccessMessage(
+            result.message ||
+              "Kredi satın alma işlemi başarıyla tamamlandı.",
+          );
+          setSuccessOpen(true);
         } else {
           showAlert({
             title: "Hata",
@@ -178,6 +187,11 @@ function OdemePage() {
           });
         }
       }
+    } catch {
+      showAlert({
+        title: "Hata",
+        description: "Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -200,7 +214,7 @@ function OdemePage() {
   };
 
   const handleBack = () => {
-    navigate({ to: "/subscription" });
+    navigate({ to: "/ayarlar", search: { section: "abonelik" } });
   };
 
   const formatCardNumber = (value: string) => {
@@ -653,6 +667,36 @@ function OdemePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Success Modal */}
+      <Dialog open={successOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSuccessOpen(false);
+          navigate({ to: "/ayarlar", search: { section: "abonelik" } });
+        }
+      }}>
+        <DialogContent hideCloseButton>
+          <DialogHeader className="items-center text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 mb-2">
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+            <DialogTitle className="text-center">
+              Ödeme Başarılı
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {successMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => {
+              setSuccessOpen(false);
+              navigate({ to: "/ayarlar", search: { section: "abonelik" } });
+            }}>
+              Tamam
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

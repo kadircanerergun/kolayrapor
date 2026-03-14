@@ -128,17 +128,17 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
           </div>
         ) : (
           <div className="border rounded-lg overflow-auto">
-            <div className="min-w-[900px]">
+            <div className="min-w-[1050px]">
               <Table>
                 <TableHeader className="sticky top-0 bg-white z-10">
                   <TableRow>
                     <TableHead className="min-w-[250px]">İlaç Adı</TableHead>
                     <TableHead className="min-w-[120px]">Barkod</TableHead>
                     <TableHead className="min-w-[60px]">Adet</TableHead>
-                    <TableHead className="min-w-[80px]">Doz</TableHead>
-                    <TableHead className="min-w-[80px]">Periyot</TableHead>
-                    <TableHead className="min-w-[130px]">Verilebileceği Tarih</TableHead>
+                    <TableHead className="min-w-[120px]">Periyot</TableHead>
+                    <TableHead className="min-w-[120px]">Doz</TableHead>
                     <TableHead className="min-w-[80px]">Durumu</TableHead>
+                    <TableHead className="min-w-[80px]">Sonuç</TableHead>
                     <TableHead className="min-w-[180px]">İşlemler</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -157,9 +157,8 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                         </TableCell>
                         <TableCell className="font-mono text-xs">{medicine.barkod}</TableCell>
                         <TableCell className="text-center">{medicine.adet}</TableCell>
-                        <TableCell className="text-sm">{medicine.doz}</TableCell>
                         <TableCell className="text-sm">{medicine.periyot}</TableCell>
-                        <TableCell className="text-xs">{medicine.verilebilecegiTarih}</TableCell>
+                        <TableCell className="text-sm">{medicine.doz}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             {medicine.raporluMu ? (
@@ -167,42 +166,32 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                             ) : (
                               <Badge variant="outline" className="text-xs">Normal</Badge>
                             )}
-                            {isAnalyzed && (
-                              <Badge
-                                variant="outline"
-                                className={`text-xs ${
-                                  cached.validityScore >= 80
-                                    ? 'border-green-300 text-green-700 bg-green-50'
-                                    : cached.validityScore >= 60
-                                      ? 'border-yellow-300 text-yellow-700 bg-yellow-50'
-                                      : 'border-red-300 text-red-700 bg-red-50'
-                                }`}
-                              >
-                                <CircleCheck className="h-3 w-3 mr-0.5" />
-                                {cached.validityScore}%
-                              </Badge>
-                            )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {isAnalyzed && (
+                            <Badge
+                              variant="outline"
+                              className={`text-xs cursor-pointer ${
+                                cached.validityScore >= 80
+                                  ? 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
+                                  : cached.validityScore >= 60
+                                    ? 'border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100'
+                                    : 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100'
+                              }`}
+                              onClick={() => handleViewResult(medicine)}
+                            >
+                              <CircleCheck className="h-3 w-3 mr-0.5" />
+                              {cached.validityScore}%
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           {medicine.raporluMu && (
                             <div className="flex items-center gap-1">
-                              {isAnalyzed && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
-                                  onClick={() => handleViewResult(medicine)}
-                                  title="Sonucu Gör"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
                               {isAnalyzed ? (
                                 <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7"
+                                  className="h-7 bg-brand text-brand-foreground hover:bg-brand/90"
                                   disabled={isLoading || isSystemBusy}
                                   onClick={() => handleQueryMedicine(medicine)}
                                   title="Yeniden Kontrol Et"
@@ -212,12 +201,13 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                                   ) : (
                                     <RefreshCw className="h-3.5 w-3.5" />
                                   )}
+                                  Tekrar Kontrol
                                 </Button>
                               ) : (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="text-xs px-2 py-1 h-7"
+                                  className="text-xs px-2 py-1 h-7 bg-brand text-brand-foreground hover:bg-brand/90"
                                   disabled={isLoading || isSystemBusy}
                                   onClick={() => handleQueryMedicine(medicine)}
                                 >

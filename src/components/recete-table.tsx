@@ -20,6 +20,7 @@ import {
   Eye,
   FlaskConical,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -82,7 +83,7 @@ export interface ReceteTableProps {
   getLastActionAt?: (receteNo: string, cachedAt: number) => number;
   compact?: boolean;
   showFilters?: boolean;
-  onReAnalyze?: (receteNo: string) => void;
+  onReAnalyze?: (receteNo: string, barkod?: string) => void;
   isReAnalyzing?: (receteNo: string) => boolean;
 }
 
@@ -154,32 +155,32 @@ const FILTER_OPTIONS: FilterStatus[] = [
 ];
 
 export function ReceteTable({
-  rows,
-  analizSonuclari,
-  detaylar,
-  loadingRecete,
-  analyzingRecete,
-  selectable = false,
-  selectedRecetes = [],
-  onSelectRecete,
-  onSelectAll,
-  showHasta = false,
-  showSonIslemTarihi = false,
-  showKayitTarihi = false,
-  onSorgula,
-  onAnalizEt,
-  onDetay,
-  pageSize = 10,
-  currentPage,
-  onPageChange,
-  isBusy = false,
-  isWithin45Days,
-  getLastActionAt,
-  compact = false,
-  showFilters = false,
-  onReAnalyze,
-  isReAnalyzing,
-}: ReceteTableProps) {
+                              rows,
+                              analizSonuclari,
+                              detaylar,
+                              loadingRecete,
+                              analyzingRecete,
+                              selectable = false,
+                              selectedRecetes = [],
+                              onSelectRecete,
+                              onSelectAll,
+                              showHasta = false,
+                              showSonIslemTarihi = false,
+                              showKayitTarihi = false,
+                              onSorgula,
+                              onAnalizEt,
+                              onDetay,
+                              pageSize = 10,
+                              currentPage,
+                              onPageChange,
+                              isBusy = false,
+                              isWithin45Days,
+                              getLastActionAt,
+                              compact = false,
+                              showFilters = false,
+                              onReAnalyze,
+                              isReAnalyzing,
+                            }: ReceteTableProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(
     showSonIslemTarihi ? "sonIslemTarihi" : null,
   );
@@ -362,10 +363,10 @@ export function ReceteTable({
     selectedRecetes.length > 0 && selectedRecetes.length < rows.length;
 
   const SortableHead = ({
-    label,
-    column,
-    className,
-  }: {
+                          label,
+                          column,
+                          className,
+                        }: {
     label: string;
     column: SortKey;
     className?: string;
@@ -401,20 +402,43 @@ export function ReceteTable({
     <>
       {showFilters && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {FILTER_OPTIONS.map((filter) => (
-            <Button
-              key={filter}
-              size="sm"
-              variant={activeFilter === filter ? "default" : "outline"}
-              onClick={() => {
-                setActiveFilter(filter);
-                onPageChange(1);
-              }}
-              className="h-7 text-xs"
-            >
-              {getFilterLabel(filter)}
-            </Button>
-          ))}
+          {FILTER_OPTIONS.map((filter) => {
+            const isActive = activeFilter === filter;
+            let className = "h-7 text-xs";
+            let variant: "default" | "outline" = isActive ? "default" : "outline";
+
+            if (filter === "valid") {
+              variant = "outline";
+              className += isActive
+                ? " bg-green-500 text-white border-green-500 hover:bg-green-600 hover:text-white"
+                : " text-green-600 border-green-300 hover:bg-green-50 hover:text-green-700";
+            } else if (filter === "suspicious") {
+              variant = "outline";
+              className += isActive
+                ? " bg-orange-500 text-white border-orange-500 hover:bg-orange-600 hover:text-white"
+                : " text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700";
+            } else if (filter === "invalid") {
+              variant = "outline";
+              className += isActive
+                ? " bg-red-500 text-white border-red-500 hover:bg-red-600 hover:text-white"
+                : " text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700";
+            }
+
+            return (
+              <Button
+                key={filter}
+                size="sm"
+                variant={variant}
+                onClick={() => {
+                  setActiveFilter(filter);
+                  onPageChange(1);
+                }}
+                className={className}
+              >
+                {getFilterLabel(filter)}
+              </Button>
+            );
+          })}
         </div>
       )}
 
@@ -443,12 +467,12 @@ export function ReceteTable({
                 column="sonIslemTarihi"
               />
             )}
-            <TableHead>İlaç Sayısı</TableHead>
             {showKayitTarihi && (
-              <SortableHead label="Kayıt Tarihi" column="cachedAt" />
+              <SortableHead label="Kontrol Tarihi" column="cachedAt" />
             )}
+            <TableHead>İlaç Sayısı</TableHead>
             <SortableHead
-              label="Analiz Edildi"
+              label="Kontrol Sonucu"
               column="analizEdildi"
               className="text-center"
             />
@@ -497,13 +521,30 @@ export function ReceteTable({
                       if (getLastActionAt && row.cachedAt != null) {
                         const ts = getLastActionAt(row.receteNo, row.cachedAt);
                         const d = new Date(ts);
-                        return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
+                        return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`;
                       }
                       return row.sonIslemTarihi ?? "—";
                     })()}
                   </TableCell>
                 )}
 
+
+                {showKayitTarihi && (
+                  <TableCell className="text-muted-foreground text-sm">
+                    {row.cachedAt != null
+                      ? (() => {
+                        const d = new Date(row.cachedAt);
+                        return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`;
+                      })()
+                      : "—"}
+                  </TableCell>
+                )}
                 {/* İlaç Sayısı */}
                 <TableCell>
                   {hasIlacData ? (
@@ -523,16 +564,6 @@ export function ReceteTable({
                   )}
                 </TableCell>
 
-                {showKayitTarihi && (
-                  <TableCell className="text-muted-foreground text-sm">
-                    {row.cachedAt != null
-                      ? (() => {
-                          const d = new Date(row.cachedAt);
-                          return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
-                        })()
-                      : "—"}
-                  </TableCell>
-                )}
 
                 {/* Analiz Edildi */}
                 <TableCell className="text-center">
@@ -556,7 +587,13 @@ export function ReceteTable({
                                 </span>
                               </>
                             ) : (
-                              <Eye className={`h-5 w-5 ${statusIconColor[analysisStatus!]}`} />
+                              <div className={"flex flex-row gap-2 text-sx align-center items-center"}>
+                                <Eye
+                                  className={`h-5 w-5 ${statusIconColor[analysisStatus!]}`} />
+                                <span
+                                  className={"text-xs font-bold"}>
+                                Sonuç
+                              </span></div>
                             )}
                           </button>
                         </TooltipTrigger>
@@ -581,7 +618,7 @@ export function ReceteTable({
                         variant="ghost"
                         onClick={() => onDetay(row.receteNo)}
                       >
-                        Detay
+                        Reçete
                       </Button>
                     )}
                     {within45 && (
@@ -597,13 +634,17 @@ export function ReceteTable({
                           {isLoadingDetail ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <Database className="h-4 w-4" />
+                            hasCachedDetail ? (
+                              <RefreshCw className="h-4 w-4" />
+                            ) : (
+                              <Database className="h-4 w-4" />
+                            )
                           )}
-                          {hasCachedDetail ? "Yeniden Sorgula" : "Sorgula"}
+                          Sorgula
                         </Button>
                         <Button
                           size="sm"
-                          variant={hasAnalysis ? "outline" : "default"}
+                          className="bg-brand text-brand-foreground hover:bg-brand/90"
                           onClick={() =>
                             onAnalizEt(row.receteNo, hasAnalysis)
                           }
@@ -614,7 +655,7 @@ export function ReceteTable({
                           ) : (
                             <FlaskConical className="h-4 w-4" />
                           )}
-                          {hasAnalysis ? "Yeniden Kontrol Et" : "Kontrol Et"}
+                          {hasAnalysis ? "Tekrar Kontrol" : "Kontrol Et"}
                         </Button>
                       </>
                     )}
@@ -682,10 +723,10 @@ export function ReceteTable({
                   : {}
               }
               ilaclar={sheetIlaclar}
-              onReAnalyze={() =>
+              onReAnalyze={(barkod) =>
                 analizSheetReceteNo &&
                 (onReAnalyze
-                  ? onReAnalyze(analizSheetReceteNo)
+                  ? onReAnalyze(analizSheetReceteNo, barkod)
                   : onAnalizEt(analizSheetReceteNo, true))
               }
               isReAnalyzing={

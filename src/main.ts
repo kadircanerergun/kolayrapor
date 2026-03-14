@@ -15,7 +15,7 @@ import {
   REACT_DEVELOPER_TOOLS,
   REDUX_DEVTOOLS,
 } from "electron-devtools-installer";
-import { ipcMain } from "electron/main";
+import { ipcMain, screen } from "electron/main";
 import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS } from "./constants";
 import { setupPlaywrightIPC } from "./ipc/playwright";
@@ -246,9 +246,11 @@ function setupTray() {
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
+  const { width: screenWidth, height: screenHeight } =
+    screen.getPrimaryDisplay().workAreaSize;
   const mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1000,
+    width: Math.round(screenWidth * 0.7),   // 80% of screen width
+    height: Math.round(screenHeight * 0.7),
     icon: getIconPath(),
     webPreferences: {
       devTools: inDevelopment,

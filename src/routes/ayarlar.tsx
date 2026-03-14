@@ -36,6 +36,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useModal } from "@/hooks/useModal";
 import { useDialogContext } from "@/contexts/dialog-context";
@@ -142,7 +143,8 @@ function SettingsPage() {
 
   const { modal, openModal, closeModal } = useModal();
   const { showConfirmDialog } = useDialogContext();
-  const [activeSection, setActiveSection] = useState<SettingsSection>("eczane");
+  const { section } = Route.useSearch();
+  const [activeSection, setActiveSection] = useState<SettingsSection>(section || "eczane");
   const [cancelling, setCancelling] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -364,6 +366,7 @@ function SettingsPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const [medulaConsent, setMedulaConsent] = useState(false);
 
   // Sync local form state with context credentials
   useEffect(() => {
@@ -593,7 +596,7 @@ function SettingsPage() {
                 </p>
                 {ipAddress && (
                   <p className="text-xs text-muted-foreground font-mono px-2 py-1 rounded inline-block">
-                    IP Adresiniz: <strong className={'text-md'}>{ipAddress}</strong>
+                    IP Adresiniz: <strong className={"text-md"}>{ipAddress}</strong>
                   </p>
                 )}
                 <Link to="/kayit">
@@ -653,26 +656,38 @@ function SettingsPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="ph-tcNumber">
-                  TC Kimlik No <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="ph-tcNumber"
-                  {...registerPharmacy("tcNumber", {
-                    required: "TC Kimlik No zorunludur",
-                    pattern: {
-                      value: /^\d{11}$/,
-                      message: "TC Kimlik No 11 haneli olmalidir",
-                    },
-                  })}
-                  placeholder="12345678901"
-                  maxLength={11}
-                />
-                {pharmacyErrors.tcNumber && (
-                  <p className="text-xs text-destructive">{pharmacyErrors.tcNumber.message}</p>
-                )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="ph-email">E-posta</Label>
+                  <Input
+                    id="ph-email"
+                    type="email"
+                    {...registerPharmacy("email")}
+                    placeholder="eczane@ornek.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ph-tcNumber">
+                    TC Kimlik No <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="ph-tcNumber"
+                    {...registerPharmacy("tcNumber", {
+                      required: "TC Kimlik No zorunludur",
+                      pattern: {
+                        value: /^\d{11}$/,
+                        message: "TC Kimlik No 11 haneli olmalidir",
+                      },
+                    })}
+                    placeholder="12345678901"
+                    maxLength={11}
+                  />
+                  {pharmacyErrors.tcNumber && (
+                    <p className="text-xs text-destructive">{pharmacyErrors.tcNumber.message}</p>
+                  )}
+                </div>
               </div>
+
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -726,17 +741,6 @@ function SettingsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="ph-email">E-posta</Label>
-                  <Input
-                    id="ph-email"
-                    type="email"
-                    {...registerPharmacy("email")}
-                    placeholder="eczane@ornek.com"
-                  />
-                </div>
-              </div>
 
               <div className="flex gap-2">
                 <Button
@@ -773,6 +777,18 @@ function SettingsPage() {
         </p>
       </div>
 
+      <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <ShieldCheck className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-blue-900">Verileriniz güvende</p>
+          <p className="text-sm text-blue-700">
+            SGK giriş bilgileriniz yalnızca bu bilgisayarda, şifreli olarak saklanmaktadır.
+            Herhangi bir sunucuya veya üçüncü taraflara iletilmez. Bilgileriniz sadece SGK Medula
+            portalına otomatik giriş yapmak için kullanılır.
+          </p>
+        </div>
+      </div>
+
       {!pharmacy ? (
         <Card>
           <CardContent className="py-6">
@@ -789,7 +805,7 @@ function SettingsPage() {
                     IP Adresiniz: {ipAddress}
                   </p>
                 )}
-                <Link to="/kayit" className={'flex'}>
+                <Link to="/kayit" className={"flex"}>
                   <Button variant="outline" size="sm">
                     <Building2 className="h-4 w-4 mr-2" />
                     Eczane Kaydına Git
@@ -895,10 +911,20 @@ function SettingsPage() {
               </div>
             </div>
 
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="medula-consent"
+                checked={medulaConsent}
+                onCheckedChange={(checked) => setMedulaConsent(checked === true)}
+              />
+              <Label htmlFor="medula-consent" className="text-sm text-muted-foreground leading-snug cursor-pointer">
+                Sistemlerde yapacağım işlemlerde KVKK Mevzuatına uygun hareket edeceğimi taahhüt ederim. </Label>
+            </div>
+
             <div className="flex gap-2">
               <Button
                 onClick={handleSaveCredentials}
-                disabled={savingCredentials || (!username && !password)}
+                disabled={savingCredentials || (!username && !password) || !medulaConsent}
                 size="sm"
               >
                 {savingCredentials ? (
@@ -1035,8 +1061,8 @@ function SettingsPage() {
                   <p className="text-sm font-medium">
                     {currentSubscription.startDate
                       ? new Date(
-                          currentSubscription.startDate,
-                        ).toLocaleDateString("tr-TR")
+                        currentSubscription.startDate,
+                      ).toLocaleDateString("tr-TR")
                       : "-"}
                   </p>
                 </div>
@@ -1048,8 +1074,8 @@ function SettingsPage() {
                   <p className="text-sm font-medium">
                     {currentSubscription.endDate
                       ? new Date(
-                          currentSubscription.endDate,
-                        ).toLocaleDateString("tr-TR")
+                        currentSubscription.endDate,
+                      ).toLocaleDateString("tr-TR")
                       : "-"}
                   </p>
                 </div>
@@ -1101,8 +1127,8 @@ function SettingsPage() {
                       <p className="text-sm font-medium">
                         {currentSubscription.nextBillingDate
                           ? new Date(
-                              currentSubscription.nextBillingDate,
-                            ).toLocaleDateString("tr-TR")
+                            currentSubscription.nextBillingDate,
+                          ).toLocaleDateString("tr-TR")
                           : "-"}
                       </p>
                     </div>
@@ -1127,8 +1153,10 @@ function SettingsPage() {
                   )}
 
                   {currentSubscription.status === "suspended" && (
-                    <div className="flex items-center gap-3 rounded-lg border border-yellow-200 dark:border-yellow-800 p-3 bg-yellow-50 dark:bg-yellow-900/10">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
+                    <div
+                      className="flex items-center gap-3 rounded-lg border border-yellow-200 dark:border-yellow-800 p-3 bg-yellow-50 dark:bg-yellow-900/10">
+                      <div
+                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
                         <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                       </div>
                       <div>
@@ -1145,7 +1173,8 @@ function SettingsPage() {
                 </div>
 
                 {currentSubscription.status === "suspended" && (
-                  <div className="rounded-lg border border-yellow-200 dark:border-yellow-800 p-3 bg-yellow-50 dark:bg-yellow-900/10">
+                  <div
+                    className="rounded-lg border border-yellow-200 dark:border-yellow-800 p-3 bg-yellow-50 dark:bg-yellow-900/10">
                     <div className="flex items-start gap-2">
                       <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
                       <div className="text-sm">
@@ -1812,5 +1841,8 @@ function SettingsPage() {
 }
 
 export const Route = createFileRoute("/ayarlar")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    section: (search.section as SettingsSection) || undefined,
+  }),
   component: SettingsPage,
 });

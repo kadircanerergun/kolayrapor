@@ -242,7 +242,7 @@ function buildInjectReportIconsJS(
     if (isLoading) {
       btn.disabled = true;
       btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:kolay-spin 0.6s linear infinite;vertical-align:middle;"></span>';
-      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:not-allowed;border:none;color:white;margin-left:6px;vertical-align:middle;opacity:0.7;background:#746BEC;';
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:not-allowed;border:none;color:white;margin-left:6px;vertical-align:middle;opacity:0.7;background:#7367F0;';
     } else if (analyzed && typeof analyzed.validityScore === 'number') {
       const score = Math.round(analyzed.validityScore);
       const color = score >= 80 ? '#22c55e' : score >= 60 ? '#f97316' : '#ef4444';
@@ -251,7 +251,7 @@ function buildInjectReportIconsJS(
       btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:' + color + ';';
     } else {
       btn.textContent = 'Kontrol Et';
-      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:#746BEC;';
+      btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:#7367F0;';
     }
 
     raporSpan.parentElement.appendChild(btn);

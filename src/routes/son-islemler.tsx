@@ -6,7 +6,7 @@ function SonIslemler() {
     <div className="p-6">
       <div className="mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold">Son İşlemler</h1>
+          <h1 className="text-2xl font-bold">Kontrol Geçmişi</h1>
           <p className="text-muted-foreground">
             Daha önce sorgulanan ve analiz edilen reçeteler
           </p>

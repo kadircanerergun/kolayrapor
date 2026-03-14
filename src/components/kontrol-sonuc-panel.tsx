@@ -57,12 +57,12 @@ function getBadgeClasses(tier: "green" | "orange" | "red") {
 }
 
 export function KontrolSonucPanel({
-  sonuclar,
-  ilaclar,
-  onReAnalyze,
-  isReAnalyzing,
-  focusBarkod,
-}: KontrolSonucPanelProps) {
+                                    sonuclar,
+                                    ilaclar,
+                                    onReAnalyze,
+                                    isReAnalyzing,
+                                    focusBarkod,
+                                  }: KontrolSonucPanelProps) {
   const entries = Object.entries(sonuclar);
 
   const [openItems, setOpenItems] = useState<Set<string>>(() => {
@@ -129,9 +129,6 @@ export function KontrolSonucPanel({
                     <p className="font-semibold text-sm truncate">
                       {medicineName}
                     </p>
-                    {medicineName !== barkod && (
-                      <p className="text-xs text-muted-foreground">{barkod}</p>
-                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                     <span
@@ -156,28 +153,13 @@ export function KontrolSonucPanel({
               <CollapsibleContent>
                 <Separator />
 
-                {/* Validity + Score */}
-                <div className="px-3 py-2 flex items-center gap-2 text-sm">
-                  {report.isValid ? (
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
-                  )}
-                  <span className="font-medium">
-                    {report.isValid ? "Geçerli" : "Geçersiz"}
-                  </span>
-                  <span className="text-muted-foreground">—</span>
-                  <span>{score}%</span>
-                </div>
-
-                <Separator />
 
                 {/* Report HTML details */}
                 {report.reportEvolutionDetails && (
                   <>
                     <div className="px-3 py-3">
                       <div
-                        className="text-sm leading-[1.4] prose prose-sm max-w-none
+                        className="font-dm-sans text-sm leading-[1.8] prose prose-sm max-w-none
                           [&>*+*]:border-t [&>*+*]:border-border/40 [&>*+*]:pt-2 [&>*+*]:mt-2"
                         dangerouslySetInnerHTML={{
                           __html: report.reportEvolutionDetails,
@@ -187,16 +169,6 @@ export function KontrolSonucPanel({
                     <Separator />
                   </>
                 )}
-
-                {/* Info: processedAt, pharmacyId */}
-                <div className="px-3 py-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <div>
-                    <span className="font-medium">İşlem Tarihi:</span>{" "}
-                    {report.processedAt
-                      ? new Date(report.processedAt).toLocaleString("tr-TR")
-                      : "—"}
-                  </div>
-                </div>
 
                 {/* Feedback / Rating */}
                 {report.reportId && (
@@ -210,6 +182,9 @@ export function KontrolSonucPanel({
                 {onReAnalyze && (
                   <div className="px-3 pb-3">
                     <Button
+                      style={{
+                        position: "relative",
+                      }}
                       variant="outline"
                       size="sm"
                       className="w-full gap-2"
@@ -222,6 +197,18 @@ export function KontrolSonucPanel({
                         <RefreshCw className="h-4 w-4" />
                       )}
                       Yeniden Kontrol Et
+                      <span
+                        style={{
+                          position:'absolute',
+                          right: 10,
+                          bottom: 0,
+                          top: 10,
+                        }}
+                        className={"text-xs font-medium text-muted-foreground text-[9px] text-right justify-end flex flex-1"}>
+                       {report.processedAt
+                         ? new Date(report.processedAt).toLocaleString("tr-TR")
+                         : "—"}
+                    </span>
                     </Button>
                   </div>
                 )}

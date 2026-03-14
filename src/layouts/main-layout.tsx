@@ -141,7 +141,7 @@ export default function MainLayout({
       to: "/home",
       icon: FileCheck,
       label: "Anasayfa",
-      description: "Özet bilgiler ve son işlemler",
+      description: "Özet bilgiler ve Kontrol Geçmişi",
     },
     {
       to: "/gezinti",
@@ -158,7 +158,7 @@ export default function MainLayout({
     {
       to: "/son-islemler",
       icon: History,
-      label: "Son İşlemler",
+      label: "Kontrol Geçmişi",
       description: "Daha önce sorgulanan reçeteler",
     },
 

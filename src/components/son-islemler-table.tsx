@@ -214,6 +214,68 @@ export function SonIslemlerTable({
     }
   };
 
+  const handleReAnalyze = async (receteNo: string, barkod?: string) => {
+    if (!barkod) {
+      return handleAnalizEt(receteNo, true);
+    }
+
+    const groupId = `reanalyze-${receteNo}-${barkod}`;
+    dispatch(setAnalyzingRecete(receteNo));
+
+    dispatch(addGroup({
+      id: groupId,
+      title: `Reçete ${receteNo}`,
+      receteNo,
+      items: [
+        { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
+      ],
+    }));
+
+    try {
+      const recete = await dispatch(searchPrescriptionDetail({ receteNo, force: true })).unwrap();
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+      const ilac = (recete?.ilaclar ?? []).find((m: any) => m.barkod === barkod);
+      if (!ilac) return;
+
+      dispatch(addGroup({
+        id: groupId,
+        title: `Reçete ${receteNo}`,
+        receteNo,
+        items: [
+          { id: "fetch", label: "Reçete verileri toplanıyor", status: "done" },
+          { id: barkod, label: ilac.ad || barkod, status: "running" },
+        ],
+      }));
+
+      try {
+        const result = await reportApiService.generateReport(barkod, recete);
+        if (result.success && result.data) {
+          await cacheAnalysis(receteNo, barkod, result.data);
+          dispatch(analizCompleted({ receteNo, sonuclar: { [barkod]: result.data } }));
+        }
+        dispatch(updateTask({ groupId, taskId: barkod, status: "done" }));
+      } catch (err: any) {
+        dispatch(updateTask({ groupId, taskId: barkod, status: "error", errorMessage: err?.message }));
+      }
+
+      const [updatedAnaliz, updatedTimestamps] = await Promise.all([
+        getAllCachedAnalysis(),
+        getLatestAnalysisTimestamps(),
+      ]);
+      setLocalAnalizSonuclari(updatedAnaliz);
+      setAnalysisTimestamps(updatedTimestamps);
+    } catch (err: any) {
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
+      dialog.showAlert({
+        title: "Hata",
+        description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}`,
+      });
+    } finally {
+      dispatch(setAnalyzingRecete(null));
+    }
+  };
+
   const handleClearCache = async () => {
     dialog.showAlert({
       title: "Önbelleği Temizle",
@@ -235,7 +297,7 @@ export function SonIslemlerTable({
       {showHeader && (
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Son İşlemler</h2>
+            <h2 className="text-lg font-semibold">Kontrol Geçmişi</h2>
             <p className="text-muted-foreground text-sm">
               Daha önce sorgulanan ve analiz edilen reçeteler
             </p>
@@ -281,7 +343,7 @@ export function SonIslemlerTable({
             detaylar={detaylar}
             loadingRecete={loadingRecete}
             analyzingRecete={analyzingRecete}
-            showSonIslemTarihi
+            showSonIslemTarihi={false}
             showKayitTarihi
             showFilters
             onSorgula={handleSorgula}
@@ -292,7 +354,7 @@ export function SonIslemlerTable({
             isBusy={isBusy}
             isWithin45Days={isWithin45Days}
             getLastActionAt={getLastActionAt}
-            onReAnalyze={(receteNo) => handleAnalizEt(receteNo, true)}
+            onReAnalyze={handleReAnalyze}
             isReAnalyzing={(receteNo) => analyzingRecete === receteNo}
           />
         </div>
