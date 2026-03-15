@@ -7,6 +7,7 @@ import {
 import {
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -35,6 +36,17 @@ function StatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
+function GroupStatusIcon({ group }: { group: TaskGroup }) {
+  const allDone = group.items.every((i) => i.status === "done" || i.status === "error");
+  const hasError = group.items.some((i) => i.status === "error");
+  const isRunning = group.items.some((i) => i.status === "running");
+
+  if (isRunning) return <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />;
+  if (allDone && hasError) return <XCircle className="h-3 w-3 text-red-500 shrink-0" />;
+  if (allDone) return <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />;
+  return <Clock className="h-3 w-3 text-muted-foreground/60 shrink-0" />;
+}
+
 function GroupSection({
   group,
   onShowResult,
@@ -50,15 +62,27 @@ function GroupSection({
   const total = group.items.length;
   const allGroupDone = doneCount === total;
   const hasError = group.items.some((i) => i.status === "error");
-  const runningItem = group.items.find((i) => i.status === "running");
-  const nextPending = group.items.find((i) => i.status === "pending");
+  const isRunning = group.items.some((i) => i.status === "running");
+  const [expanded, setExpanded] = useState(false);
+
+  // Auto-expand when there's an error
+  useEffect(() => {
+    if (hasError && allGroupDone) setExpanded(true);
+  }, [hasError, allGroupDone]);
 
   return (
-    <div className="border-t first:border-t-0 px-3 py-2">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium truncate">{group.title}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground">
+    <div className="border-t first:border-t-0">
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/30 text-left">
+          <ChevronRight
+            className={cn(
+              "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
+              expanded && "rotate-90",
+            )}
+          />
+          <GroupStatusIcon group={group} />
+          <span className="text-xs font-medium truncate flex-1">{group.title}</span>
+          <span className="text-[10px] text-muted-foreground shrink-0">
             {doneCount}/{total}
           </span>
           {allGroupDone && hasError && onRetry && (
@@ -66,7 +90,10 @@ function GroupSection({
               size="sm"
               variant="ghost"
               className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600"
-              onClick={() => onRetry(group.id, group.receteNo)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRetry(group.id, group.receteNo);
+              }}
             >
               <RefreshCw className="h-3 w-3 mr-0.5" />
               Tekrar Dene
@@ -77,52 +104,59 @@ function GroupSection({
               size="sm"
               variant="ghost"
               className="h-5 px-1.5 text-[10px]"
-              onClick={() => onShowResult(group.receteNo!)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowResult(group.receteNo!);
+              }}
             >
               <Eye className="h-3 w-3 mr-0.5" />
               Sonucu Gör
             </Button>
           )}
-        </div>
-      </div>
-      <div className="space-y-1">
-        {group.items.map((item) => (
-          <div
-            key={item.id}
-            className={cn(
-              "flex items-center gap-2 rounded px-2 py-1 text-xs",
-              item.status === "running" && "bg-primary/5",
-            )}
-          >
-            <StatusIcon status={item.status} />
-            <span
-              className={cn(
-                "flex-1 truncate",
-                item.status === "pending" && "text-muted-foreground",
-                item.status === "error" && "text-red-500",
-                item.status === "running" && "font-medium",
-              )}
-            >
-              {item.label}
-            </span>
-            {item.status === "running" && (
-              <span className="text-[10px] text-primary font-medium shrink-0">
-                devam ediyor
-              </span>
-            )}
-            {item.status === "error" && (
-              <span className="text-[10px] text-red-400 shrink-0">
-                başarısız
-              </span>
-            )}
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="pl-5 pr-3 pb-2 space-y-1">
+            {group.items.map((item) => (
+              <div key={item.id}>
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded px-2 py-1 text-xs",
+                    item.status === "running" && "bg-primary/5",
+                  )}
+                >
+                  <StatusIcon status={item.status} />
+                  <span
+                    className={cn(
+                      "flex-1 truncate",
+                      item.status === "pending" && "text-muted-foreground",
+                      item.status === "error" && "text-red-500",
+                      item.status === "running" && "font-medium",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  {item.status === "running" && (
+                    <span className="text-[10px] text-primary font-medium shrink-0">
+                      devam ediyor
+                    </span>
+                  )}
+                  {item.status === "error" && (
+                    <span className="text-[10px] text-red-400 shrink-0">
+                      başarısız
+                    </span>
+                  )}
+                </div>
+                {item.status === "error" && item.errorMessage && (
+                  <div className="ml-7 mt-0.5 px-2 py-1 rounded bg-red-50 dark:bg-red-950/30 text-[10px] text-red-500">
+                    {item.errorMessage}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {runningItem && nextPending && (
-        <div className="mt-1 px-2 text-[10px] text-muted-foreground">
-          Sırada: {nextPending.label}
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
@@ -310,7 +344,7 @@ export function GlobalTaskPanel() {
               </div>
             )}
 
-            {/* Individual task groups */}
+            {/* Individual task groups — each collapsible */}
             {groups.map((group) => (
               <GroupSection
                 key={group.id}

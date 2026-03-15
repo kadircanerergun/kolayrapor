@@ -731,6 +731,19 @@ export function BrowserView() {
       webview.loadURL(MEDULA_URL);
       await waitForLoadStop();
     }
+
+    // Check if already logged in (no login form on page)
+    const hasLoginForm = await webview.executeJavaScript(`
+      !!document.querySelector('input[name*="text1"]')
+    `).catch(() => false);
+
+    if (!hasLoginForm) {
+      // Page redirected to dashboard — already logged in
+      setLoginStatus("logged-in");
+      setLoginError(null);
+      return;
+    }
+
     await attemptLogin(webview);
   };
 
@@ -917,9 +930,12 @@ export function BrowserView() {
           size="sm"
           className="gap-1.5 whitespace-nowrap"
           onClick={() => performLogin()}
-          disabled={loginStatus === "logging-in"}
         >
-          <PlugZap className="h-4 w-4" />
+          {loginStatus === "logging-in" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <PlugZap className="h-4 w-4" />
+          )}
           Yeniden Bağlan
         </Button>
 

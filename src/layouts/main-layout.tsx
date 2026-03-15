@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { version as appVersion } from "../../package.json";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -379,10 +380,16 @@ export default function MainLayout({
                 </div>
               )
             )}
+
             </div>
           </SidebarContent>
 
-          <SidebarFooter className={cn(collapsed && "px-2")}>
+          <SidebarFooter className={cn("pt-1 pb-5", collapsed && "px-2")}>
+            {collapsed ? (
+              <p className="text-[10px] text-muted-foreground text-center">v{appVersion}</p>
+            ) : (
+              <p className="text-[10px] text-muted-foreground text-center">Kolay Rapor 2026 &copy; &middot; v{appVersion}</p>
+            )}
 
             {/* Debug Mode Toggle */}
           {/*  <div className="space-y-2">
