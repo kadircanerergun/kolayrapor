@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Recete } from "@/types/recete";
 import { Button } from "@/components/ui/button";
 import { Database, Loader2, Trash2 } from "lucide-react";
@@ -22,6 +22,7 @@ import {
   clearCache,
 } from "@/lib/db";
 import { ReceteTable } from "@/components/recete-table";
+import { toast } from "sonner";
 
 interface SonIslemlerTableProps {
   showHeader?: boolean;
@@ -143,10 +144,7 @@ export function SonIslemlerTable({
       const updated = await getAllCachedReceteler();
       setCachedReceteler(updated);
     } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `Veri alınırken hata: ${result.error?.message || "Bilinmeyen hata"}`,
-      });
+      toast.error("Reçete verileri alınırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
     }
   };
 
@@ -193,7 +191,7 @@ export function SonIslemlerTable({
           }
           dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
         } catch (err: any) {
-          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: err?.message }));
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: "İşlem başarısız" }));
         }
       }
 
@@ -204,11 +202,8 @@ export function SonIslemlerTable({
       setLocalAnalizSonuclari(updatedAnaliz);
       setAnalysisTimestamps(updatedTimestamps);
     } catch (err: any) {
-      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
-      dialog.showAlert({
-        title: "Hata",
-        description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}`,
-      });
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "İşlem başarısız" }));
+      toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -256,7 +251,7 @@ export function SonIslemlerTable({
         }
         dispatch(updateTask({ groupId, taskId: barkod, status: "done" }));
       } catch (err: any) {
-        dispatch(updateTask({ groupId, taskId: barkod, status: "error", errorMessage: err?.message }));
+        dispatch(updateTask({ groupId, taskId: barkod, status: "error", errorMessage: "İşlem başarısız" }));
       }
 
       const [updatedAnaliz, updatedTimestamps] = await Promise.all([
@@ -266,11 +261,8 @@ export function SonIslemlerTable({
       setLocalAnalizSonuclari(updatedAnaliz);
       setAnalysisTimestamps(updatedTimestamps);
     } catch (err: any) {
-      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
-      dialog.showAlert({
-        title: "Hata",
-        description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}`,
-      });
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "İşlem başarısız" }));
+      toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -289,6 +281,18 @@ export function SonIslemlerTable({
       },
     });
   };
+
+  const handleAnalizEtRef = useRef(handleAnalizEt);
+  handleAnalizEtRef.current = handleAnalizEt;
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { receteNo } = (e as CustomEvent).detail;
+      handleAnalizEtRef.current(receteNo, true);
+    };
+    window.addEventListener("kolayrapor:retry-analysis", handler);
+    return () => window.removeEventListener("kolayrapor:retry-analysis", handler);
+  }, []);
 
   const isBusy = loadingRecete !== null || analyzingRecete !== null;
 

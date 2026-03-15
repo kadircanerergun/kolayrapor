@@ -367,6 +367,23 @@ function SettingsPage() {
   const [credentialsSaved, setCredentialsSaved] = useState(false);
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [medulaConsent, setMedulaConsent] = useState(false);
+  const [medulaAgreement, setMedulaAgreement] = useState<{ id: string; title: string; content: string; categoryName?: string } | null>(null);
+  const [showMedulaAgreement, setShowMedulaAgreement] = useState(false);
+
+  useEffect(() => {
+    subscriptionApiService
+      .getRegistrationAgreements(["medula-kvkk"])
+      .then((agreements) => {
+        if (agreements.length > 0) {
+          setMedulaAgreement({
+            id: agreements[0].id,
+            title: agreements[0].title,
+            content: agreements[0].content,
+            categoryName: agreements[0].category?.name,
+          });
+        }
+      });
+  }, []);
 
   // Sync local form state with context credentials
   useEffect(() => {
@@ -394,6 +411,11 @@ function SettingsPage() {
         password,
         loginTime: new Date().toISOString(),
       });
+
+      if (medulaAgreement) {
+        await subscriptionApiService.acceptAgreement(medulaAgreement.id);
+      }
+
       setCredentialsSaved(true);
       toast.success("Kimlik bilgileri kaydedildi.");
     } catch {
@@ -892,21 +914,23 @@ function SettingsPage() {
                       setCredentialsSaved(false);
                     }}
                     placeholder="Şifrenizi girin"
-                    className="pr-10"
+                    className={!credentialsSaved ? "pr-10" : ""}
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
+                  {!credentialsSaved && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -917,8 +941,25 @@ function SettingsPage() {
                 checked={medulaConsent}
                 onCheckedChange={(checked) => setMedulaConsent(checked === true)}
               />
-              <Label htmlFor="medula-consent" className="text-sm text-muted-foreground leading-snug cursor-pointer">
-                Sistemlerde yapacağım işlemlerde KVKK Mevzuatına uygun hareket edeceğimi taahhüt ederim. </Label>
+              <label htmlFor="medula-consent" className="text-sm text-muted-foreground leading-snug cursor-pointer">
+                {medulaAgreement ? (
+                  <>
+                    <button
+                      type="button"
+                      className="underline font-medium text-primary hover:text-primary/80"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setShowMedulaAgreement(true);
+                      }}
+                    >
+                      {medulaAgreement.categoryName || medulaAgreement.title}
+                    </button>
+                    {"'ni okudum ve kabul ediyorum."}
+                  </>
+                ) : (
+                  "Sistemlerde yapacağım işlemlerde KVKK Mevzuatına uygun hareket edeceğimi taahhüt ederim."
+                )}
+              </label>
             </div>
 
             <div className="flex gap-2">
@@ -952,6 +993,23 @@ function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Medula KVKK Agreement Preview */}
+      <Dialog open={showMedulaAgreement} onOpenChange={setShowMedulaAgreement}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {medulaAgreement?.categoryName || medulaAgreement?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {medulaAgreement && (
+            <div
+              className="max-h-80 overflow-y-auto rounded-md border p-4 text-sm leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: medulaAgreement.content }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 

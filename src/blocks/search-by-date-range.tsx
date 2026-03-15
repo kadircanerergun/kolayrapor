@@ -16,6 +16,7 @@ import { CalendarIcon, Loader2, Search } from "lucide-react";
 import { useState } from "react";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { useCredentials } from "@/contexts/credentials-context";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { searchByDateRange } from "@/store/slices/playwrightSlice";
@@ -62,21 +63,12 @@ const SearchByDateRange = () => {
     );
 
     if (searchByDateRange.rejected.match(result)) {
-      dialog.showAlert({
-        title: "Hata",
-        description:
-          "Sorgulama sirasinda bir hata oluştu: " +
-          (result.error.message || "Bilinmeyen hata"),
-      });
+      toast.error("Sorgulama sırasında bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
     }
 
     if (searchByDateRange.fulfilled.match(result)) {
       if (!result.payload?.prescriptions?.length) {
-        dialog.showAlert({
-          title: "Sonuç Bulunamadı",
-          description:
-            "Belirtilen tarih aralığında herhangi bir reçete bulunamadı.",
-        });
+        toast.info("Belirtilen tarih aralığında herhangi bir reçete bulunamadı.");
       }
     }
   };

@@ -937,11 +937,11 @@ export function BrowserView() {
           <>
             <Button
               variant="default"
-              className="ml-1 gap-1.5 px-8 py-2.5 text-sm"
+              className="ml-1 gap-1.5 px-8 py-2.5 text-sm bg-brand text-brand-foreground hover:bg-brand/90"
               onClick={handleAnalyzeAll}
               disabled={isAnalyzing}
             >
-              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4" />}
+              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <img src={logoDataUri} alt="Analiz" className="h-4 w-4 brightness-0 invert" />}
               Kontrol Et
             </Button>
 

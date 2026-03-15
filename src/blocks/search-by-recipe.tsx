@@ -21,6 +21,7 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { cacheDetail } from "@/lib/db";
 import { useAppDispatch } from "@/store";
 import { detayFetched } from "@/store/slices/receteSlice";
+import { toast } from "sonner";
 
 const SearchByRecipe = () => {
   const playwright = usePlaywright();
@@ -58,10 +59,7 @@ const SearchByRecipe = () => {
       console.log("Initializing Playwright...");
       const initResult = await playwright.initialize();
       if (!initResult.success) {
-        dialog.showAlert({
-          title: "Başlatma Hatası",
-          description: `Playwright başlatılırken hata oluştu: ${initResult.error}`,
-        });
+        toast.error("Sistem başlatılamadı. Lütfen tekrar deneyin.", { duration: Infinity });
         return;
       }
     }
@@ -87,10 +85,7 @@ const SearchByRecipe = () => {
         }
       );
     } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `SGK portalına giderken hata: ${searchResult.error}`,
-      });
+      toast.error("Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
     }
   };
   return (

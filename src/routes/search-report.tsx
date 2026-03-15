@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SearchByDateRange } from "@/blocks/search-by-date-range";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Recete } from "@/types/recete";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,7 +8,6 @@ import {
   Database,
   FlaskConical,
   Loader2,
-  StopCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -37,6 +36,7 @@ import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice"
 import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { ReceteTable } from "@/components/recete-table";
+import { toast } from "sonner";
 
 function SearchReport() {
   const dispatch = useAppDispatch();
@@ -55,6 +55,8 @@ function SearchReport() {
   const pageSize = 40;
 
   const bulkCancelRef = useRef(false);
+  const sortedOrderRef = useRef<string[]>([]);
+  const isBulkRef = useRef(false);
 
   const openDetailModal = (prescriptionData: Recete) => {
     modal.openModal(
@@ -79,10 +81,7 @@ function SearchReport() {
     if (searchPrescriptionDetail.fulfilled.match(result)) {
       openDetailModal(result.payload as Recete);
     } else {
-      dialog.showAlert({
-        title: "Hata",
-        description: `SGK portalına giderken hata: ${result.error?.message || "Bilinmeyen hata"}`,
-      });
+      toast.error("Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
     }
   };
 
@@ -109,7 +108,7 @@ function SearchReport() {
 
       const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
       if (raporluIlaclar.length === 0) {
-        dialog.showAlert({ title: "Analiz Tamamlandı", description: "Raporlu ilaç bulunamadı." });
+        if (!isBulkRef.current) toast.info("Bu reçetede raporlu ilaç bulunamadı.");
         return;
       }
 
@@ -140,12 +139,12 @@ function SearchReport() {
           }
           dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
         } catch (err: any) {
-          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: err?.message }));
+          dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: "Analiz başarısız" }));
         }
       }
     } catch (err: any) {
-      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: err?.message }));
-      dialog.showAlert({ title: "Hata", description: `Analiz sırasında hata: ${err?.message || "Bilinmeyen hata"}` });
+      dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "Reçete verileri alınamadı" }));
+      if (!isBulkRef.current) toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -163,17 +162,32 @@ function SearchReport() {
     }
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  const handleSelectAll = (checked: boolean, filteredReceteNos?: string[]) => {
+    if (checked && filteredReceteNos) {
+      // Select only filtered rows
+      dispatch(clearReceteSelection());
+      for (const receteNo of filteredReceteNos) {
+        if (!selectedRecetes.includes(receteNo)) {
+          dispatch(toggleReceteSelection(receteNo));
+        }
+      }
+    } else if (checked) {
       dispatch(selectAllRecetes());
     } else {
       dispatch(clearReceteSelection());
     }
   };
 
+  const getSelectedInTableOrder = () => {
+    const order = sortedOrderRef.current;
+    return [...selectedRecetes].sort(
+      (a, b) => order.indexOf(a) - order.indexOf(b),
+    );
+  };
+
   const handleBulkVerileriAl = async () => {
     bulkCancelRef.current = false;
-    const selected = [...selectedRecetes];
+    const selected = getSelectedInTableOrder();
     for (let i = 0; i < selected.length; i++) {
       if (bulkCancelRef.current) break;
       dispatch(
@@ -191,7 +205,8 @@ function SearchReport() {
 
   const handleBulkAnalizEt = async () => {
     bulkCancelRef.current = false;
-    const selected = [...selectedRecetes];
+    isBulkRef.current = true;
+    const selected = getSelectedInTableOrder();
     for (let i = 0; i < selected.length; i++) {
       if (bulkCancelRef.current) break;
       dispatch(
@@ -204,12 +219,32 @@ function SearchReport() {
       );
       await handleAnalizEt(selected[i], true);
     }
+    isBulkRef.current = false;
     dispatch(setBulkProgress(null));
   };
 
   const handleBulkCancel = () => {
     bulkCancelRef.current = true;
   };
+
+  const handleAnalizEtRef = useRef(handleAnalizEt);
+  handleAnalizEtRef.current = handleAnalizEt;
+
+  useEffect(() => {
+    const retryHandler = (e: Event) => {
+      const { receteNo } = (e as CustomEvent).detail;
+      handleAnalizEtRef.current(receteNo, true);
+    };
+    const cancelHandler = () => {
+      bulkCancelRef.current = true;
+    };
+    window.addEventListener("kolayrapor:retry-analysis", retryHandler);
+    window.addEventListener("kolayrapor:bulk-cancel", cancelHandler);
+    return () => {
+      window.removeEventListener("kolayrapor:retry-analysis", retryHandler);
+      window.removeEventListener("kolayrapor:bulk-cancel", cancelHandler);
+    };
+  }, []);
 
   const isBusy =
     loadingRecete !== null || analyzingRecete !== null || bulkProgress !== null;
@@ -256,44 +291,7 @@ function SearchReport() {
                 )}
               </div>
 
-              {bulkProgress && (
-                <div className="mb-4 rounded-lg border bg-muted/30 p-3">
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {bulkProgress.type === "verileriAl" &&
-                        "Veriler alınıyor..."}
-                      {bulkProgress.type === "analizEt" &&
-                        "Analiz ediliyor..."}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-muted-foreground font-medium">
-                        {bulkProgress.current}/{bulkProgress.total}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="h-7 px-2 text-xs"
-                        onClick={handleBulkCancel}
-                      >
-                        <StopCircle className="h-3.5 w-3.5 mr-1" />
-                        Durdur
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-300"
-                      style={{
-                        width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    İşleniyor: {bulkProgress.currentReceteNo}
-                  </p>
-                </div>
-              )}
+              {/* Bulk progress is shown in the GlobalTaskPanel (bottom-right) */}
 
               <ReceteTable
                 rows={receteler}
@@ -316,6 +314,9 @@ function SearchReport() {
                 currentPage={currentPage}
                 onPageChange={(page) => dispatch(setCurrentPage(page))}
                 isBusy={isBusy}
+                onSortedOrderChange={(order) => {
+                  sortedOrderRef.current = order;
+                }}
               />
             </div>
           )}

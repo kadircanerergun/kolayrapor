@@ -62,7 +62,7 @@ export interface ReceteTableProps {
   selectable?: boolean;
   selectedRecetes?: string[];
   onSelectRecete?: (receteNo: string, checked: boolean) => void;
-  onSelectAll?: (checked: boolean) => void;
+  onSelectAll?: (checked: boolean, filteredReceteNos?: string[]) => void;
 
   showHasta?: boolean;
   showSonIslemTarihi?: boolean;
@@ -85,6 +85,7 @@ export interface ReceteTableProps {
   showFilters?: boolean;
   onReAnalyze?: (receteNo: string, barkod?: string) => void;
   isReAnalyzing?: (receteNo: string) => boolean;
+  onSortedOrderChange?: (receteNos: string[]) => void;
 }
 
 type SortKey =
@@ -180,6 +181,7 @@ export function ReceteTable({
                               showFilters = false,
                               onReAnalyze,
                               isReAnalyzing,
+                              onSortedOrderChange,
                             }: ReceteTableProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(
     showSonIslemTarihi ? "sonIslemTarihi" : null,
@@ -347,6 +349,11 @@ export function ReceteTable({
     getAnalysisInfo,
   ]);
 
+  // Notify parent of sorted order
+  useEffect(() => {
+    onSortedOrderChange?.(sortedRows.map((r) => r.receteNo));
+  }, [sortedRows, onSortedOrderChange]);
+
   // Pagination
   const totalPages = sortedRows.length
     ? Math.ceil(sortedRows.length / pageSize)
@@ -357,10 +364,17 @@ export function ReceteTable({
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, currentPage, pageSize]);
 
+  const filteredReceteNos = useMemo(
+    () => filteredRows.map((r) => r.receteNo),
+    [filteredRows],
+  );
+  const filteredSelectedCount = selectedRecetes.filter((r) =>
+    filteredReceteNos.includes(r),
+  ).length;
   const isAllSelected =
-    rows.length > 0 && selectedRecetes.length === rows.length;
+    filteredReceteNos.length > 0 && filteredSelectedCount === filteredReceteNos.length;
   const isSomeSelected =
-    selectedRecetes.length > 0 && selectedRecetes.length < rows.length;
+    filteredSelectedCount > 0 && filteredSelectedCount < filteredReceteNos.length;
 
   const SortableHead = ({
                           label,
@@ -449,7 +463,7 @@ export function ReceteTable({
               <TableHead className="w-12">
                 <Checkbox
                   checked={isAllSelected}
-                  onCheckedChange={(checked) => onSelectAll?.(!!checked)}
+                  onCheckedChange={(checked) => onSelectAll?.(!!checked, filteredReceteNos)}
                   ref={(checkbox: HTMLButtonElement | null) => {
                     if (checkbox) {
                       (checkbox as unknown as { indeterminate: boolean }).indeterminate = isSomeSelected;

@@ -13,6 +13,8 @@ import {
   Clock,
   X,
   Eye,
+  RefreshCw,
+  StopCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
@@ -33,12 +35,21 @@ function StatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-function GroupSection({ group, onShowResult }: { group: TaskGroup; onShowResult?: (receteNo: string) => void }) {
+function GroupSection({
+  group,
+  onShowResult,
+  onRetry,
+}: {
+  group: TaskGroup;
+  onShowResult?: (receteNo: string) => void;
+  onRetry?: (groupId: string, receteNo?: string) => void;
+}) {
   const doneCount = group.items.filter(
     (i) => i.status === "done" || i.status === "error",
   ).length;
   const total = group.items.length;
   const allGroupDone = doneCount === total;
+  const hasError = group.items.some((i) => i.status === "error");
   const runningItem = group.items.find((i) => i.status === "running");
   const nextPending = group.items.find((i) => i.status === "pending");
 
@@ -50,7 +61,18 @@ function GroupSection({ group, onShowResult }: { group: TaskGroup; onShowResult?
           <span className="text-[10px] text-muted-foreground">
             {doneCount}/{total}
           </span>
-          {allGroupDone && group.receteNo && onShowResult && (
+          {allGroupDone && hasError && onRetry && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600"
+              onClick={() => onRetry(group.id, group.receteNo)}
+            >
+              <RefreshCw className="h-3 w-3 mr-0.5" />
+              Tekrar Dene
+            </Button>
+          )}
+          {allGroupDone && !hasError && group.receteNo && onShowResult && (
             <Button
               size="sm"
               variant="ghost"
@@ -88,21 +110,17 @@ function GroupSection({ group, onShowResult }: { group: TaskGroup; onShowResult?
                 devam ediyor
               </span>
             )}
-            {item.errorMessage && (
-              <span
-                className="truncate text-[10px] text-red-400"
-                title={item.errorMessage}
-              >
-                {item.errorMessage}
+            {item.status === "error" && (
+              <span className="text-[10px] text-red-400 shrink-0">
+                başarısız
               </span>
             )}
           </div>
         ))}
       </div>
-      {/* Show "next up" hint when something is running and there's a pending item */}
       {runningItem && nextPending && (
         <div className="mt-1 px-2 text-[10px] text-muted-foreground">
-          Sirada: {nextPending.label}
+          Sırada: {nextPending.label}
         </div>
       )}
     </div>
@@ -112,8 +130,10 @@ function GroupSection({ group, onShowResult }: { group: TaskGroup; onShowResult?
 export function GlobalTaskPanel() {
   const dispatch = useAppDispatch();
   const groups = useAppSelector((s) => s.taskQueue.groups);
+  const bulkProgress = useAppSelector((s) => s.recete.bulkProgress);
   const [isOpen, setIsOpen] = useState(true);
   const [visible, setVisible] = useState(false);
+  const [bulkCancelling, setBulkCancelling] = useState(false);
 
   const allItems = groups.flatMap((g) => g.items);
   const totalItems = allItems.length;
@@ -125,66 +145,101 @@ export function GlobalTaskPanel() {
   const runningItem = allItems.find((i) => i.status === "running");
   const pendingCount = allItems.filter((i) => i.status === "pending").length;
 
-  // Show panel when groups exist
+  const hasBulk = bulkProgress !== null;
+  const hasContent = groups.length > 0 || hasBulk;
+
+  // Show panel when groups or bulk progress exist
   useEffect(() => {
-    if (groups.length > 0) {
+    if (hasContent) {
       setVisible(true);
       setIsOpen(true);
     }
-  }, [groups.length]);
+  }, [hasContent]);
 
-  // Auto-hide after all done (10 seconds)
+  // Reset cancelling state when bulk finishes
   useEffect(() => {
-    if (!allDone || !visible) return;
+    if (!hasBulk) {
+      setBulkCancelling(false);
+    }
+  }, [hasBulk]);
+
+  // Auto-hide after all done (10 seconds) — only if no errors and no bulk
+  useEffect(() => {
+    if (!allDone || !visible || hasError || hasBulk) return;
     const timer = setTimeout(() => {
       setVisible(false);
       dispatch(clearCompleted());
     }, 10000);
     return () => clearTimeout(timer);
-  }, [allDone, visible, dispatch]);
+  }, [allDone, visible, hasError, hasBulk, dispatch]);
 
   const handleShowResult = (receteNo: string) => {
     dispatch(setShowResultReceteNo(receteNo));
   };
 
-  if (!visible || groups.length === 0) return null;
+  const handleRetry = (groupId: string, receteNo?: string) => {
+    dispatch(removeGroup(groupId));
+    if (receteNo) {
+      window.dispatchEvent(
+        new CustomEvent("kolayrapor:retry-analysis", { detail: { receteNo } }),
+      );
+    }
+  };
+
+  const handleBulkCancel = () => {
+    setBulkCancelling(true);
+    window.dispatchEvent(new CustomEvent("kolayrapor:bulk-cancel"));
+  };
+
+  if (!visible || !hasContent) return null;
 
   // Summary text for collapsed header
-  const headerText = allDone
-    ? hasError
-      ? "Tamamlandi (hata var)"
-      : "Tamamlandi"
-    : runningItem
-      ? runningItem.label
-      : `Islem bekleniyor (${pendingCount})`;
+  const headerText = hasBulk
+    ? bulkCancelling
+      ? "Durduruluyor..."
+      : bulkProgress.type === "verileriAl"
+        ? "Toplu sorgulama"
+        : "Toplu kontrol"
+    : allDone
+      ? hasError
+        ? "Tamamlandı (hata var)"
+        : "Tamamlandı"
+      : runningItem
+        ? runningItem.label
+        : `İşlem bekleniyor (${pendingCount})`;
 
   return (
     <div
       className={cn(
-        "fixed bottom-4 right-4 z-[100] w-80 rounded-lg border bg-background shadow-xl transition-opacity duration-300",
+        "fixed bottom-4 right-4 z-[100] w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-lg border bg-background shadow-xl transition-opacity duration-300",
       )}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-muted/50 rounded-t-lg">
           <span className="flex items-center gap-2 min-w-0">
-            {!allDone && (
+            {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-            )}
-            {allDone && !hasError && (
+            ) : hasBulk && bulkCancelling ? (
+              <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            ) : allDone && !hasError ? (
               <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
-            )}
-            {allDone && hasError && (
+            ) : allDone && hasError ? (
               <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-            )}
+            ) : null}
             <span className="truncate">{headerText}</span>
-            {!allDone && totalItems > 1 && (
+            {hasBulk && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                ({bulkProgress.current}/{bulkProgress.total})
+              </span>
+            )}
+            {!hasBulk && !allDone && totalItems > 1 && (
               <span className="text-xs text-muted-foreground shrink-0">
                 ({doneItems}/{totalItems})
               </span>
             )}
           </span>
           <div className="flex items-center gap-1 shrink-0 ml-2">
-            {allDone && (
+            {!hasBulk && allDone && (
               <button
                 className="p-0.5 rounded hover:bg-muted"
                 onClick={(e) => {
@@ -205,9 +260,64 @@ export function GlobalTaskPanel() {
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div className="max-h-64 overflow-y-auto border-t">
+          <div className="max-h-72 overflow-y-auto border-t">
+            {/* Bulk progress section */}
+            {hasBulk && (
+              <div className="px-3 py-2.5 border-b">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">
+                    {bulkProgress.type === "verileriAl"
+                      ? "Veriler alınıyor..."
+                      : "Kontrol ediliyor..."}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBulkCancel();
+                    }}
+                    disabled={bulkCancelling}
+                  >
+                    {bulkCancelling ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        Durduruluyor...
+                      </>
+                    ) : (
+                      <>
+                        <StopCircle className="h-3 w-3 mr-1" />
+                        Durdur
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-300",
+                      bulkCancelling ? "bg-orange-400" : "bg-brand",
+                    )}
+                    style={{
+                      width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  İşleniyor: {bulkProgress.currentReceteNo}
+                </p>
+              </div>
+            )}
+
+            {/* Individual task groups */}
             {groups.map((group) => (
-              <GroupSection key={group.id} group={group} onShowResult={handleShowResult} />
+              <GroupSection
+                key={group.id}
+                group={group}
+                onShowResult={handleShowResult}
+                onRetry={handleRetry}
+              />
             ))}
           </div>
         </CollapsibleContent>
