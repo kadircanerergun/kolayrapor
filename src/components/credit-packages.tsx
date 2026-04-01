@@ -67,6 +67,9 @@ export function CreditPackages() {
                 </div>
                 <p className="text-xl font-semibold text-primary">
                   ₺{Number(pkg.price).toFixed(2)}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    + KDV
+                  </span>
                 </p>
               </div>
             </CardContent>

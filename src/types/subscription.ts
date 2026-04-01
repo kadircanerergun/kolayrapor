@@ -113,6 +113,9 @@ export interface SubscriptionResponse {
     status: string;
   };
   error?: string;
+  /** 3D Secure HTML — if present, show in a webview for card verification */
+  threeDHtml?: string;
+  merchantOrderId?: string;
 }
 
 export interface SavedCard {

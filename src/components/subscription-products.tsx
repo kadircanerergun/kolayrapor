@@ -179,6 +179,9 @@ export function SubscriptionProducts() {
                     <span className="text-3xl font-bold">
                       ₺{selectedVariant.price}
                     </span>
+                    <span className="text-sm text-muted-foreground">
+                      + KDV
+                    </span>
                     {selectedVariant.originalPrice && (
                       <span className="text-lg text-muted-foreground line-through">
                         ₺{selectedVariant.originalPrice}

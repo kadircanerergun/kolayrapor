@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+import { calculateKdv, priceWithKdv } from "@/utils/kdv";
 
 interface OdemeSearch {
   type: "subscription" | "credit";
@@ -82,6 +83,10 @@ function OdemePage() {
   // Success modal
   const [successOpen, setSuccessOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+
+  // 3D Secure modal
+  const [threeDOpen, setThreeDOpen] = useState(false);
+  const [threeDHtml, setThreeDHtml] = useState("");
 
   useEffect(() => {
     loadData();
@@ -137,8 +142,10 @@ function OdemePage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      let result: Awaited<ReturnType<typeof subscriptionApiService.subscribe>>;
+
       if (type === "subscription" && variant) {
-        const result =
+        result =
           paymentMode === "saved" && selectedCardId
             ? await subscriptionApiService.subscribe(variant.id, undefined, {
                 savedCardId: selectedCardId,
@@ -146,21 +153,8 @@ function OdemePage() {
             : await subscriptionApiService.subscribe(variant.id, card, {
                 saveCard,
               });
-
-        if (result.success) {
-          await refresh();
-          setSuccessMessage(
-            result.message || "Abonelik başarıyla oluşturuldu!",
-          );
-          setSuccessOpen(true);
-        } else {
-          showAlert({
-            title: "Hata",
-            description: result.error || "Abonelik işlemi başarısız oldu.",
-          });
-        }
       } else if (type === "credit" && creditPackage) {
-        const result =
+        result =
           paymentMode === "saved" && selectedCardId
             ? await subscriptionApiService.purchaseCredits(
                 creditPackage.id,
@@ -172,20 +166,36 @@ function OdemePage() {
                 card,
                 { saveCard },
               );
+      } else {
+        return;
+      }
 
-        if (result.success) {
-          await refresh();
-          setSuccessMessage(
-            result.message ||
-              "Kredi satın alma işlemi başarıyla tamamlandı.",
-          );
-          setSuccessOpen(true);
-        } else {
-          showAlert({
-            title: "Hata",
-            description: result.error || "Satın alma işlemi başarısız oldu.",
-          });
-        }
+      // 3D Secure — show bank verification page in modal
+      if (result.threeDHtml) {
+        setThreeDHtml(result.threeDHtml);
+        setThreeDOpen(true);
+        // Keep submitting=true — will be reset when 3D modal closes
+        return;
+      }
+
+      if (result.success) {
+        await refresh();
+        setSuccessMessage(
+          result.message ||
+            (type === "subscription"
+              ? "Abonelik başarıyla oluşturuldu!"
+              : "Kredi satın alma işlemi başarıyla tamamlandı."),
+        );
+        setSuccessOpen(true);
+      } else {
+        showAlert({
+          title: "Hata",
+          description:
+            result.error ||
+            (type === "subscription"
+              ? "Abonelik işlemi başarısız oldu."
+              : "Satın alma işlemi başarısız oldu."),
+        });
       }
     } catch {
       showAlert({
@@ -222,10 +232,14 @@ function OdemePage() {
     return digits.replace(/(.{4})/g, "$1 ").trim();
   };
 
-  const getAmount = (): number => {
+  const getBaseAmount = (): number => {
     if (type === "subscription" && variant) return variant.price;
     if (type === "credit" && creditPackage) return Number(creditPackage.price);
     return 0;
+  };
+
+  const getAmount = (): number => {
+    return priceWithKdv(getBaseAmount());
   };
 
   if (loading) {
@@ -357,20 +371,18 @@ function OdemePage() {
 
                 <Separator />
 
-                {/* Price */}
-                <div className="space-y-1">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Toplam
-                    </span>
+                {/* Price with KDV breakdown */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Ara Toplam</span>
                     <div className="flex items-baseline gap-2">
                       {variant.originalPrice && (
                         <span className="text-sm text-muted-foreground line-through">
-                          ₺{variant.originalPrice}
+                          ₺{variant.originalPrice.toFixed(2)}
                         </span>
                       )}
-                      <span className="text-2xl font-bold">
-                        ₺{variant.price}
+                      <span className="font-medium">
+                        ₺{variant.price.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -381,6 +393,19 @@ function OdemePage() {
                       </Badge>
                     </div>
                   )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">KDV (%20)</span>
+                    <span className="font-medium">
+                      ₺{calculateKdv(variant.price).toFixed(2)}
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold">Toplam</span>
+                    <span className="text-2xl font-bold">
+                      ₺{priceWithKdv(variant.price).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </>
             )}
@@ -414,11 +439,26 @@ function OdemePage() {
 
                 <Separator />
 
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm text-muted-foreground">Toplam</span>
-                  <span className="text-2xl font-bold">
-                    ₺{Number(creditPackage.price).toFixed(2)}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Ara Toplam</span>
+                    <span className="font-medium">
+                      ₺{Number(creditPackage.price).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">KDV (%20)</span>
+                    <span className="font-medium">
+                      ₺{calculateKdv(Number(creditPackage.price)).toFixed(2)}
+                    </span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold">Toplam</span>
+                    <span className="text-2xl font-bold">
+                      ₺{priceWithKdv(Number(creditPackage.price)).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
               </>
             )}
@@ -667,6 +707,63 @@ function OdemePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 3D Secure Modal */}
+      <Dialog open={threeDOpen} onOpenChange={(open) => {
+        if (!open) {
+          setThreeDOpen(false);
+          setThreeDHtml("");
+          setSubmitting(false);
+        }
+      }}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden [&>button]:z-10">
+          <DialogHeader className="px-4 pt-4 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              3D Secure Doğrulama
+            </DialogTitle>
+            <DialogDescription>
+              Bankanız tarafından gönderilen SMS kodunu girerek ödemeyi onaylayın.
+            </DialogDescription>
+          </DialogHeader>
+          {threeDHtml && (
+            <div className="w-full h-[450px]">
+              <webview
+                ref={(ref: any) => {
+                  if (!ref || ref.__3dListenerAttached) return;
+                  ref.__3dListenerAttached = true;
+
+                  ref.addEventListener("did-navigate", (e: any) => {
+                    const url = e.url || "";
+                    if (url.includes("/store/3d-callback/ok")) {
+                      setThreeDOpen(false);
+                      setThreeDHtml("");
+                      setSubmitting(false);
+                      refresh();
+                      setSuccessMessage("Ödeme başarıyla tamamlandı!");
+                      setSuccessOpen(true);
+                    } else if (url.includes("/store/3d-callback/fail")) {
+                      setThreeDOpen(false);
+                      setThreeDHtml("");
+                      setSubmitting(false);
+                      showAlert({
+                        title: "Ödeme Başarısız",
+                        description: "Kart doğrulama başarısız oldu.",
+                      });
+                    }
+                  });
+
+                  const encoded = encodeURIComponent(threeDHtml);
+                  ref.src = `data:text/html;charset=utf-8,${encoded}`;
+                }}
+                style={{ width: "100%", height: "100%" }}
+                // @ts-expect-error webview is an Electron-specific tag
+                allowpopups="true"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Success Modal */}
       <Dialog open={successOpen} onOpenChange={(open) => {

@@ -1140,7 +1140,7 @@ function SettingsPage() {
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Ücret</p>
                   <p className="text-sm font-bold">
-                    ₺{currentVariant?.price}
+                    {currentVariant ? `₺${currentVariant.price}` : "—"}{currentVariant && <span className="text-xs font-normal text-muted-foreground ml-1">+ KDV</span>}
                   </p>
                 </div>
               </div>

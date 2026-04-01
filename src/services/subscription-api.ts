@@ -265,6 +265,17 @@ class SubscriptionApiService {
         `${API_BASE_URL}/store/purchase`,
         body,
       );
+
+      // 3D Secure flow — API returns { html, merchantOrderId }
+      if (response.data.html) {
+        return {
+          success: true,
+          message: "3D doğrulama gerekiyor",
+          threeDHtml: response.data.html,
+          merchantOrderId: response.data.merchantOrderId,
+        };
+      }
+
       return {
         success: true,
         message: "Kredi satın alma işlemi başarılı!",
