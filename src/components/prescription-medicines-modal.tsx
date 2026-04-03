@@ -27,11 +27,15 @@ import { addGroup, updateTask } from '@/store/slices/taskQueueSlice';
 
 interface PrescriptionMedicinesModalProps {
   prescriptionData: Recete;
+  hastaAd?: string;
+  hastaSoyad?: string;
   onQueryMedicine?: (medicine: any) => void;
 }
 
 const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
   prescriptionData,
+  hastaAd,
+  hastaSoyad,
   onQueryMedicine
 }) => {
   const dispatch = useAppDispatch();
@@ -105,7 +109,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
             <span className="font-medium">Reçete Tarihi:</span> {prescriptionData.receteTarihi}
           </div>
           <div>
-            <span className="font-medium">Son İşlem Tarihi:</span> {prescriptionData.sonIslemTarihi}
+            <span className="font-medium">Hasta:</span> {hastaAd || prescriptionData.ad} {hastaSoyad || prescriptionData.soyad}
           </div>
           <div>
             <span className="font-medium">Tesis Kodu:</span> {prescriptionData.tesisKodu}
@@ -237,7 +241,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
         )}
       </div>
 
-      <Sheet open={showKontrolSheet} onOpenChange={setShowKontrolSheet}>
+      <Sheet open={showKontrolSheet} onOpenChange={setShowKontrolSheet} modal={false}>
         <SheetContent className="sm:max-w-lg overflow-y-auto z-[60]">
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>

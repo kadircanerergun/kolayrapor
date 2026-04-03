@@ -113,10 +113,12 @@ export function SonIslemlerTable({
     [analysisTimestamps],
   );
 
-  const openDetailModal = (prescriptionData: Recete) => {
+  const openDetailModal = (prescriptionData: Recete, hastaAd?: string, hastaSoyad?: string) => {
     modal.openModal(
       <PrescriptionMedicinesModal
         prescriptionData={prescriptionData}
+        hastaAd={hastaAd}
+        hastaSoyad={hastaSoyad}
         onQueryMedicine={(medicine) => {
           console.log("Querying medicine:", medicine);
         }}
@@ -132,7 +134,7 @@ export function SonIslemlerTable({
     const recete = cachedReceteler.find((r) => r.receteNo === receteNo);
     if (recete) {
       const { cachedAt: _, ...data } = recete;
-      openDetailModal(data);
+      openDetailModal(data, recete.ad, recete.soyad);
     }
   };
 
@@ -348,6 +350,7 @@ export function SonIslemlerTable({
             loadingRecete={loadingRecete}
             analyzingRecete={analyzingRecete}
             showSonIslemTarihi={false}
+            showHasta
             showKayitTarihi
             showFilters
             onSorgula={handleSorgula}

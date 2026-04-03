@@ -99,7 +99,7 @@ export const searchPrescriptionDetail = createAsyncThunk(
   "playwright/searchPrescriptionDetail",
   async (
     { receteNo, force = false }: { receteNo: string; force?: boolean },
-    { dispatch },
+    { dispatch, getState },
   ) => {
     dispatch(setLoadingRecete(receteNo));
     try {
@@ -119,6 +119,15 @@ export const searchPrescriptionDetail = createAsyncThunk(
       }
 
       const recete = result.prescriptionData as Recete;
+
+      // Merge ad/soyad from ReceteOzet if available
+      const state = getState() as RootState;
+      const ozet = state.recete.receteler.find((r) => r.receteNo === receteNo);
+      if (ozet) {
+        recete.ad = ozet.ad;
+        recete.soyad = ozet.soyad;
+      }
+
       await cacheDetail(recete);
       dispatch(detayFetched(recete));
       return recete;

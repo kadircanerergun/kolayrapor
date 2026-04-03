@@ -1067,7 +1067,7 @@ export function BrowserView() {
       </div>
 
       {/* Kontrol Sonucu Sheet */}
-      <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc}>
+      <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc} modal={false}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>

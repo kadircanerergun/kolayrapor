@@ -820,6 +820,8 @@ export class PlaywrightAutomationService {
 
     // Temel reçete bilgilerini çıkar
     const receteNoElement = this.page.locator("#f\\:t13");
+    const hastaAdElement = this.page.locator("#f\\:t15");
+    const hastaSoyadElement = this.page.locator("#f\\:t16");
     const tesisKoduElement = this.page.locator("#f\\:t33");
     const receteTarihiElement = this.page.locator("#f\\:t29");
     const sonIslemTarihiElement = this.page.locator("#f\\:t31");
@@ -827,6 +829,8 @@ export class PlaywrightAutomationService {
 
     const receteNo =
       (await receteNoElement.textContent()) || prescriptionNumber;
+    const ad = (await hastaAdElement.textContent().catch(() => "")) || "";
+    const soyad = (await hastaSoyadElement.textContent().catch(() => "")) || "";
     const tesisKodu = (await tesisKoduElement.inputValue()) || "";
     const receteTarihi = (await receteTarihiElement.inputValue()) || "";
     const sonIslemTarihi = (await sonIslemTarihiElement.inputValue()) || "";
@@ -842,6 +846,8 @@ export class PlaywrightAutomationService {
       tesisKodu,
       doktorBrans: doktorBrans.trim(),
       ilaclar,
+      ad: ad.trim(),
+      soyad: soyad.trim(),
     };
 
     return recete;
@@ -871,11 +877,7 @@ export class PlaywrightAutomationService {
       recipes.push(...result);
     }
     const filteredRecipes = recipes.filter((recete) => {
-      console.log('---', recete.receteTarihi);
       const receteDate = dayjs(recete.receteTarihi, "DD/MM/YYYY");
-      console.log(
-        receteDate
-      );
       return (
         receteDate.isSame(startDateObj, 'date') ||
         receteDate.isSame(endDateObj, 'date') ||

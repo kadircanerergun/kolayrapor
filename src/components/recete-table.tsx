@@ -184,7 +184,7 @@ export function ReceteTable({
                               onSortedOrderChange,
                             }: ReceteTableProps) {
   const [sortKey, setSortKey] = useState<SortKey | null>(
-    showSonIslemTarihi ? "sonIslemTarihi" : null,
+    showSonIslemTarihi ? "sonIslemTarihi" : showKayitTarihi ? "cachedAt" : null,
   );
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
@@ -637,40 +637,54 @@ export function ReceteTable({
                     )}
                     {within45 && (
                       <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            onSorgula(row.receteNo, hasCachedDetail)
-                          }
-                          disabled={isBusy}
-                        >
-                          {isLoadingDetail ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            hasCachedDetail ? (
-                              <RefreshCw className="h-4 w-4" />
-                            ) : (
-                              <Database className="h-4 w-4" />
-                            )
-                          )}
-                          Sorgula
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="bg-brand text-brand-foreground hover:bg-brand/90"
-                          onClick={() =>
-                            onAnalizEt(row.receteNo, hasAnalysis)
-                          }
-                          disabled={isBusy}
-                        >
-                          {isAnalyzing ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <FlaskConical className="h-4 w-4" />
-                          )}
-                          {hasAnalysis ? "Tekrar Kontrol" : "Kontrol Et"}
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                onSorgula(row.receteNo, hasCachedDetail)
+                              }
+                              disabled={isBusy}
+                            >
+                              {isLoadingDetail ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                hasCachedDetail ? (
+                                  <RefreshCw className="h-4 w-4" />
+                                ) : (
+                                  <Database className="h-4 w-4" />
+                                )
+                              )}
+                              Sorgula
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="max-w-[200px] text-xs">Reçeteyi ve İlaç Raporlarını okur, inceler, analiz eder ama Rapor Uygunluğunu Kontrol Etmez (kredi harcamaz)</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="bg-brand text-brand-foreground hover:bg-brand/90"
+                              onClick={() =>
+                                onAnalizEt(row.receteNo, hasAnalysis)
+                              }
+                              disabled={isBusy}
+                            >
+                              {isAnalyzing ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FlaskConical className="h-4 w-4" />
+                              )}
+                              {hasAnalysis ? "Tekrar Kontrol" : "Kontrol Et"}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            <p className="max-w-[200px] text-xs">İlaç Raporlarını Yapay Zeka ile inceler ve SUT uygunluğunu kontrol eder</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </>
                     )}
                   </div>
@@ -717,6 +731,7 @@ export function ReceteTable({
       <Sheet
         open={!!analizSheetReceteNo}
         onOpenChange={(open) => !open && setAnalizSheetReceteNo(null)}
+        modal={false}
       >
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>

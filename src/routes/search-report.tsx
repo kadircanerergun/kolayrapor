@@ -58,10 +58,13 @@ function SearchReport() {
   const sortedOrderRef = useRef<string[]>([]);
   const isBulkRef = useRef(false);
 
-  const openDetailModal = (prescriptionData: Recete) => {
+  const openDetailModal = (prescriptionData: Recete, receteNo?: string) => {
+    const ozet = receteler.find((r) => r.receteNo === (receteNo || prescriptionData.receteNo));
     modal.openModal(
       <PrescriptionMedicinesModal
         prescriptionData={prescriptionData}
+        hastaAd={ozet?.ad}
+        hastaSoyad={ozet?.soyad}
         onQueryMedicine={(medicine) => {
           console.log("Querying medicine:", medicine);
         }}
@@ -79,7 +82,7 @@ function SearchReport() {
     );
 
     if (searchPrescriptionDetail.fulfilled.match(result)) {
-      openDetailModal(result.payload as Recete);
+      openDetailModal(result.payload as Recete, receteNo);
     } else {
       toast.error("Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
     }
@@ -87,7 +90,7 @@ function SearchReport() {
 
   const handleDetay = (receteNo: string) => {
     const cached = detaylar[receteNo];
-    if (cached) openDetailModal(cached);
+    if (cached) openDetailModal(cached, receteNo);
   };
 
   const handleAnalizEt = async (receteNo: string, _force: boolean) => {
@@ -238,11 +241,17 @@ function SearchReport() {
     const cancelHandler = () => {
       bulkCancelRef.current = true;
     };
+    const forceStopHandler = () => {
+      bulkCancelRef.current = true;
+      dispatch(setBulkProgress(null));
+    };
     window.addEventListener("kolayrapor:retry-analysis", retryHandler);
     window.addEventListener("kolayrapor:bulk-cancel", cancelHandler);
+    window.addEventListener("kolayrapor:bulk-force-stop", forceStopHandler);
     return () => {
       window.removeEventListener("kolayrapor:retry-analysis", retryHandler);
       window.removeEventListener("kolayrapor:bulk-cancel", cancelHandler);
+      window.removeEventListener("kolayrapor:bulk-force-stop", forceStopHandler);
     };
   }, []);
 
@@ -277,14 +286,20 @@ function SearchReport() {
                         <ChevronDown className="ml-1 h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuContent align="end" className="w-72">
                       <DropdownMenuItem onClick={handleBulkVerileriAl}>
-                        <Database className="h-4 w-4 text-blue-500" />
-                        Sorgula
+                        <Database className="h-4 w-4 text-blue-500 shrink-0" />
+                        <div>
+                          <p className="font-medium">Sorgula</p>
+                          <p className="text-xs text-muted-foreground">Reçeteleri ve İlaç Raporlarını okur, kredi harcamaz</p>
+                        </div>
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={handleBulkAnalizEt}>
-                        <FlaskConical className="h-4 w-4 text-primary" />
-                        Kontrol Et
+                        <FlaskConical className="h-4 w-4 text-primary shrink-0" />
+                        <div>
+                          <p className="font-medium">Kontrol Et</p>
+                          <p className="text-xs text-muted-foreground">Yapay Zeka ile SUT uygunluğunu kontrol eder</p>
+                        </div>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

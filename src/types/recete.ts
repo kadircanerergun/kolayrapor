@@ -156,6 +156,8 @@ type Recete = {
   ilaclar?: ReceteIlac[];
   tesisKodu: string;
   doktorBrans: string;
+  ad?: string;
+  soyad?: string;
 };
 
 type RecipeByDateResponse = {

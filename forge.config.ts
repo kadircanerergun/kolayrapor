@@ -11,8 +11,17 @@ import { PublisherS3 } from "@electron-forge/publisher-s3";
 
 const config: ForgeConfig = {
   packagerConfig: {
+    name: "KolayRapor",
+    executableName: "KolayRapor",
     asar: true,
     icon: "./images/icon",
+    appCopyright: "Copyright © 2025 KolayRapor. Tüm hakları saklıdır.",
+    win32metadata: {
+      CompanyName: "KolayRapor",
+      ProductName: "KolayRapor",
+      FileDescription: "KolayRapor - Eczane Reçete Doğrulama Sistemi",
+      OriginalFilename: "KolayRapor.exe",
+    },
     extraResource: [
       "./node_modules/playwright-core",
       "./images",

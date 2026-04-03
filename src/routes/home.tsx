@@ -191,6 +191,43 @@ function KontrolMerkezi() {
             </div>
           </div>
         </div>
+
+        {/* Action Descriptions */}
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            İşlem Türleri
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  Sorgula
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Reçeteyi ve İlaç Raporlarını okur, inceler, analiz eder ama
+                  Rapor Uygunluğunu Kontrol Etmez (kredi harcamaz).
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-brand text-brand-foreground">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2 text-brand-foreground">
+                  <FlaskConical className="h-4 w-4" />
+                  Kontrol Et
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-brand-foreground/80">
+                  İlaç Raporlarını Yapay Zeka ile inceler ve SUT uygunluğunu
+                  kontrol eder.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -308,44 +308,46 @@ function RegistrationPage() {
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pharmacy-name-surname">
-                Ad Soyad <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="pharmacy-name-surname"
-                {...register("nameSurname", {
-                  required: "Ad soyad zorunludur",
-                })}
-                placeholder="Eczacı ad soyad"
-              />
-              {errors.nameSurname && (
-                <p className="text-xs text-destructive">
-                  {errors.nameSurname.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pharmacy-tc">
-                TC Kimlik No <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="pharmacy-tc"
-                {...register("tcNumber", {
-                  required: "TC Kimlik No zorunludur",
-                  pattern: {
-                    value: /^\d{11}$/,
-                    message: "TC Kimlik No 11 haneli olmalıdır",
-                  },
-                })}
-                placeholder="12345678901"
-                maxLength={11}
-              />
-              {errors.tcNumber && (
-                <p className="text-xs text-destructive">
-                  {errors.tcNumber.message}
-                </p>
-              )}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="pharmacy-name-surname">
+                  Ad Soyad <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="pharmacy-name-surname"
+                  {...register("nameSurname", {
+                    required: "Ad soyad zorunludur",
+                  })}
+                  placeholder="Eczacı ad soyad"
+                />
+                {errors.nameSurname && (
+                  <p className="text-xs text-destructive">
+                    {errors.nameSurname.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pharmacy-tc">
+                  TC Kimlik No <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="pharmacy-tc"
+                  {...register("tcNumber", {
+                    required: "TC Kimlik No zorunludur",
+                    pattern: {
+                      value: /^\d{11}$/,
+                      message: "TC Kimlik No 11 haneli olmalıdır",
+                    },
+                  })}
+                  placeholder="12345678901"
+                  maxLength={11}
+                />
+                {errors.tcNumber && (
+                  <p className="text-xs text-destructive">
+                    {errors.tcNumber.message}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">

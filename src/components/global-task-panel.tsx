@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Collapsible,
   CollapsibleContent,
@@ -51,10 +52,12 @@ function GroupSection({
   group,
   onShowResult,
   onRetry,
+  onRemove,
 }: {
   group: TaskGroup;
   onShowResult?: (receteNo: string) => void;
   onRetry?: (groupId: string, receteNo?: string) => void;
+  onRemove?: (groupId: string) => void;
 }) {
   const doneCount = group.items.filter(
     (i) => i.status === "done" || i.status === "error",
@@ -85,6 +88,18 @@ function GroupSection({
           <span className="text-[10px] text-muted-foreground shrink-0">
             {doneCount}/{total}
           </span>
+          {isRunning && onRemove && (
+            <button
+              className="p-0.5 rounded hover:bg-destructive/10"
+              title="Durdur"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(group.id);
+              }}
+            >
+              <StopCircle className="h-3.5 w-3.5 text-destructive" />
+            </button>
+          )}
           {allGroupDone && hasError && onRetry && (
             <Button
               size="sm"
@@ -112,6 +127,17 @@ function GroupSection({
               <Eye className="h-3 w-3 mr-0.5" />
               Sonucu Gör
             </Button>
+          )}
+          {allGroupDone && onRemove && (
+            <button
+              className="p-0.5 rounded hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(group.id);
+              }}
+            >
+              <X className="h-3 w-3 text-muted-foreground" />
+            </button>
           )}
         </CollapsibleTrigger>
 
@@ -228,7 +254,7 @@ export function GlobalTaskPanel() {
   if (!visible || !hasContent) return null;
 
   // Summary text for collapsed header
-  const headerText = hasBulk
+  const headerText: string = hasBulk
     ? bulkCancelling
       ? "Durduruluyor..."
       : bulkProgress.type === "verileriAl"
@@ -242,7 +268,7 @@ export function GlobalTaskPanel() {
         ? runningItem.label
         : `İşlem bekleniyor (${pendingCount})`;
 
-  return (
+  return createPortal(
     <div
       className={cn(
         "fixed bottom-4 right-4 z-[100] w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-lg border bg-background shadow-xl transition-opacity duration-300",
@@ -304,28 +330,46 @@ export function GlobalTaskPanel() {
                       ? "Veriler alınıyor..."
                       : "Kontrol ediliyor..."}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="h-6 px-2 text-[10px]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBulkCancel();
-                    }}
-                    disabled={bulkCancelling}
-                  >
+                  <div className="flex items-center gap-1">
                     {bulkCancelling ? (
                       <>
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        Durduruluyor...
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-6 px-2 text-[10px]"
+                          disabled
+                        >
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          Durduruluyor...
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.dispatchEvent(new CustomEvent("kolayrapor:bulk-force-stop"));
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Zorla Durdur
+                        </Button>
                       </>
                     ) : (
-                      <>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-6 px-2 text-[10px]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBulkCancel();
+                        }}
+                      >
                         <StopCircle className="h-3 w-3 mr-1" />
                         Durdur
-                      </>
+                      </Button>
                     )}
-                  </Button>
+                  </div>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                   <div
@@ -351,11 +395,13 @@ export function GlobalTaskPanel() {
                 group={group}
                 onShowResult={handleShowResult}
                 onRetry={handleRetry}
+                onRemove={(id) => dispatch(removeGroup(id))}
               />
             ))}
           </div>
         </CollapsibleContent>
       </Collapsible>
-    </div>
+    </div>,
+    document.body,
   );
 }

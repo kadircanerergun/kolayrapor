@@ -75,6 +75,8 @@ const SearchByRecipe = () => {
       modal.openModal(
         <PrescriptionMedicinesModal
           prescriptionData={prescriptionData}
+          hastaAd={prescriptionData.ad}
+          hastaSoyad={prescriptionData.soyad}
           onQueryMedicine={(medicine) => {
             console.log('Querying medicine:', medicine);
           }}

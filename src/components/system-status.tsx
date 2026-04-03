@@ -7,9 +7,11 @@ import {
   Loader2,
   RefreshCw,
   Server,
+  Settings,
 } from "lucide-react";
 import { getPlaywrightAPI } from "@/utils/playwright-api-loader";
 import { useCredentials } from "@/contexts/credentials-context";
+import { useNavigate } from "@tanstack/react-router";
 
 interface SystemStatusState {
   status: "checking" | "ready" | "error" | "initializing" | "validating";
@@ -26,6 +28,7 @@ interface SystemStatusProps {
 }
 
 export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
+  const navigate = useNavigate();
   const [state, setState] = useState<SystemStatusState>(
     cachedState ?? {
       status: "checking",
@@ -53,7 +56,7 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
     if (!credentials?.username || !credentials?.password) {
       return {
         status: "ready",
-        message: "Sistem hazır (kimlik bilgileri gerekli)",
+        message: "Sistem hazır, SGK giriş bilgileri gerekli",
         browserInstalled: true,
       };
     }
@@ -206,7 +209,21 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
             </Button>
           )}
 
-          {state.status === "ready" && (
+          {state.status === "ready" && !credentials?.username && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                navigate({ to: "/ayarlar", search: { section: "medula" } })
+              }
+              className="w-full mt-2"
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              Ayarlar
+            </Button>
+          )}
+
+          {state.status === "ready" && credentials?.username && (
             <div className="text-xs text-muted-foreground">
               <p>Sistem hazır, sorgulama yapabilirsiniz.</p>
             </div>
