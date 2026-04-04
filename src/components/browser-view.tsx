@@ -494,18 +494,14 @@ export function BrowserView() {
 
   const navigateToPrescription = useCallback(async (receteNo: string) => {
     const webview = webviewRef.current;
-    console.log("[BrowserView] navigateToPrescription called", { receteNo, hasWebview: !!webview });
     if (!webview || !receteNo) return;
 
     try {
-      // Step 0: Navigate to Medula home first (like Playwright's navigateToSGKPortal)
-      console.log("[BrowserView] Navigating to Medula home...");
+      // Navigate to Medula home first (like Playwright's navigateToSGKPortal)
       webview.loadURL(MEDULA_URL);
       await waitForLoadStop();
-      console.log("[BrowserView] Medula home loaded");
 
-      // Step 1: Wait for the menu (same selector as Playwright: #form1\:menu)
-      console.log("[BrowserView] Waiting for Medula menu...");
+      // Wait for the menu
       await webview.executeJavaScript(`
         new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject('Medula menu not found'), 10000);
@@ -520,46 +516,21 @@ export function BrowserView() {
           check();
         });
       `);
-      console.log("[BrowserView] Menu found");
 
-      // Step 2: Click the 6th menu row (nth(5))
-      // JSF menus use onclick attributes — we need to find the element with onclick and invoke it
-      console.log("[BrowserView] Clicking menu row 5 (Reçete Sorgu)...");
-      const clickInfo = await webview.executeJavaScript(`
+      // Click the 6th menu row (Reçete Sorgu) — find element with onclick for JSF
+      await webview.executeJavaScript(`
         (() => {
           const row = document.querySelectorAll('#form1\\\\:menu tr')[5];
-          if (!row) return { error: 'Menu row 5 not found' };
-          // Look for any element with an onclick attribute inside the row
-          const withOnclick = row.querySelector('[onclick]');
-          if (withOnclick) {
-            withOnclick.click();
-            return { clicked: 'onclick-element', tag: withOnclick.tagName, onclick: withOnclick.getAttribute('onclick')?.substring(0, 100) };
-          }
-          // Try anchor tags
-          const anchor = row.querySelector('a');
-          if (anchor) {
-            anchor.click();
-            return { clicked: 'anchor', href: anchor.href?.substring(0, 100) };
-          }
-          // Fallback: click the first td
-          const td = row.querySelector('td');
-          if (td) {
-            td.click();
-            return { clicked: 'td-fallback', html: td.innerHTML.substring(0, 100) };
-          }
-          row.click();
-          return { clicked: 'row-fallback' };
+          if (!row) throw new Error('Menu row 5 not found');
+          const target = row.querySelector('[onclick]') || row.querySelector('a') || row.querySelector('td') || row;
+          target.click();
         })();
       `);
-      console.log("[BrowserView] Menu click info:", clickInfo);
 
-      // Step 3: Wait for page navigation to complete (JSF form submit)
-      console.log("[BrowserView] Waiting for page load after menu click...");
+      // Wait for JSF page navigation
       await waitForLoadStop();
-      console.log("[BrowserView] Page loaded");
 
-      // Step 4: Wait for the prescription search form (same selector as Playwright)
-      console.log("[BrowserView] Waiting for search form...");
+      // Wait for the prescription search form
       await webview.executeJavaScript(`
         new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject('Search form not found'), 10000);
@@ -574,9 +545,8 @@ export function BrowserView() {
           check();
         });
       `);
-      console.log("[BrowserView] Search form found, filling receteNo:", receteNo);
 
-      // Step 5: Fill the prescription number field
+      // Fill the prescription number field
       await webview.executeJavaScript(`
         (() => {
           const input = document.querySelector('input[name="form1:text2"]');
@@ -587,8 +557,7 @@ export function BrowserView() {
         })();
       `);
 
-      // Step 6: Click the search button (same selector as Playwright)
-      console.log("[BrowserView] Clicking search button...");
+      // Click the search button
       await webview.executeJavaScript(`
         (() => {
           const btn = document.querySelector('input[type="submit"][value="Sorgula"]#form1\\\\:buttonReceteNoSorgula');
@@ -597,9 +566,8 @@ export function BrowserView() {
         })();
       `);
 
-      // Step 7: Wait for results page to load
+      // Wait for results page to load
       await waitForLoadStop();
-      console.log("[BrowserView] Search completed for receteNo:", receteNo);
     } catch (err) {
       console.warn("[BrowserView] Failed to navigate to prescription:", err);
       toast.error("Reçete sorgulanamadı. Lütfen tekrar deneyin.");
@@ -609,13 +577,11 @@ export function BrowserView() {
   useEffect(() => {
     const handler = (e: Event) => {
       const { receteNo } = (e as CustomEvent).detail;
-      console.log("[BrowserView] Received navigate-to-prescription event", { receteNo, loginStatus });
       if (!receteNo) return;
 
       if (loginStatus === "logged-in") {
         navigateToPrescription(receteNo);
       } else {
-        console.log("[BrowserView] Not logged in yet, storing pending receteNo:", receteNo);
         pendingReceteNoNavRef.current = receteNo;
       }
     };
@@ -629,7 +595,6 @@ export function BrowserView() {
     if (loginStatus === "logged-in" && pendingReceteNoNavRef.current) {
       const receteNo = pendingReceteNoNavRef.current;
       pendingReceteNoNavRef.current = null;
-      console.log("[BrowserView] Login completed, executing pending navigation for:", receteNo);
       navigateToPrescription(receteNo);
     }
   }, [loginStatus, navigateToPrescription]);

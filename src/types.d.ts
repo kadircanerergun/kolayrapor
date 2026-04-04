@@ -125,6 +125,13 @@ declare global {
       clearCredentials: () => Promise<SecureStorageResult>;
       hasCredentials: () => Promise<SecureStorageHasResult>;
     };
+    taskPanelAPI: {
+      isTaskPanel: boolean;
+      sendState: (state: any) => void;
+      onState: (callback: (state: any) => void) => void;
+      sendAction: (action: any) => void;
+      onAction: (callback: (action: any) => void) => void;
+    };
   }
 
   // Electron webview tag support in JSX

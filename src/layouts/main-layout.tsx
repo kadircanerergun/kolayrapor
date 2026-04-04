@@ -35,6 +35,7 @@ import { usePharmacy } from "@/contexts/pharmacy-context";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { GlobalTaskPanel } from "@/components/global-task-panel";
+import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -60,6 +61,7 @@ export default function MainLayout({
   const needsRefresh = !loading && (!pharmacy || !subscription || !creditBalance);
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
+  useTaskPanelSync();
 
   // Derive display values from pharmacy context
   const activePlanName = (() => {

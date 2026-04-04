@@ -43,6 +43,7 @@ if (!gotTheLock) {
 
 let pendingDeeplinkUrl: string | null = null;
 let tray: Tray | null = null;
+let taskPanelWindow: BrowserWindow | null = null;
 
 function getIconPath() {
   if (app.isPackaged) {
@@ -98,6 +99,78 @@ function createDeeplinkPopup(params: { receteNo: string; barkodlar: string[] }) 
     popup.webContents.send(IPC_CHANNELS.DEEPLINK_PARAMS, params);
   });
 }
+
+function createTaskPanelWindow() {
+  if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+    taskPanelWindow.show();
+    return;
+  }
+
+  const preload = path.join(__dirname, "preload.js");
+  const { width: screenWidth, height: screenHeight } =
+    screen.getPrimaryDisplay().workAreaSize;
+
+  taskPanelWindow = new BrowserWindow({
+    width: 340,
+    height: 420,
+    x: screenWidth - 340 - 16,
+    y: screenHeight - 420 - 16,
+    alwaysOnTop: true,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    frame: false,
+    transparent: true,
+    icon: getIconPath(),
+    title: "KolayRapor — İşlemler",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: true,
+      preload,
+      additionalArguments: ['--task-panel'],
+    },
+  });
+
+  taskPanelWindow.setMenuBarVisibility(false);
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    taskPanelWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    taskPanelWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
+  }
+
+  taskPanelWindow.on('closed', () => {
+    taskPanelWindow = null;
+  });
+}
+
+// IPC: main window sends state updates, relay to task panel window
+ipcMain.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => {
+  if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+    taskPanelWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
+  }
+
+  // Auto-create/show panel when there's content, hide when empty
+  const hasContent = (state.groups && state.groups.length > 0) || state.bulkProgress !== null;
+  if (hasContent) {
+    createTaskPanelWindow();
+  } else if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+    taskPanelWindow.close();
+  }
+});
+
+// IPC: task panel sends actions back (retry, cancel, etc.), relay to main window
+ipcMain.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => {
+  const mainWindow = BrowserWindow.getAllWindows().find(
+    w => w !== taskPanelWindow && !w.isDestroyed()
+  );
+  if (mainWindow) {
+    mainWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
+  }
+});
 
 app.on('second-instance', (_event, argv) => {
   console.log('second-instance argv:', argv);

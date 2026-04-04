@@ -10,6 +10,7 @@ import { Provider } from "react-redux";
 import { store } from "./store";
 import { router } from "./utils/routes";
 import { DeeplinkKontrol } from "./components/deeplink-kontrol";
+import { TaskPanelWindow } from "./components/task-panel-window";
 import "./localization/i18n";
 import { API_BASE_URL } from "./lib/constants";
 
@@ -25,11 +26,16 @@ Sentry.init(
 export default function App() {
   const { i18n } = useTranslation();
   const isDeeplink = (window as any).deeplinkAPI?.isDeeplink;
+  const isTaskPanel = (window as any).taskPanelAPI?.isTaskPanel;
 
   useEffect(() => {
     syncWithLocalTheme();
     updateAppLanguage(i18n);
   }, [i18n]);
+
+  if (isTaskPanel) {
+    return <TaskPanelWindow />;
+  }
 
   if (isDeeplink) {
     return (

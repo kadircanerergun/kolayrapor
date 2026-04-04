@@ -82,3 +82,25 @@ contextBridge.exposeInMainWorld('deeplinkAPI', {
     ipcRenderer.on(IPC_CHANNELS.DEEPLINK_PARAMS, (_event, params) => callback(params));
   },
 });
+
+// Expose Task Panel API to renderer
+const isTaskPanelWindow = process.argv.includes('--task-panel');
+contextBridge.exposeInMainWorld('taskPanelAPI', {
+  isTaskPanel: isTaskPanelWindow,
+  // Main window calls this to push state to the panel window via main process
+  sendState: (state: any) => {
+    ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
+  },
+  // Panel window listens for state updates
+  onState: (callback: (state: any) => void) => {
+    ipcRenderer.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => callback(state));
+  },
+  // Panel window sends actions back to main window
+  sendAction: (action: any) => {
+    ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
+  },
+  // Main window listens for actions from the panel
+  onAction: (callback: (action: any) => void) => {
+    ipcRenderer.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => callback(action));
+  },
+});
