@@ -739,6 +739,54 @@ export class PlaywrightAutomationService {
     return this.navigateTo(sgkUrl);
   }
 
+  /**
+   * Navigate to the prescription search page, fill the recipe number, and click search.
+   * Does NOT parse the result — just visually navigates the browser.
+   */
+  async navigateToPrescription(prescriptionNumber: string): Promise<NavigationResult> {
+    try {
+      if (!this.page) {
+        throw new Error("System is not ready.");
+      }
+      await this.navigateToSGKPortal();
+      await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+      const menu = this.page
+        .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
+        .nth(5);
+      await menu.click();
+      await this.page.waitForSelector('input[name="form1:text2"]', {
+        timeout: 3000,
+      });
+
+      const prescriptionField = await this.page.$('input[name="form1:text2"]');
+      if (!prescriptionField) {
+        throw new Error("Could not find prescription number field");
+      }
+      await prescriptionField.fill(prescriptionNumber);
+
+      const searchButton = await this.page.$(
+        'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
+      );
+      if (!searchButton) {
+        throw new Error("Could not find search button");
+      }
+
+      await searchButton.click();
+      await this.page.waitForLoadState("load");
+
+      return {
+        success: true,
+        currentUrl: this.page.url(),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Navigation failed",
+      };
+    }
+  }
+
   async searchPrescription(
     prescriptionNumber: string,
   ): Promise<NavigationResult & { prescriptionData?: Recete }> {
@@ -782,8 +830,9 @@ export class PlaywrightAutomationService {
         prescriptionData: recete,
       };
     } catch (error: any) {
-      if (error?.message?.includes("Cannot find context")) {
-        console.warn("[Playwright] Context lost during prescription search, retrying...");
+      const msg = error?.message || "";
+      if (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed")) {
+        console.warn("[Playwright] Context/page lost during prescription search, retrying...");
         try {
           return await this.searchPrescription(prescriptionNumber);
         } catch {
@@ -897,8 +946,9 @@ export class PlaywrightAutomationService {
     try {
       return await this._getRecipesByPeriodInner(period);
     } catch (err: any) {
-      if (!retried && err?.message?.includes("Cannot find context")) {
-        console.warn("[Playwright] Context lost, retrying period query...");
+      const msg = err?.message || "";
+      if (!retried && (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed"))) {
+        console.warn("[Playwright] Context/page lost, retrying period query...");
         return await this.getRecipesByPeriod(period, true);
       }
       throw err;

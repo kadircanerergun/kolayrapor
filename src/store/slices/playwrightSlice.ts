@@ -13,6 +13,7 @@ import {
 } from "./receteSlice";
 import type { RootState } from "../index";
 import type { Recete } from "@/types/recete";
+import { toUserFriendlyError } from "@/utils/error-messages";
 import {
   getCachedDetails,
   cacheDetail,
@@ -217,7 +218,7 @@ const playwrightSlice = createSlice({
     });
     builder.addCase(initializePlaywright.rejected, (state, action) => {
       state.isLoading = false;
-      state.error = action.error.message || "Initialization failed";
+      state.error = toUserFriendlyError(action.error.message, "Sistem başlatılamadı. Lütfen tekrar deneyin.");
     });
 
     builder.addCase(searchByDateRange.pending, (state) => {
@@ -230,7 +231,7 @@ const playwrightSlice = createSlice({
     });
     builder.addCase(searchByDateRange.rejected, (state, action) => {
       state.isLoading = false;
-      state.error = action.error.message || "Search failed";
+      state.error = toUserFriendlyError(action.error.message, "Sorgulama sırasında bir hata oluştu.");
     });
   },
 });

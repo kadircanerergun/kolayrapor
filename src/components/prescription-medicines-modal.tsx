@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { CircleCheck, Eye, FlaskConical, Loader2, RefreshCw } from 'lucide-react';
+import { ReceteNoLink } from '@/components/recete-no-link';
 import { cacheAnalysis } from '@/lib/db';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { analizCompleted } from '@/store/slices/receteSlice';
@@ -103,7 +104,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
       <div className="flex-shrink-0">
         <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 p-3 rounded-lg">
           <div>
-            <span className="font-medium">Reçete No:</span> {prescriptionData.receteNo}
+            <span className="font-medium">Reçete No:</span> <ReceteNoLink receteNo={prescriptionData.receteNo} />
           </div>
           <div>
             <span className="font-medium">Reçete Tarihi:</span> {prescriptionData.receteTarihi}
@@ -245,7 +246,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
         <SheetContent className="sm:max-w-lg overflow-y-auto z-[60]">
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>
-            <SheetDescription>Reçete: {prescriptionData.receteNo}</SheetDescription>
+            <SheetDescription>Reçete: <ReceteNoLink receteNo={prescriptionData.receteNo} /></SheetDescription>
           </SheetHeader>
           <div className="mt-4">
             <KontrolSonucPanel

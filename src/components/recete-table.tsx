@@ -40,6 +40,7 @@ import type { ReceteReportResponse } from "@/services/report-api";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 import { useAppSelector, useAppDispatch } from "@/store";
 import { setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
+import { ReceteNoLink } from "@/components/recete-no-link";
 
 export interface ReceteTableRow {
   receteNo: string;
@@ -522,7 +523,9 @@ export function ReceteTable({
                     />
                   </TableCell>
                 )}
-                <TableCell className="font-medium">{row.receteNo}</TableCell>
+                <TableCell className="font-medium">
+                  <ReceteNoLink receteNo={row.receteNo} />
+                </TableCell>
                 {showHasta && (
                   <TableCell>
                     {row.ad} {row.soyad}
@@ -737,7 +740,7 @@ export function ReceteTable({
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>
             <SheetDescription>
-              Reçete: {analizSheetReceteNo}
+              Reçete: {analizSheetReceteNo && <ReceteNoLink receteNo={analizSheetReceteNo} />}
               {sheetRow?.ad && (
                 <span className="block">Hasta: {sheetRow.ad} {sheetRow.soyad}</span>
               )}

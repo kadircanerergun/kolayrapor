@@ -3,6 +3,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
+import { toUserFriendlyError } from "@/utils/error-messages";
 
 interface InstallProgress {
   status: "checking" | "installing" | "done" | "error";
@@ -51,11 +52,10 @@ function LandingPage() {
       setIsReady(true);
     } catch (error) {
       console.error("Initialization error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Bir hata oluştu";
       setInstallProgress({
         status: "error",
         message: "Başlatma hatası",
-        details: errorMessage,
+        details: toUserFriendlyError(error, "Sistem başlatılamadı. Lütfen tekrar deneyin."),
       });
     }
 
