@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -93,11 +93,7 @@ function GroupSection({ group }: { group: TaskGroup }) {
   const allGroupDone = doneCount === total;
   const hasError = group.items.some((i) => i.status === "error");
   const isRunning = group.items.some((i) => i.status === "running");
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    if (hasError && allGroupDone) setExpanded(true);
-  }, [hasError, allGroupDone]);
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <div className="border-t first:border-t-0">
@@ -230,7 +226,9 @@ export function TaskPanelWindow() {
   const [bulkCancelling, setBulkCancelling] = useState(false);
 
   useEffect(() => {
+    console.log("[TaskPanelWindow] Registering onState listener, taskPanelAPI:", !!taskPanelAPI);
     taskPanelAPI?.onState((newState: TaskPanelState) => {
+      console.log("[TaskPanelWindow] State received:", JSON.stringify(newState).substring(0, 500));
       setState(newState);
     });
   }, []);
@@ -254,10 +252,27 @@ export function TaskPanelWindow() {
     if (!hasBulk) setBulkCancelling(false);
   }, [hasBulk]);
 
+  // Auto-resize window to fit content
+  const contentRef = useRef<HTMLDivElement>(null);
+  const resizeToFit = useCallback(() => {
+    if (!contentRef.current) return;
+    const height = contentRef.current.scrollHeight;
+    taskPanelAPI?.resize(Math.ceil(height) + 2);
+  }, []);
+
+  useEffect(() => {
+    resizeToFit();
+  }, [state, isOpen, resizeToFit]);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const observer = new ResizeObserver(() => resizeToFit());
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [resizeToFit]);
+
   if (!hasContent) {
-    return (
-      <div className="h-screen w-screen bg-transparent" />
-    );
+    return null;
   }
 
   const headerText: string = hasBulk
@@ -275,7 +290,7 @@ export function TaskPanelWindow() {
         : `Islem bekleniyor (${pendingCount})`;
 
   return (
-    <div className="h-screen w-screen bg-transparent flex flex-col justify-end">
+    <div ref={contentRef} className="bg-transparent">
       <div className="rounded-lg border bg-background shadow-xl overflow-hidden">
         {/* Draggable header area */}
         <div

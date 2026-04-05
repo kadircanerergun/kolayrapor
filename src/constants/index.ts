@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   DEEPLINK_PARAMS: "deeplink:params",
   TASK_PANEL_STATE: "task-panel:state",
   TASK_PANEL_ACTION: "task-panel:action",
+  TASK_PANEL_RESIZE: "task-panel:resize",
 };
 
 

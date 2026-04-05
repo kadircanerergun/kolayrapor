@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { API_BASE_URL } from '@/lib/constants';
+import { ipcContext } from '@/ipc/context';
 import { playwrightService, ensureBrowsersInstalled, BrowserInstallProgress } from '../../services/playwright-automation';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
@@ -30,7 +31,7 @@ export function setupPlaywrightIPC() {
 
   // Ensure browsers are installed (called from splash screen)
   createHandler('playwright:ensureBrowsers', async () => {
-    const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const window = ipcContext.mainWindow || BrowserWindow.getAllWindows()[0];
 
     await ensureBrowsersInstalled((progress: BrowserInstallProgress) => {
       // Send progress to renderer
@@ -44,7 +45,7 @@ export function setupPlaywrightIPC() {
 
   // Initialize Playwright
   createHandler('playwright:initialize', async () => {
-    const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const window = ipcContext.mainWindow || BrowserWindow.getAllWindows()[0];
 
     await playwrightService.initialize(false, (progress: BrowserInstallProgress) => {
       // Send progress to renderer

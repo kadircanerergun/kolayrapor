@@ -85,19 +85,34 @@ contextBridge.exposeInMainWorld('deeplinkAPI', {
 
 // Expose Task Panel API to renderer
 const isTaskPanelWindow = process.argv.includes('--task-panel');
+// Cache the latest state so it can be replayed when onState is first called
+let cachedTaskPanelState: any = null;
+if (isTaskPanelWindow) {
+  ipcRenderer.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => {
+    cachedTaskPanelState = state;
+  });
+}
 contextBridge.exposeInMainWorld('taskPanelAPI', {
   isTaskPanel: isTaskPanelWindow,
   // Main window calls this to push state to the panel window via main process
   sendState: (state: any) => {
     ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
   },
-  // Panel window listens for state updates
+  // Panel window listens for state updates — replays cached state immediately
   onState: (callback: (state: any) => void) => {
     ipcRenderer.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => callback(state));
+    // Replay cached state that arrived before React mounted
+    if (cachedTaskPanelState) {
+      callback(cachedTaskPanelState);
+    }
   },
   // Panel window sends actions back to main window
   sendAction: (action: any) => {
     ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
+  },
+  // Panel window requests resize
+  resize: (height: number) => {
+    ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_RESIZE, height);
   },
   // Main window listens for actions from the panel
   onAction: (callback: (action: any) => void) => {

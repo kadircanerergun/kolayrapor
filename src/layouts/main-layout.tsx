@@ -34,7 +34,6 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
-import { GlobalTaskPanel } from "@/components/global-task-panel";
 import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
@@ -455,7 +454,6 @@ export default function MainLayout({
           </div>
         </main>
       </div>
-      <GlobalTaskPanel />
     </TooltipProvider>
   );
 }

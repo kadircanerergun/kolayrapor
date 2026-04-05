@@ -112,9 +112,9 @@ function createTaskPanelWindow() {
 
   taskPanelWindow = new BrowserWindow({
     width: 340,
-    height: 420,
+    height: 80,
     x: screenWidth - 340 - 16,
-    y: screenHeight - 420 - 16,
+    y: screenHeight - 80 - 16,
     alwaysOnTop: true,
     resizable: true,
     minimizable: false,
@@ -149,17 +149,36 @@ function createTaskPanelWindow() {
 
 // IPC: main window sends state updates, relay to task panel window
 ipcMain.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => {
-  if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
-    taskPanelWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
-  }
-
-  // Auto-create/show panel when there's content, hide when empty
   const hasContent = (state.groups && state.groups.length > 0) || state.bulkProgress !== null;
+  console.log('[TaskPanel] State received, hasContent:', hasContent, 'groups:', state.groups?.length, 'bulk:', !!state.bulkProgress);
+
   if (hasContent) {
     createTaskPanelWindow();
+    // Send state after window is ready
+    if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+      if (taskPanelWindow.webContents.isLoading()) {
+        taskPanelWindow.webContents.once('did-finish-load', () => {
+          taskPanelWindow?.webContents.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
+        });
+      } else {
+        taskPanelWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_STATE, state);
+      }
+    }
   } else if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
     taskPanelWindow.close();
   }
+});
+
+// IPC: task panel requests resize to fit content
+ipcMain.on(IPC_CHANNELS.TASK_PANEL_RESIZE, (_event, height: number) => {
+  if (!taskPanelWindow || taskPanelWindow.isDestroyed()) return;
+  const [width] = taskPanelWindow.getSize();
+  const { height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
+  const clampedHeight = Math.min(Math.max(height, 50), screenHeight - 32);
+  taskPanelWindow.setSize(width, clampedHeight);
+  // Reposition to stay at bottom-right
+  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
+  taskPanelWindow.setPosition(screenWidth - width - 16, screenHeight - clampedHeight - 16);
 });
 
 // IPC: task panel sends actions back (retry, cancel, etc.), relay to main window

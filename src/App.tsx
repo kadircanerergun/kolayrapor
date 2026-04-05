@@ -34,6 +34,7 @@ export default function App() {
   }, [i18n]);
 
   if (isTaskPanel) {
+    console.log("[App] Rendering TaskPanelWindow");
     return <TaskPanelWindow />;
   }
 

@@ -19,6 +19,7 @@ export function useTaskPanelSync() {
     if (json === prevJson.current) return;
     prevJson.current = json;
 
+    console.log("[useTaskPanelSync] Sending state, groups:", groups.length, "bulk:", !!bulkProgress);
     taskPanelAPI.sendState(state);
   }, [groups, bulkProgress]);
 
