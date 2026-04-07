@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/axios";
 import { API_BASE_URL } from "@/lib/constants";
+import { encryptJson, decryptJson } from "@/lib/crypto";
 import { Recete } from "@/types/recete";
 export interface GenerateReportRequest {
   barkod: string;
@@ -54,19 +55,23 @@ class ReportApiService {
         recete,
       };
 
-      console.log('Sending report generation request with data:', requestData);
+      const encrypted = await encryptJson(requestData);
 
       const response = await apiClient.post(
         `${this.baseUrl}/report/generate`,
-        requestData,
+        { encrypted },
         { timeout: 120_000 },
+      );
+
+      const data = await decryptJson<ReceteReportResponse>(
+        response.data.encrypted,
       );
 
       window.dispatchEvent(new Event("credit-deducted"));
 
       return {
         success: true,
-        data: response.data as ReceteReportResponse,
+        data,
       };
     } catch (error: any) {
       console.error("Report generation failed:", error);

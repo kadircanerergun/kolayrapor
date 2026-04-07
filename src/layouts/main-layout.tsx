@@ -35,6 +35,7 @@ import { usePharmacy } from "@/contexts/pharmacy-context";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
+import { useDeeplinkHandler } from "@/hooks/useDeeplinkHandler";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -61,6 +62,7 @@ export default function MainLayout({
   const [testCaptchaData, setTestCaptchaData] = useState<{image: string | null, solution: string | null}>({image: null, solution: null});
   const playwright = usePlaywright();
   useTaskPanelSync();
+  useDeeplinkHandler();
 
   // Derive display values from pharmacy context
   const activePlanName = (() => {

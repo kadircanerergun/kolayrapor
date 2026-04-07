@@ -66,38 +66,25 @@ function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[] 
   }
 }
 
-function createDeeplinkPopup(params: { receteNo: string; barkodlar: string[] }) {
-  const preload = path.join(__dirname, "preload.js");
-  const popup = new BrowserWindow({
-    width: 480,
-    height: 650,
-    alwaysOnTop: true,
-    resizable: true,
-    minimizable: false,
-    maximizable: false,
-    icon: getIconPath(),
-    title: `Kontrol — ${params.receteNo}`,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: true,
-      preload,
-      additionalArguments: ['--deeplink'],
-    },
-  });
+function handleDeeplink(params: { receteNo: string; barkodlar: string[] }) {
+  const mainWindow = BrowserWindow.getAllWindows().find(
+    w => w !== taskPanelWindow && !w.isDestroyed()
+  );
+  if (!mainWindow) return;
 
-  popup.setMenuBarVisibility(false);
+  // Show and focus the main window
+  mainWindow.show();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    popup.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  // Send deeplink params to the main window renderer
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.send(IPC_CHANNELS.DEEPLINK_PARAMS, params);
+    });
   } else {
-    popup.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    mainWindow.webContents.send(IPC_CHANNELS.DEEPLINK_PARAMS, params);
   }
-
-  popup.webContents.on('did-finish-load', () => {
-    popup.webContents.send(IPC_CHANNELS.DEEPLINK_PARAMS, params);
-  });
 }
 
 function createTaskPanelWindow() {
@@ -183,6 +170,12 @@ ipcMain.on(IPC_CHANNELS.TASK_PANEL_RESIZE, (_event, height: number) => {
 
 // IPC: task panel sends actions back (retry, cancel, etc.), relay to main window
 ipcMain.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => {
+  if (action.type === 'closePanel') {
+    if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+      taskPanelWindow.close();
+    }
+    return;
+  }
   const mainWindow = BrowserWindow.getAllWindows().find(
     w => w !== taskPanelWindow && !w.isDestroyed()
   );
@@ -198,7 +191,7 @@ app.on('second-instance', (_event, argv) => {
   if (deeplinkUrl) {
     const params = parseDeeplinkUrl(deeplinkUrl);
     console.log('parsed params:', params);
-    if (params) createDeeplinkPopup(params);
+    if (params) handleDeeplink(params);
   } else {
     // No deep link — show main window
     const windows = BrowserWindow.getAllWindows();
@@ -452,7 +445,7 @@ if (gotTheLock) {
       if (pendingDeeplinkUrl) {
         const params = parseDeeplinkUrl(pendingDeeplinkUrl);
         pendingDeeplinkUrl = null;
-        if (params) createDeeplinkPopup(params);
+        if (params) handleDeeplink(params);
       }
     })
     .catch((error) => {
