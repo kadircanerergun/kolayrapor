@@ -36,6 +36,7 @@ import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
 import { useDeeplinkHandler } from "@/hooks/useDeeplinkHandler";
+import { GlobalTaskPanel } from "@/components/global-task-panel";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -454,6 +455,7 @@ export default function MainLayout({
           >
             {children}
           </div>
+          <GlobalTaskPanel />
         </main>
       </div>
     </TooltipProvider>

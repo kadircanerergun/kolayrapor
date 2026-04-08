@@ -10,18 +10,19 @@ export function useTaskPanelSync() {
   const bulkProgress = useAppSelector((s) => s.recete.bulkProgress);
   const prevJson = useRef("");
 
-  // Send state updates to task panel window
+  // Send only deeplink-triggered groups to the separate task panel window
   useEffect(() => {
     if (!taskPanelAPI) return;
 
-    const state = { groups, bulkProgress };
+    const deeplinkGroups = groups.filter((g) => g.id.startsWith("deeplink-"));
+    const state = { groups: deeplinkGroups, bulkProgress: null };
     const json = JSON.stringify(state);
     if (json === prevJson.current) return;
     prevJson.current = json;
 
-    console.log("[useTaskPanelSync] Sending state, groups:", groups.length, "bulk:", !!bulkProgress);
+    console.log("[useTaskPanelSync] Sending deeplink state, groups:", deeplinkGroups.length);
     taskPanelAPI.sendState(state);
-  }, [groups, bulkProgress]);
+  }, [groups]);
 
   // Listen for actions from the task panel window
   useEffect(() => {

@@ -192,7 +192,6 @@ export function GlobalTaskPanel() {
   const groups = useAppSelector((s) => s.taskQueue.groups);
   const bulkProgress = useAppSelector((s) => s.recete.bulkProgress);
   const [isOpen, setIsOpen] = useState(true);
-  const [visible, setVisible] = useState(false);
   const [bulkCancelling, setBulkCancelling] = useState(false);
 
   const allItems = groups.flatMap((g) => g.items);
@@ -208,10 +207,9 @@ export function GlobalTaskPanel() {
   const hasBulk = bulkProgress !== null;
   const hasContent = groups.length > 0 || hasBulk;
 
-  // Show panel when groups or bulk progress exist
+  // Auto-expand when new content arrives
   useEffect(() => {
     if (hasContent) {
-      setVisible(true);
       setIsOpen(true);
     }
   }, [hasContent]);
@@ -222,16 +220,6 @@ export function GlobalTaskPanel() {
       setBulkCancelling(false);
     }
   }, [hasBulk]);
-
-  // Auto-hide after all done (10 seconds) — only if no errors and no bulk
-  useEffect(() => {
-    if (!allDone || !visible || hasError || hasBulk) return;
-    const timer = setTimeout(() => {
-      setVisible(false);
-      dispatch(clearCompleted());
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [allDone, visible, hasError, hasBulk, dispatch]);
 
   const handleShowResult = (receteNo: string) => {
     dispatch(setShowResultReceteNo(receteNo));
@@ -251,7 +239,7 @@ export function GlobalTaskPanel() {
     window.dispatchEvent(new CustomEvent("kolayrapor:bulk-cancel"));
   };
 
-  if (!visible || !hasContent) return null;
+  if (!hasContent) return null;
 
   // Summary text for collapsed header
   const headerText: string = hasBulk
@@ -304,7 +292,6 @@ export function GlobalTaskPanel() {
                 className="p-0.5 rounded hover:bg-muted"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setVisible(false);
                   dispatch(clearCompleted());
                 }}
               >
