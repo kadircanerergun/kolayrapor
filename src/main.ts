@@ -216,9 +216,22 @@ app.on('second-instance', (_event, argv) => {
   if (deeplinkUrl) {
     const params = parseDeeplinkUrl(deeplinkUrl);
     console.log('parsed params:', params);
-    if (params) {
-      handleDeeplink(params);
-      return;
+    if (params) handleDeeplink(params);
+  } else {
+    // Check for CLI arguments (-r, -b)
+    const cliParams = parseCliArgs(argv);
+    if (cliParams) {
+      console.log('CLI params:', cliParams);
+      handleDeeplink(cliParams);
+      return
+    } else {
+      // No deep link or CLI args — show main window
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length > 0) {
+        windows[0].show();
+        if (windows[0].isMinimized()) windows[0].restore();
+        windows[0].focus();
+      }
     }
   }
 
@@ -478,9 +491,33 @@ async function setupORPC() {
   });
 }
 
+// Parse CLI arguments: -r RECETENO -b BARKOD
+function parseCliArgs(argv: string[]): { receteNo: string; barkodlar: string[] } | null {
+  let receteNo: string | null = null;
+  const barkodlar: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '-r' && argv[i + 1]) {
+      receteNo = argv[++i];
+    } else if (argv[i] === '-b' && argv[i + 1]) {
+      const val = argv[++i];
+      val.split(',').map(b => b.trim()).filter(Boolean).forEach(b => barkodlar.push(b));
+    }
+  }
+
+  return receteNo ? { receteNo, barkodlar } : null;
+}
+
+let pendingCliParams: { receteNo: string; barkodlar: string[] } | null = null;
+
 // Check for cold-start deep link
 const coldStartDeeplink = process.argv.find(arg => arg.startsWith('kolayrapor://'));
-if (coldStartDeeplink) pendingDeeplinkUrl = coldStartDeeplink;
+if (coldStartDeeplink) {
+  pendingDeeplinkUrl = coldStartDeeplink;
+} else {
+  // Check for CLI arguments (-r, -b)
+  pendingCliParams = parseCliArgs(process.argv);
+}
 
 // Only initialize the app if we got the single instance lock
 if (gotTheLock) {
@@ -507,6 +544,9 @@ if (gotTheLock) {
         const params = parseDeeplinkUrl(pendingDeeplinkUrl);
         pendingDeeplinkUrl = null;
         if (params) handleDeeplink(params);
+      } else if (pendingCliParams) {
+        handleDeeplink(pendingCliParams);
+        pendingCliParams = null;
       }
     })
     .catch((error) => {
