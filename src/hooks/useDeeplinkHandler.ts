@@ -4,7 +4,7 @@ import { addGroup, updateTask, setShowResultReceteNo } from "@/store/slices/task
 import { searchPrescriptionDetail } from "@/store/slices/playwrightSlice";
 import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
 import { reportApiService } from "@/services/report-api";
-import { cacheAnalysis } from "@/lib/db";
+import { cacheAnalysis, getCachedAnalysis } from "@/lib/db";
 
 const deeplinkAPI = (window as any).deeplinkAPI;
 
@@ -12,9 +12,33 @@ export function useDeeplinkHandler() {
   const dispatch = useAppDispatch();
 
   const handleDeeplink = useCallback(
-    async (params: { receteNo: string; barkodlar: string[] }) => {
-      const { receteNo, barkodlar } = params;
+    async (params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) => {
+      const { receteNo, barkodlar, kontrol } = params;
+
       const groupId = `deeplink-${receteNo}-${Date.now()}`;
+
+      // If kontrol param is set, check cache first
+      if (kontrol) {
+        const cached = await getCachedAnalysis([receteNo]);
+        const cachedForRecete = cached[receteNo];
+        if (cachedForRecete && Object.keys(cachedForRecete).length > 0) {
+          const allCached = barkodlar.length === 0 ||
+            barkodlar.every((b) => cachedForRecete[b]);
+
+          if (allCached) {
+            dispatch(analizCompleted({ receteNo, sonuclar: cachedForRecete }));
+            // Show a completed task group so the panel appears
+            const items = Object.keys(cachedForRecete).map((barkod) => ({
+              id: barkod,
+              label: barkod,
+              status: "done" as const,
+            }));
+            dispatch(addGroup({ id: groupId, title: `Reçete ${receteNo}`, receteNo, items }));
+            dispatch(setShowResultReceteNo(receteNo));
+            return;
+          }
+        }
+      }
 
       dispatch(setAnalyzingRecete(receteNo));
       dispatch(
@@ -141,7 +165,7 @@ export function useDeeplinkHandler() {
     if (!deeplinkAPI) return;
 
     deeplinkAPI.onParams(
-      (params: { receteNo: string; barkodlar: string[] }) => {
+      (params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) => {
         handleDeeplink(params);
       },
     );

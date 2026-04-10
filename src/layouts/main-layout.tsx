@@ -32,11 +32,21 @@ import { toast } from "sonner";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
+import { useAppDispatch, useAppSelector } from "@/store";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
 import { useDeeplinkHandler } from "@/hooks/useDeeplinkHandler";
 import { GlobalTaskPanel } from "@/components/global-task-panel";
+import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
+import { setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 const SIDEBAR_COLLAPSED_KEY = "sidebarCollapsed";
 
@@ -46,6 +56,7 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const location = useLocation();
+  const dispatch = useAppDispatch();
   const { credentials } = useCredentials();
   const { pharmacy, subscription, creditBalance, products, ipAddress, loading, refresh } = usePharmacy();
   const [refreshing, setRefreshing] = useState(false);
@@ -64,6 +75,22 @@ export default function MainLayout({
   const playwright = usePlaywright();
   useTaskPanelSync();
   useDeeplinkHandler();
+
+  // Layout-level result sheet — triggered by showResultReceteNo from any page
+  const showResultReceteNo = useAppSelector((s) => s.taskQueue.showResultReceteNo);
+  const [resultSheetReceteNo, setResultSheetReceteNo] = useState<string | null>(null);
+  const analizSonuclari = useAppSelector((s) =>
+    resultSheetReceteNo ? s.recete.analizSonuclari[resultSheetReceteNo] ?? {} : {}
+  );
+  const detaylar = useAppSelector((s) => s.recete.detaylar);
+  const resultIlaclar = resultSheetReceteNo ? detaylar[resultSheetReceteNo]?.ilaclar : undefined;
+
+  useEffect(() => {
+    if (showResultReceteNo) {
+      setResultSheetReceteNo(showResultReceteNo);
+      dispatch(setShowResultReceteNo(null));
+    }
+  }, [showResultReceteNo, dispatch]);
 
   // Derive display values from pharmacy context
   const activePlanName = (() => {
@@ -456,6 +483,29 @@ export default function MainLayout({
             {children}
           </div>
           <GlobalTaskPanel />
+
+          {/* Layout-level result sheet for deeplink / task panel "Sonucu Gör" */}
+          <Sheet
+            open={!!resultSheetReceteNo}
+            onOpenChange={(open) => { if (!open) setResultSheetReceteNo(null); }}
+            modal={false}
+          >
+            <SheetContent className="sm:max-w-lg overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Kontrol Sonucu</SheetTitle>
+                {resultSheetReceteNo && <SheetDescription>Reçete: {resultSheetReceteNo}</SheetDescription>}
+              </SheetHeader>
+              <div className="mt-4">
+                {resultSheetReceteNo && (
+                  <KontrolSonucPanel
+                    receteNo={resultSheetReceteNo}
+                    sonuclar={analizSonuclari}
+                    ilaclar={resultIlaclar}
+                  />
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
         </main>
       </div>
     </TooltipProvider>

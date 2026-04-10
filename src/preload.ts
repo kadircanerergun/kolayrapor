@@ -76,7 +76,7 @@ contextBridge.exposeInMainWorld('secureStorage', {
 
 // Expose Deep Link API to renderer (main window receives deeplink params via IPC)
 contextBridge.exposeInMainWorld('deeplinkAPI', {
-  onParams: (callback: (params: { receteNo: string; barkodlar: string[] }) => void) => {
+  onParams: (callback: (params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) => void) => {
     ipcRenderer.on(IPC_CHANNELS.DEEPLINK_PARAMS, (_event, params) => callback(params));
   },
 });

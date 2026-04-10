@@ -16,7 +16,8 @@
       "Bash(findstr:*)",
       "WebFetch(domain:kolayasistan.uk)",
       "Bash(del \"C:\\\\Users\\\\kadir\\\\kolayrapor\\\\src\\\\components\\\\report-result-modal.tsx\")",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(nslookup release-assets.githubusercontent.com)"
     ]
   }
 }

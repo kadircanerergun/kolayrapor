@@ -76,26 +76,25 @@ function GroupSection({
   return (
     <div className="border-t first:border-t-0">
       <Collapsible open={expanded} onOpenChange={setExpanded}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/30 text-left">
-          <ChevronRight
-            className={cn(
-              "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
-              expanded && "rotate-90",
-            )}
-          />
-          <GroupStatusIcon group={group} />
-          <span className="text-xs font-medium truncate flex-1">{group.title}</span>
-          <span className="text-[10px] text-muted-foreground shrink-0">
-            {doneCount}/{total}
-          </span>
+        <div className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/30">
+          <CollapsibleTrigger className="flex items-center gap-2 flex-1 min-w-0 text-left">
+            <ChevronRight
+              className={cn(
+                "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
+                expanded && "rotate-90",
+              )}
+            />
+            <GroupStatusIcon group={group} />
+            <span className="text-xs font-medium truncate flex-1">{group.title}</span>
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              {doneCount}/{total}
+            </span>
+          </CollapsibleTrigger>
           {isRunning && onRemove && (
             <button
-              className="p-0.5 rounded hover:bg-destructive/10"
+              className="p-0.5 rounded hover:bg-destructive/10 shrink-0"
               title="Durdur"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(group.id);
-              }}
+              onClick={() => onRemove(group.id)}
             >
               <StopCircle className="h-3.5 w-3.5 text-destructive" />
             </button>
@@ -104,11 +103,8 @@ function GroupSection({
             <Button
               size="sm"
               variant="ghost"
-              className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRetry(group.id, group.receteNo);
-              }}
+              className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600 shrink-0"
+              onClick={() => onRetry(group.id, group.receteNo)}
             >
               <RefreshCw className="h-3 w-3 mr-0.5" />
               Tekrar Dene
@@ -118,11 +114,8 @@ function GroupSection({
             <Button
               size="sm"
               variant="ghost"
-              className="h-5 px-1.5 text-[10px]"
-              onClick={(e) => {
-                e.stopPropagation();
-                onShowResult(group.receteNo!);
-              }}
+              className="h-5 px-1.5 text-[10px] shrink-0"
+              onClick={() => onShowResult(group.receteNo!)}
             >
               <Eye className="h-3 w-3 mr-0.5" />
               Sonucu Gör
@@ -130,16 +123,13 @@ function GroupSection({
           )}
           {allGroupDone && onRemove && (
             <button
-              className="p-0.5 rounded hover:bg-muted"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(group.id);
-              }}
+              className="p-0.5 rounded hover:bg-muted shrink-0"
+              onClick={() => onRemove(group.id)}
             >
               <X className="h-3 w-3 text-muted-foreground" />
             </button>
           )}
-        </CollapsibleTrigger>
+        </div>
 
         <CollapsibleContent>
           <div className="pl-5 pr-3 pb-2 space-y-1">

@@ -10,6 +10,7 @@ Sentry.init({
 import "dotenv/config";
 import { app, autoUpdater, BrowserWindow, dialog, Tray, Menu, nativeImage } from "electron";
 import path from "path";
+import fs from "fs";
 import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
@@ -52,7 +53,7 @@ function getIconPath() {
   return path.join(__dirname, "../../images/icon.ico");
 }
 
-function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[] } | null {
+function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[]; kontrol: boolean } | null {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'kolayrapor:') return null;
@@ -60,22 +61,33 @@ function parseDeeplinkUrl(url: string): { receteNo: string; barkodlar: string[] 
     if (!receteNo) return null;
     const barkodStr = parsed.searchParams.get('barkod') || '';
     const barkodlar = barkodStr ? barkodStr.split(',').map(b => b.trim()).filter(Boolean) : [];
-    return { receteNo, barkodlar };
+    // kolayrapor://kontrol?receteNo=... → hostname is "kontrol"
+    const kontrol = parsed.hostname === 'kontrol';
+    return { receteNo, barkodlar, kontrol };
   } catch {
     return null;
   }
 }
 
-function handleDeeplink(params: { receteNo: string; barkodlar: string[] }) {
+function handleDeeplink(params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) {
   const mainWindow = BrowserWindow.getAllWindows().find(
     w => w !== taskPanelWindow && !w.isDestroyed()
   );
   if (!mainWindow) return;
 
-  // Show and focus the main window
-  mainWindow.show();
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  const wasVisible = mainWindow.isVisible() && !mainWindow.isMinimized();
+
+  // Only show main window if it was already visible
+  if (wasVisible) {
+    mainWindow.focus();
+  } else {
+    // Windows may auto-bring the window to foreground on protocol activation.
+    // Force it to stay hidden.
+    mainWindow.hide();
+  }
+
+  // Pre-create the task panel so user sees immediate feedback
+  createTaskPanelWindow();
 
   // Send deeplink params to the main window renderer
   if (mainWindow.webContents.isLoading()) {
@@ -101,7 +113,8 @@ function createTaskPanelWindow() {
     width: 340,
     height: 80,
     x: screenWidth - 340 - 16,
-    y: screenHeight - 80 - 16,
+    y: 16,
+    show: false,
     alwaysOnTop: true,
     resizable: true,
     minimizable: false,
@@ -120,6 +133,11 @@ function createTaskPanelWindow() {
   });
 
   taskPanelWindow.setMenuBarVisibility(false);
+
+  // Show only after content is ready (avoids white flash)
+  taskPanelWindow.once('ready-to-show', () => {
+    taskPanelWindow?.show();
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     taskPanelWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -163,9 +181,9 @@ ipcMain.on(IPC_CHANNELS.TASK_PANEL_RESIZE, (_event, height: number) => {
   const { height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
   const clampedHeight = Math.min(Math.max(height, 50), screenHeight - 32);
   taskPanelWindow.setSize(width, clampedHeight);
-  // Reposition to stay at bottom-right
+  // Reposition to stay at top-right
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
-  taskPanelWindow.setPosition(screenWidth - width - 16, screenHeight - clampedHeight - 16);
+  taskPanelWindow.setPosition(screenWidth - width - 16, 16);
 });
 
 // IPC: task panel sends actions back (retry, cancel, etc.), relay to main window
@@ -179,27 +197,39 @@ ipcMain.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => {
   const mainWindow = BrowserWindow.getAllWindows().find(
     w => w !== taskPanelWindow && !w.isDestroyed()
   );
-  if (mainWindow) {
-    mainWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
+  if (!mainWindow) return;
+
+  // Show main window when user clicks to view results or navigate
+  if (action.type === 'showResult' || action.type === 'openApp') {
+    mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   }
+  mainWindow.webContents.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
 });
 
 app.on('second-instance', (_event, argv) => {
   console.log('second-instance argv:', argv);
   const deeplinkUrl = argv.find(arg => arg.startsWith('kolayrapor://'));
   console.log('deep link URL:', deeplinkUrl);
+
   if (deeplinkUrl) {
     const params = parseDeeplinkUrl(deeplinkUrl);
     console.log('parsed params:', params);
-    if (params) handleDeeplink(params);
-  } else {
-    // No deep link — show main window
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].show();
-      if (windows[0].isMinimized()) windows[0].restore();
-      windows[0].focus();
+    if (params) {
+      handleDeeplink(params);
+      return;
     }
+  }
+
+  // No valid deeplink (or just kolayrapor://) — show main window
+  const mainWindow = BrowserWindow.getAllWindows().find(
+    w => w !== taskPanelWindow && !w.isDestroyed()
+  );
+  if (mainWindow) {
+    mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   }
 });
 
@@ -212,11 +242,42 @@ if (process.platform === 'win32' && !inDevelopment) {
   app.setLoginItemSettings({ openAtLogin: true });
 }
 
+// --- Old version cleanup ---
+
+/** Keep at most `keep` previous app-X.Y.Z folders, delete the rest */
+function cleanupOldVersions(keep = 2) {
+  try {
+    const appDir = path.dirname(app.getPath("exe")); // e.g. …\KolayRapor\app-0.8.6
+    const rootDir = path.dirname(appDir);             // e.g. …\KolayRapor
+    const currentFolder = path.basename(appDir);      // e.g. app-0.8.6
+
+    const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+    const versionDirs = entries
+      .filter((e) => e.isDirectory() && /^app-\d+\.\d+\.\d+/.test(e.name) && e.name !== currentFolder)
+      .map((e) => e.name)
+      .sort(); // lexicographic sort — works for semver with same digit counts
+
+    if (versionDirs.length <= keep) return;
+
+    const toDelete = versionDirs.slice(0, versionDirs.length - keep);
+    for (const dir of toDelete) {
+      const fullPath = path.join(rootDir, dir);
+      console.log(`[Cleanup] Removing old version: ${fullPath}`);
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    }
+    console.log(`[Cleanup] Removed ${toDelete.length} old version(s), kept ${keep}`);
+  } catch (err) {
+    console.warn("[Cleanup] Failed to clean old versions:", err);
+  }
+}
+
 // --- Auto-Update ---
 
 const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
 
 function setupAutoUpdater() {
+  // Clean up old versions on startup
+  cleanupOldVersions(2);
   // Don't check updates on first install — Squirrel holds a lock
   if (process.argv.includes("--squirrel-firstrun")) return;
 

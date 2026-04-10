@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  ChevronUp,
-  ChevronDown,
-  ChevronRight,
   Loader2,
   CheckCircle2,
   XCircle,
@@ -16,7 +8,8 @@ import {
   Eye,
   RefreshCw,
   StopCircle,
-  GripHorizontal,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
@@ -67,168 +60,16 @@ function StatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-function GroupStatusIcon({ group }: { group: TaskGroup }) {
-  const allDone = group.items.every(
-    (i) => i.status === "done" || i.status === "error",
-  );
-  const hasError = group.items.some((i) => i.status === "error");
-  const isRunning = group.items.some((i) => i.status === "running");
-
-  if (isRunning)
-    return (
-      <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-    );
-  if (allDone && hasError)
-    return <XCircle className="h-3 w-3 text-red-500 shrink-0" />;
-  if (allDone)
-    return <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />;
-  return <Clock className="h-3 w-3 text-muted-foreground/60 shrink-0" />;
-}
-
-function GroupSection({ group }: { group: TaskGroup }) {
-  const doneCount = group.items.filter(
-    (i) => i.status === "done" || i.status === "error",
-  ).length;
-  const total = group.items.length;
-  const allGroupDone = doneCount === total;
-  const hasError = group.items.some((i) => i.status === "error");
-  const isRunning = group.items.some((i) => i.status === "running");
-  const [expanded, setExpanded] = useState(true);
-
-  return (
-    <div className="border-t first:border-t-0">
-      <Collapsible open={expanded} onOpenChange={setExpanded}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/30 text-left">
-          <ChevronRight
-            className={cn(
-              "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
-              expanded && "rotate-90",
-            )}
-          />
-          <GroupStatusIcon group={group} />
-          <span className="text-xs font-medium truncate flex-1">
-            {group.title}
-          </span>
-          <span className="text-[10px] text-muted-foreground shrink-0">
-            {doneCount}/{total}
-          </span>
-          {isRunning && (
-            <button
-              className="p-0.5 rounded hover:bg-destructive/10"
-              title="Durdur"
-              onClick={(e) => {
-                e.stopPropagation();
-                sendAction({ type: "removeGroup", payload: group.id });
-              }}
-            >
-              <StopCircle className="h-3.5 w-3.5 text-destructive" />
-            </button>
-          )}
-          {allGroupDone && hasError && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600"
-              onClick={(e) => {
-                e.stopPropagation();
-                sendAction({
-                  type: "retry",
-                  payload: { groupId: group.id, receteNo: group.receteNo },
-                });
-              }}
-            >
-              <RefreshCw className="h-3 w-3 mr-0.5" />
-              Tekrar Dene
-            </Button>
-          )}
-          {allGroupDone && !hasError && group.receteNo && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 px-1.5 text-[10px]"
-              onClick={(e) => {
-                e.stopPropagation();
-                sendAction({
-                  type: "showResult",
-                  payload: group.receteNo,
-                });
-              }}
-            >
-              <Eye className="h-3 w-3 mr-0.5" />
-              Sonucu Gor
-            </Button>
-          )}
-          {allGroupDone && (
-            <button
-              className="p-0.5 rounded hover:bg-muted"
-              onClick={(e) => {
-                e.stopPropagation();
-                sendAction({ type: "removeGroup", payload: group.id });
-              }}
-            >
-              <X className="h-3 w-3 text-muted-foreground" />
-            </button>
-          )}
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <div className="pl-5 pr-3 pb-2 space-y-1">
-            {group.items.map((item) => (
-              <div key={item.id}>
-                <div
-                  className={cn(
-                    "flex items-center gap-2 rounded px-2 py-1 text-xs",
-                    item.status === "running" && "bg-primary/5",
-                  )}
-                >
-                  <StatusIcon status={item.status} />
-                  <span
-                    className={cn(
-                      "flex-1 truncate",
-                      item.status === "pending" && "text-muted-foreground",
-                      item.status === "error" && "text-red-500",
-                      item.status === "running" && "font-medium",
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                  {item.status === "running" && (
-                    <span className="text-[10px] text-primary font-medium shrink-0">
-                      devam ediyor
-                    </span>
-                  )}
-                  {item.status === "error" && (
-                    <span className="text-[10px] text-red-400 shrink-0">
-                      basarisiz
-                    </span>
-                  )}
-                </div>
-                {item.status === "error" && item.errorMessage && (
-                  <div className="ml-7 mt-0.5 px-2 py-1 rounded bg-red-50 dark:bg-red-950/30 text-[10px] text-red-500">
-                    {item.errorMessage}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
-  );
-}
-
 export function TaskPanelWindow() {
   const [state, setState] = useState<TaskPanelState>({
     groups: [],
     bulkProgress: null,
   });
-  const [isOpen, setIsOpen] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [bulkCancelling, setBulkCancelling] = useState(false);
 
   useEffect(() => {
-    console.log("[TaskPanelWindow] Registering onState listener, taskPanelAPI:", !!taskPanelAPI);
     taskPanelAPI?.onState((newState: TaskPanelState) => {
-      console.log("[TaskPanelWindow] State received:", JSON.stringify(newState).substring(0, 500));
       setState(newState);
     });
   }, []);
@@ -242,8 +83,8 @@ export function TaskPanelWindow() {
   ).length;
   const allDone = totalItems > 0 && doneItems === totalItems;
   const hasError = allItems.some((i) => i.status === "error");
+  const errorCount = allItems.filter((i) => i.status === "error").length;
   const runningItem = allItems.find((i) => i.status === "running");
-  const pendingCount = allItems.filter((i) => i.status === "pending").length;
 
   const hasBulk = bulkProgress !== null;
   const hasContent = groups.length > 0 || hasBulk;
@@ -251,6 +92,20 @@ export function TaskPanelWindow() {
   useEffect(() => {
     if (!hasBulk) setBulkCancelling(false);
   }, [hasBulk]);
+
+  // Auto-close panel 3 seconds after all tasks complete successfully (no errors)
+  useEffect(() => {
+    if (!allDone || hasError || hasBulk || totalItems === 0) return;
+    const timer = setTimeout(() => {
+      sendAction({ type: "closePanel" });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [allDone, hasError, hasBulk, totalItems]);
+
+  // Expand automatically when errors occur
+  useEffect(() => {
+    if (hasError && allDone) setExpanded(true);
+  }, [hasError, allDone]);
 
   // Auto-resize window to fit content
   const contentRef = useRef<HTMLDivElement>(null);
@@ -262,7 +117,7 @@ export function TaskPanelWindow() {
 
   useEffect(() => {
     resizeToFit();
-  }, [state, isOpen, resizeToFit]);
+  }, [state, expanded, resizeToFit]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -275,6 +130,7 @@ export function TaskPanelWindow() {
     return null;
   }
 
+  // Summary text for the header
   const headerText: string = hasBulk
     ? bulkCancelling
       ? "Durduruluyor..."
@@ -283,139 +139,190 @@ export function TaskPanelWindow() {
         : "Toplu kontrol"
     : allDone
       ? hasError
-        ? "Tamamlandi (hata var)"
-        : "Tamamlandi"
+        ? `Tamamlandı (${errorCount} hata)`
+        : "Tamamlandı"
       : runningItem
         ? runningItem.label
-        : `Islem bekleniyor (${pendingCount})`;
+        : "Hazırlanıyor...";
+
+  const progressText = hasBulk
+    ? `${bulkProgress!.current}/${bulkProgress!.total}`
+    : totalItems > 1
+      ? `${doneItems}/${totalItems}`
+      : null;
 
   return (
     <div ref={contentRef} className="bg-transparent">
       <div className="rounded-lg border bg-background shadow-xl overflow-hidden">
-        {/* Draggable header area */}
+        {/* Compact header — always visible */}
         <div
-          className="flex items-center justify-center py-1 cursor-move"
+          className="flex items-center gap-2 px-3 py-2 cursor-move select-none"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          <GripHorizontal className="h-3 w-3 text-muted-foreground/40" />
-        </div>
+          {/* Status icon */}
+          {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+          ) : hasBulk && bulkCancelling ? (
+            <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+          ) : allDone && !hasError ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+          ) : (
+            <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+          )}
 
-        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-          <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50">
-            <span className="flex items-center gap-2 min-w-0">
-              {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-              ) : hasBulk && bulkCancelling ? (
-                <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-              ) : allDone && !hasError ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
-              ) : allDone && hasError ? (
-                <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-              ) : null}
-              <span className="truncate">{headerText}</span>
-              {hasBulk && (
-                <span className="text-xs text-muted-foreground shrink-0">
-                  ({bulkProgress!.current}/{bulkProgress!.total})
-                </span>
-              )}
-              {!hasBulk && !allDone && totalItems > 1 && (
-                <span className="text-xs text-muted-foreground shrink-0">
-                  ({doneItems}/{totalItems})
-                </span>
-              )}
+          {/* Title + progress */}
+          <span className="text-xs font-medium truncate flex-1">
+            {headerText}
+          </span>
+          {progressText && (
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              ({progressText})
             </span>
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              {isOpen ? (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              )}
+          )}
+
+          {/* Action buttons in header */}
+          <div
+            className="flex items-center gap-1 shrink-0"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            {/* Show result — opens main app */}
+            {allDone && !hasError && groups.length > 0 && groups[0].receteNo && (
               <button
                 className="p-0.5 rounded hover:bg-muted"
+                title="Sonucu Gör"
+                onClick={() =>
+                  sendAction({ type: "showResult", payload: groups[0].receteNo })
+                }
+              >
+                <Eye className="h-3.5 w-3.5 text-primary" />
+              </button>
+            )}
+            {/* Retry on error */}
+            {allDone && hasError && groups.length > 0 && (
+              <button
+                className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950/30"
+                title="Tekrar Dene"
+                onClick={() =>
+                  sendAction({
+                    type: "retry",
+                    payload: { groupId: groups[0].id, receteNo: groups[0].receteNo },
+                  })
+                }
+              >
+                <RefreshCw className="h-3.5 w-3.5 text-red-500" />
+              </button>
+            )}
+            {/* Expand/collapse */}
+            {groups.length > 0 && (
+              <button
+                className="p-0.5 rounded hover:bg-muted"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? (
+                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+              </button>
+            )}
+            {/* Close */}
+            <button
+              className="p-0.5 rounded hover:bg-muted"
+              onClick={() => sendAction({ type: "closePanel" })}
+            >
+              <X className="h-3 w-3 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+
+        {/* Bulk progress bar (always visible when active) */}
+        {hasBulk && (
+          <div className="px-3 pb-2">
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-300",
+                  bulkCancelling ? "bg-orange-400" : "bg-brand",
+                )}
+                style={{
+                  width: `${(bulkProgress!.current / bulkProgress!.total) * 100}%`,
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {bulkProgress!.currentReceteNo}
+            </p>
+            {!bulkCancelling ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-5 px-2 text-[10px] mt-1"
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  sendAction({ type: "closePanel" });
+                onClick={() => {
+                  setBulkCancelling(true);
+                  sendAction({ type: "bulkCancel" });
                 }}
               >
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            </div>
-          </CollapsibleTrigger>
+                <StopCircle className="h-3 w-3 mr-1" />
+                Durdur
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-5 px-2 text-[10px] mt-1"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                onClick={() => sendAction({ type: "bulkForceStop" })}
+              >
+                <X className="h-3 w-3 mr-1" />
+                Zorla Durdur
+              </Button>
+            )}
+          </div>
+        )}
 
-          <CollapsibleContent>
-            <div className="max-h-72 overflow-y-auto border-t">
-              {hasBulk && (
-                <div className="px-3 py-2.5 border-b">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-muted-foreground">
-                      {bulkProgress!.type === "verileriAl"
-                        ? "Veriler aliniyor..."
-                        : "Kontrol ediliyor..."}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {bulkCancelling ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-6 px-2 text-[10px]"
-                            disabled
-                          >
-                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                            Durduruluyor...
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() =>
-                              sendAction({ type: "bulkForceStop" })
-                            }
-                          >
-                            <X className="h-3 w-3 mr-1" />
-                            Zorla Durdur
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-6 px-2 text-[10px]"
-                          onClick={() => {
-                            setBulkCancelling(true);
-                            sendAction({ type: "bulkCancel" });
-                          }}
-                        >
-                          <StopCircle className="h-3 w-3 mr-1" />
-                          Durdur
-                        </Button>
-                      )}
-                    </div>
+        {/* Expanded detail — task items */}
+        {expanded && groups.length > 0 && (
+          <div className="border-t max-h-60 overflow-y-auto">
+            {groups.map((group) => (
+              <div key={group.id}>
+                {groups.length > 1 && (
+                  <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground bg-muted/30 border-b">
+                    {group.title}
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                )}
+                <div className="px-3 py-1.5 space-y-0.5">
+                  {group.items.map((item) => (
                     <div
+                      key={item.id}
                       className={cn(
-                        "h-full rounded-full transition-all duration-300",
-                        bulkCancelling ? "bg-orange-400" : "bg-brand",
+                        "flex items-center gap-2 rounded px-2 py-0.5 text-xs",
+                        item.status === "done" && "cursor-pointer hover:bg-muted/50",
                       )}
-                      style={{
-                        width: `${(bulkProgress!.current / bulkProgress!.total) * 100}%`,
+                      onClick={() => {
+                        if (item.status === "done" && group.receteNo) {
+                          sendAction({ type: "showResult", payload: group.receteNo });
+                        }
                       }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Isleniyor: {bulkProgress!.currentReceteNo}
-                  </p>
+                    >
+                      <StatusIcon status={item.status} />
+                      <span
+                        className={cn(
+                          "flex-1 truncate",
+                          item.status === "pending" && "text-muted-foreground",
+                          item.status === "error" && "text-red-500",
+                          item.status === "running" && "font-medium",
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {groups.map((group) => (
-                <GroupSection key={group.id} group={group} />
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

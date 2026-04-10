@@ -437,6 +437,25 @@ export function BrowserView() {
     };
   }, [updateNavState, checkPageState]);
 
+  // Keep-alive: reload webview every 2 minutes to prevent session timeout
+  useEffect(() => {
+    if (loginStatus !== "logged-in") return;
+
+    const KEEP_ALIVE_MS = 2 * 60 * 1000;
+    const timer = setInterval(() => {
+      const webview = webviewRef.current;
+      if (!webview || isLoading || isAnalyzing || isAutoScraping) return;
+      try {
+        console.log("[WebView] Keep-alive: refreshing session...");
+        webview.loadURL(MEDULA_URL);
+      } catch (err) {
+        console.warn("[WebView] Keep-alive failed:", err);
+      }
+    }, KEEP_ALIVE_MS);
+
+    return () => clearInterval(timer);
+  }, [loginStatus, isLoading, isAnalyzing, isAutoScraping]);
+
   // Inject buttons and attach click handlers when on Recete Detay, results change, or analysis state changes
   useEffect(() => {
     if (!isOnReceteDetay) return;

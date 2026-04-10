@@ -365,6 +365,10 @@ export class PlaywrightAutomationService {
   private debugMode: boolean = false;
   private storedCredentials: LoginCredentials | null = null;
   private loginCounter = 0;
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private operationInProgress = false;
+
+  private static readonly KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
@@ -390,6 +394,39 @@ export class PlaywrightAutomationService {
 
   hasCredentials(): boolean {
     return this.storedCredentials !== null;
+  }
+
+  startKeepAlive(): void {
+    this.stopKeepAlive();
+    this.keepAliveTimer = setInterval(async () => {
+      if (!this.isReady() || this.operationInProgress) return;
+      try {
+        console.log("[Playwright] Keep-alive: refreshing session...");
+        this.operationInProgress = true;
+        await this.page!.goto(URLS.MEDULA_HOME, { waitUntil: "load", timeout: 30000 });
+        await this.page!.waitForLoadState("networkidle").catch(() => {});
+        // If redirected to login, re-login automatically
+        const url = this.page!.url();
+        if (url.includes("/login") && this.hasCredentials()) {
+          console.log("[Playwright] Keep-alive: session expired, re-logging in...");
+          await this.performLogin(this.storedCredentials!);
+        }
+        console.log("[Playwright] Keep-alive: session refreshed");
+      } catch (err) {
+        console.warn("[Playwright] Keep-alive failed:", err);
+      } finally {
+        this.operationInProgress = false;
+      }
+    }, PlaywrightAutomationService.KEEP_ALIVE_INTERVAL_MS);
+    console.log("[Playwright] Keep-alive started (every 2 min)");
+  }
+
+  stopKeepAlive(): void {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+      console.log("[Playwright] Keep-alive stopped");
+    }
   }
 
   private normalizeText(s: string | null | undefined) {
@@ -480,45 +517,50 @@ export class PlaywrightAutomationService {
       throw new Error("Playwright not initialized");
     }
 
-    // Retry goto on ERR_ABORTED (common with SGK portal during concurrent navigations)
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await this.page.goto(url, { waitUntil: "load" });
-        break;
-      } catch (err: any) {
-        if (attempt < 2 && err?.message?.includes("ERR_ABORTED")) {
-          await new Promise((r) => setTimeout(r, 2000));
-          continue;
+    this.operationInProgress = true;
+    try {
+      // Retry goto on ERR_ABORTED (common with SGK portal during concurrent navigations)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await this.page.goto(url, { waitUntil: "load" });
+          break;
+        } catch (err: any) {
+          if (attempt < 2 && err?.message?.includes("ERR_ABORTED")) {
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
+          throw err;
         }
-        throw err;
       }
-    }
-    await this.page.waitForLoadState("networkidle").catch(() => {
-      // networkidle timeout is non-fatal — page is already loaded
-    });
-    const currentUrl = this.page.url();
+      await this.page.waitForLoadState("networkidle").catch(() => {
+        // networkidle timeout is non-fatal — page is already loaded
+      });
+      const currentUrl = this.page.url();
 
-    // Check if redirected to login page
-    const redirectedToLogin =
-      currentUrl.includes("/login") && !url.includes("/login");
-    // Note: Auto-login will be handled by the caller (renderer) since it has access to credentials
-    if (redirectedToLogin) {
-      const result = await this.performLogin(this.storedCredentials!);
-      if (result.success) {
-        return this.navigateTo(url);
-      } else {
-        return {
-          success: false,
-          error: result.error,
-        };
+      // Check if redirected to login page
+      const redirectedToLogin =
+        currentUrl.includes("/login") && !url.includes("/login");
+      // Note: Auto-login will be handled by the caller (renderer) since it has access to credentials
+      if (redirectedToLogin) {
+        const result = await this.performLogin(this.storedCredentials!);
+        if (result.success) {
+          return this.navigateTo(url);
+        } else {
+          return {
+            success: false,
+            error: result.error,
+          };
+        }
       }
-    }
 
-    return {
-      success: true,
-      currentUrl,
-      redirectedToLogin,
-    };
+      return {
+        success: true,
+        currentUrl,
+        redirectedToLogin,
+      };
+    } finally {
+      this.operationInProgress = false;
+    }
   }
 
   async performLogin(credentials: LoginCredentials): Promise<LoginResult> {
@@ -642,6 +684,7 @@ export class PlaywrightAutomationService {
       return await this.performLogin(credentials);
     }
     this.loginCounter = 0;
+    this.startKeepAlive();
 
     return {
       success: !stillOnLogin,
@@ -1138,6 +1181,7 @@ export class PlaywrightAutomationService {
     return ilaclar;
   }
   async close(): Promise<void> {
+    this.stopKeepAlive();
     try {
       if (this.browser) {
         await this.browser.close();
