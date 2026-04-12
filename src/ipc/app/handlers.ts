@@ -18,7 +18,7 @@ export const checkForUpdates = os.handler(async () => {
   }
 
   return new Promise<{
-    status: "up-to-date" | "update-available" | "error" | "dev";
+    status: "up-to-date" | "update-available" | "downloading" | "error" | "dev";
     currentVersion: string;
     message?: string;
   }>((resolve) => {
@@ -52,6 +52,15 @@ export const checkForUpdates = os.handler(async () => {
       resolve({ status: "error", currentVersion, message: "Zaman aşımı" });
     }, 15000);
 
-    autoUpdater.checkForUpdates();
+    try {
+      autoUpdater.checkForUpdates();
+    } catch (err: any) {
+      cleanup();
+      if (err?.message?.includes('already running')) {
+        resolve({ status: "downloading", currentVersion, message: "Güncelleme zaten indiriliyor." });
+      } else {
+        resolve({ status: "error", currentVersion, message: err?.message });
+      }
+    }
   });
 });

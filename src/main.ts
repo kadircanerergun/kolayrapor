@@ -491,32 +491,34 @@ async function setupORPC() {
   });
 }
 
-// Parse CLI arguments: -r RECETENO -b BARKOD
-function parseCliArgs(argv: string[]): { receteNo: string; barkodlar: string[] } | null {
+// Parse CLI arguments: --recete=RECETENO --barkod=BARKOD1,BARKOD2
+function parseCliArgs(argv: string[]): { receteNo: string; barkodlar: string[]; kontrol: boolean } | null {
   let receteNo: string | null = null;
   const barkodlar: string[] = [];
 
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '-r' && argv[i + 1]) {
-      receteNo = argv[++i];
-    } else if (argv[i] === '-b' && argv[i + 1]) {
-      const val = argv[++i];
+  for (const arg of argv) {
+    if (arg.startsWith('--recete=')) {
+      receteNo = arg.slice('--recete='.length);
+    } else if (arg.startsWith('--barkod=')) {
+      const val = arg.slice('--barkod='.length);
       val.split(',').map(b => b.trim()).filter(Boolean).forEach(b => barkodlar.push(b));
     }
   }
 
-  return receteNo ? { receteNo, barkodlar } : null;
+  return receteNo ? { receteNo, barkodlar, kontrol: true } : null;
 }
 
-let pendingCliParams: { receteNo: string; barkodlar: string[] } | null = null;
+let pendingCliParams: { receteNo: string; barkodlar: string[]; kontrol: boolean } | null = null;
 
 // Check for cold-start deep link
+console.log('process.argv:', process.argv);
 const coldStartDeeplink = process.argv.find(arg => arg.startsWith('kolayrapor://'));
 if (coldStartDeeplink) {
   pendingDeeplinkUrl = coldStartDeeplink;
 } else {
   // Check for CLI arguments (-r, -b)
   pendingCliParams = parseCliArgs(process.argv);
+  console.log('Parsed CLI params:', pendingCliParams);
 }
 
 // Only initialize the app if we got the single instance lock

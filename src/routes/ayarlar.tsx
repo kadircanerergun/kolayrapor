@@ -149,7 +149,7 @@ function SettingsPage() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<
-    "idle" | "up-to-date" | "update-available" | "error" | "dev"
+    "idle" | "up-to-date" | "update-available" | "downloading" | "error" | "dev"
   >("idle");
   const [updateMessage, setUpdateMessage] = useState("");
 
@@ -1772,6 +1772,12 @@ function SettingsPage() {
                   Güncelleme Mevcut
                 </Badge>
               )}
+              {updateStatus === "downloading" && (
+                <Badge variant="secondary" className="gap-1">
+                  <Spinner size="sm" />
+                  İndiriliyor
+                </Badge>
+              )}
               {updateStatus === "error" && (
                 <Badge variant="destructive" className="gap-1">
                   <AlertCircle className="h-3 w-3" />
@@ -1782,12 +1788,17 @@ function SettingsPage() {
                 variant="outline"
                 size="sm"
                 onClick={handleCheckForUpdates}
-                disabled={checkingUpdate}
+                disabled={checkingUpdate || updateStatus === "downloading"}
               >
                 {checkingUpdate ? (
                   <>
                     <Spinner size="sm" className="mr-2" />
                     Kontrol...
+                  </>
+                ) : updateStatus === "downloading" ? (
+                  <>
+                    <Spinner size="sm" className="mr-2" />
+                    İndiriliyor...
                   </>
                 ) : (
                   <>
