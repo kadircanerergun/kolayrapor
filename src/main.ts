@@ -194,6 +194,18 @@ ipcMain.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => {
     }
     return;
   }
+  if (action.type === 'hidePanel') {
+    if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+      taskPanelWindow.hide();
+    }
+    return;
+  }
+  if (action.type === 'showPanel') {
+    if (taskPanelWindow && !taskPanelWindow.isDestroyed()) {
+      taskPanelWindow.show();
+    }
+    return;
+  }
   const mainWindow = BrowserWindow.getAllWindows().find(
     w => w !== taskPanelWindow && !w.isDestroyed()
   );

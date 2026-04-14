@@ -39,6 +39,7 @@ import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
 import { useDeeplinkHandler } from "@/hooks/useDeeplinkHandler";
 import { GlobalTaskPanel } from "@/components/global-task-panel";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
 import {
   Sheet,
@@ -507,6 +508,7 @@ export default function MainLayout({
             </SheetContent>
           </Sheet>
         </main>
+        <WhatsAppButton />
       </div>
     </TooltipProvider>
   );

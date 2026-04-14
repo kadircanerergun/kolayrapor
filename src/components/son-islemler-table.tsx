@@ -30,11 +30,13 @@ interface SonIslemlerTableProps {
     cachedReceteler: CachedRecete[];
     analizSonuclari: Record<string, Record<string, ReceteReportResponse>>;
   }) => void;
+  refreshRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }
 
 export function SonIslemlerTable({
   showHeader = true,
   onDataLoaded,
+  refreshRef,
 }: SonIslemlerTableProps) {
   const dispatch = useAppDispatch();
   const { loadingRecete, analyzingRecete, detaylar, analizSonuclari } =
@@ -52,10 +54,16 @@ export function SonIslemlerTable({
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Load data from Dexie on mount
-  useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      // Sync reports from API first
+      try {
+        await reportApiService.getMyReports();
+      } catch {
+        // Sync failure is non-blocking
+      }
+
       const [receteler, analiz, timestamps] = await Promise.all([
         getAllCachedReceteler(),
         getAllCachedAnalysis(),
@@ -79,8 +87,20 @@ export function SonIslemlerTable({
       }
 
       onDataLoaded?.({ cachedReceteler: receteler, analizSonuclari: analiz });
+    } finally {
       setIsLoading(false);
-    };
+    }
+  }, [dispatch, detaylar, analizSonuclari, onDataLoaded]);
+
+  // Expose refresh function to parent
+  useEffect(() => {
+    if (refreshRef) {
+      refreshRef.current = loadData;
+    }
+  }, [refreshRef, loadData]);
+
+  // Load data from Dexie on mount
+  useEffect(() => {
     loadData();
   }, []);
 

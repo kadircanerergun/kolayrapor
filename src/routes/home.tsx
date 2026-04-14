@@ -23,6 +23,7 @@ import {
 import { SonIslemlerTable } from "@/components/son-islemler-table";
 import { SystemStatus } from "@/components/system-status";
 import { SearchByRecipe } from "@/blocks/search-by-recipe";
+import { SuggestionCard } from "@/components/suggestion-card";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Spinner } from "@/components/ui/spinner";
 import type { CachedRecete } from "@/lib/db";
@@ -227,6 +228,11 @@ function KontrolMerkezi() {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Suggestion */}
+        <div className="mb-6">
+          <SuggestionCard />
         </div>
       </div>
     </div>

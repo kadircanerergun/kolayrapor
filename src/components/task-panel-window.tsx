@@ -93,14 +93,32 @@ export function TaskPanelWindow() {
     if (!hasBulk) setBulkCancelling(false);
   }, [hasBulk]);
 
-  // Auto-close panel 3 seconds after all tasks complete successfully (no errors)
+  // Auto-hide window 3s after first content appears (while still running),
+  // then show again when tasks finish or encounter errors.
+  const wasEverDone = useRef(false);
+  const hasAutoHidden = useRef(false);
+
   useEffect(() => {
-    if (!allDone || hasError || hasBulk || totalItems === 0) return;
+    if (allDone && totalItems > 0) wasEverDone.current = true;
+  }, [allDone, totalItems]);
+
+  useEffect(() => {
+    // Don't auto-hide if tasks already finished
+    if (!hasContent || allDone || wasEverDone.current) return;
     const timer = setTimeout(() => {
-      sendAction({ type: "closePanel" });
+      hasAutoHidden.current = true;
+      sendAction({ type: "hidePanel" });
     }, 3000);
     return () => clearTimeout(timer);
-  }, [allDone, hasError, hasBulk, totalItems]);
+  }, [hasContent, allDone]);
+
+  // Show window again when tasks finish or encounter errors
+  useEffect(() => {
+    if (allDone && totalItems > 0 && hasAutoHidden.current) {
+      hasAutoHidden.current = false;
+      sendAction({ type: "showPanel" });
+    }
+  }, [allDone, totalItems]);
 
   // Expand automatically when errors occur
   useEffect(() => {

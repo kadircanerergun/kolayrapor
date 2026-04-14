@@ -520,6 +520,24 @@ export function BrowserView() {
       webview.loadURL(MEDULA_URL);
       await waitForLoadStop();
 
+      // Check if session expired and login form is showing
+      const hasLoginForm: boolean = await webview.executeJavaScript(`
+        !!document.querySelector('input[type="submit"][value="Giriş Yap"]')
+      `).catch(() => false);
+
+      if (hasLoginForm) {
+        // Session expired — store pending navigation, login first
+        pendingReceteNoNavRef.current = receteNo;
+        setLoginStatus("idle");
+        cachedLoginStatus = "idle";
+        if (credentials) {
+          autoLoginAttempted.current = false;
+          cachedAutoLoginAttempted = false;
+          setTimeout(() => performLoginRef.current(true), 0);
+        }
+        return;
+      }
+
       // Wait for the menu
       await webview.executeJavaScript(`
         new Promise((resolve, reject) => {
@@ -591,7 +609,7 @@ export function BrowserView() {
       console.warn("[BrowserView] Failed to navigate to prescription:", err);
       toast.error("Reçete sorgulanamadı. Lütfen tekrar deneyin.");
     }
-  }, []);
+  }, [credentials]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -602,12 +620,18 @@ export function BrowserView() {
         navigateToPrescription(receteNo);
       } else {
         pendingReceteNoNavRef.current = receteNo;
+        // Trigger login (loads Medula page first, then logs in)
+        if (loginStatus !== "logging-in" && credentials) {
+          autoLoginAttempted.current = false;
+          cachedAutoLoginAttempted = false;
+          setTimeout(() => performLoginRef.current(false), 0);
+        }
       }
     };
 
     window.addEventListener("kolayrapor:navigate-to-prescription", handler);
     return () => window.removeEventListener("kolayrapor:navigate-to-prescription", handler);
-  }, [loginStatus, navigateToPrescription]);
+  }, [loginStatus, navigateToPrescription, credentials]);
 
   // Execute pending navigation after login completes
   useEffect(() => {
