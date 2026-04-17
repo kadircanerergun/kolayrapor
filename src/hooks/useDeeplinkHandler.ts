@@ -1,6 +1,11 @@
 import { useEffect, useCallback } from "react";
 import { useAppDispatch } from "@/store";
-import { addGroup, updateTask, setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
+import {
+  addGroup,
+  updateTask,
+  setShowResultReceteNo,
+  clearDeeplinkGroupsExcept,
+} from "@/store/slices/taskQueueSlice";
 import { searchPrescriptionDetail } from "@/store/slices/playwrightSlice";
 import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
 import { reportApiService } from "@/services/report-api";
@@ -15,7 +20,11 @@ export function useDeeplinkHandler() {
     async (params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) => {
       const { receteNo, barkodlar, kontrol } = params;
 
-      const groupId = `deeplink-${receteNo}-${Date.now()}`;
+      const groupId = `deeplink-${receteNo}`;
+
+      // Only one recete should be visible in the task window — drop any
+      // previously-tracked deeplink groups for other recetes.
+      dispatch(clearDeeplinkGroupsExcept(receteNo));
 
       // If kontrol param is set, check cache first
       if (kontrol) {
@@ -28,11 +37,15 @@ export function useDeeplinkHandler() {
           if (allCached) {
             dispatch(analizCompleted({ receteNo, sonuclar: cachedForRecete }));
             // Show a completed task group so the panel appears
-            const items = Object.keys(cachedForRecete).map((barkod) => ({
-              id: barkod,
-              label: barkod,
-              status: "done" as const,
-            }));
+            const items = Object.entries(cachedForRecete).map(
+              ([barkod, report]) => ({
+                id: barkod,
+                label: barkod,
+                status: "done" as const,
+                isValid: report.isValid,
+                validityScore: report.validityScore,
+              }),
+            );
             dispatch(addGroup({ id: groupId, title: `Reçete ${receteNo}`, receteNo, items }));
             dispatch(setShowResultReceteNo(receteNo));
             return;
@@ -127,10 +140,20 @@ export function useDeeplinkHandler() {
                   sonuclar: { [ilac.barkod]: result.data },
                 }),
               );
+              dispatch(
+                updateTask({
+                  groupId,
+                  taskId: ilac.barkod,
+                  status: "done",
+                  isValid: result.data.isValid,
+                  validityScore: result.data.validityScore,
+                }),
+              );
+            } else {
+              dispatch(
+                updateTask({ groupId, taskId: ilac.barkod, status: "done" }),
+              );
             }
-            dispatch(
-              updateTask({ groupId, taskId: ilac.barkod, status: "done" }),
-            );
           } catch {
             dispatch(
               updateTask({

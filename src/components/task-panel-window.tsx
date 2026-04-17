@@ -10,6 +10,7 @@ import {
   StopCircle,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
@@ -19,6 +20,8 @@ interface TaskItem {
   label: string;
   status: "pending" | "running" | "done" | "error";
   errorMessage?: string;
+  isValid?: boolean;
+  validityScore?: number;
 }
 
 interface TaskGroup {
@@ -41,23 +44,67 @@ interface TaskPanelState {
   bulkProgress: BulkProgress | null;
 }
 
+type ValidityTier = "green" | "orange" | "red";
+
 const taskPanelAPI = (window as any).taskPanelAPI;
 
 function sendAction(action: { type: string; payload?: any }) {
   taskPanelAPI?.sendAction(action);
 }
 
-function StatusIcon({ status }: { status: TaskItem["status"] }) {
-  switch (status) {
-    case "pending":
-      return <Clock className="h-3 w-3 text-muted-foreground/60" />;
-    case "running":
-      return <Loader2 className="h-3 w-3 animate-spin text-primary" />;
-    case "done":
-      return <CheckCircle2 className="h-3 w-3 text-green-600" />;
-    case "error":
-      return <XCircle className="h-3 w-3 text-red-500" />;
+function scoreTier(score: number | undefined): ValidityTier | null {
+  if (score === undefined) return null;
+  if (score >= 80) return "green";
+  if (score >= 60) return "orange";
+  return "red";
+}
+
+function tierLabel(tier: ValidityTier) {
+  switch (tier) {
+    case "green":
+      return "Uygun";
+    case "orange":
+      return "Şüpheli";
+    case "red":
+      return "Uygun Değil";
   }
+}
+
+function ValidityBadge({ tier }: { tier: ValidityTier }) {
+  const styles: Record<ValidityTier, string> = {
+    green:
+      "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    orange:
+      "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400",
+    red: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-1.5 py-0 text-[10px] font-medium leading-4",
+        styles[tier],
+      )}
+    >
+      {tierLabel(tier)}
+    </span>
+  );
+}
+
+function ItemStatusIcon({ item }: { item: TaskItem }) {
+  if (item.status === "pending")
+    return <Clock className="h-3 w-3 text-muted-foreground/60" />;
+  if (item.status === "running")
+    return <Loader2 className="h-3 w-3 animate-spin text-primary" />;
+  if (item.status === "error")
+    return <XCircle className="h-3 w-3 text-red-500" />;
+  // done
+  const tier = scoreTier(item.validityScore);
+  if (tier === "green")
+    return <CheckCircle2 className="h-3 w-3 text-green-600" />;
+  if (tier === "orange")
+    return <AlertTriangle className="h-3 w-3 text-orange-500" />;
+  if (tier === "red") return <XCircle className="h-3 w-3 text-red-500" />;
+  return <CheckCircle2 className="h-3 w-3 text-green-600" />;
 }
 
 export function TaskPanelWindow() {
@@ -76,18 +123,42 @@ export function TaskPanelWindow() {
 
   const { groups, bulkProgress } = state;
 
-  const allItems = groups.flatMap((g) => g.items);
-  const totalItems = allItems.length;
-  const doneItems = allItems.filter(
+  // Deeplink flow guarantees a single group at a time. Pick the most recent
+  // just in case, so stale groups never dominate the UI.
+  const group = groups.length
+    ? [...groups].sort((a, b) => b.createdAt - a.createdAt)[0]
+    : null;
+
+  const items = group?.items ?? [];
+  const medicineItems = items.filter((i) => i.id !== "fetch");
+  const totalItems = items.length;
+  const doneItems = items.filter(
     (i) => i.status === "done" || i.status === "error",
   ).length;
   const allDone = totalItems > 0 && doneItems === totalItems;
-  const hasError = allItems.some((i) => i.status === "error");
-  const errorCount = allItems.filter((i) => i.status === "error").length;
-  const runningItem = allItems.find((i) => i.status === "running");
+  const hasError = items.some((i) => i.status === "error");
+  const errorCount = items.filter((i) => i.status === "error").length;
+  const runningItem = items.find((i) => i.status === "running");
+
+  // Validity summary across medicine items (excluding the "fetch" step)
+  const medicineDone = medicineItems.filter((i) => i.status === "done");
+  const scoredMedicine = medicineDone.filter(
+    (i) => i.validityScore !== undefined,
+  );
+  const greenCount = scoredMedicine.filter(
+    (i) => scoreTier(i.validityScore) === "green",
+  ).length;
+  const orangeCount = scoredMedicine.filter(
+    (i) => scoreTier(i.validityScore) === "orange",
+  ).length;
+  const redCount = scoredMedicine.filter(
+    (i) => scoreTier(i.validityScore) === "red",
+  ).length;
+  const worstTier: ValidityTier | null =
+    redCount > 0 ? "red" : orangeCount > 0 ? "orange" : greenCount > 0 ? "green" : null;
 
   const hasBulk = bulkProgress !== null;
-  const hasContent = groups.length > 0 || hasBulk;
+  const hasContent = group !== null || hasBulk;
 
   useEffect(() => {
     if (!hasBulk) setBulkCancelling(false);
@@ -120,10 +191,10 @@ export function TaskPanelWindow() {
     }
   }, [allDone, totalItems]);
 
-  // Expand automatically when errors occur
+  // Auto-expand when done so the user can see validity per medicine at a glance
   useEffect(() => {
-    if (hasError && allDone) setExpanded(true);
-  }, [hasError, allDone]);
+    if (allDone && medicineItems.length > 0) setExpanded(true);
+  }, [allDone, medicineItems.length]);
 
   // Auto-resize window to fit content
   const contentRef = useRef<HTMLDivElement>(null);
@@ -148,8 +219,8 @@ export function TaskPanelWindow() {
     return null;
   }
 
-  // Summary text for the header
-  const headerText: string = hasBulk
+  // Subtitle shown under the main header
+  const subtitle: string | null = hasBulk
     ? bulkCancelling
       ? "Durduruluyor..."
       : bulkProgress!.type === "verileriAl"
@@ -157,46 +228,90 @@ export function TaskPanelWindow() {
         : "Toplu kontrol"
     : allDone
       ? hasError
-        ? `Tamamlandı (${errorCount} hata)`
-        : "Tamamlandı"
+        ? `Tamamlandı — ${errorCount} hata`
+        : scoredMedicine.length > 0
+          ? worstTier === "green"
+            ? `${greenCount}/${scoredMedicine.length} Uygun`
+            : `${greenCount}/${scoredMedicine.length} uygun · ${orangeCount + redCount} sorunlu`
+          : "Tamamlandı"
       : runningItem
         ? runningItem.label
         : "Hazırlanıyor...";
 
-  const progressText = hasBulk
-    ? `${bulkProgress!.current}/${bulkProgress!.total}`
-    : totalItems > 1
+  const progressText =
+    !hasBulk && totalItems > 1 && !allDone
       ? `${doneItems}/${totalItems}`
       : null;
+
+  // Main title: the recete number for a deeplink flow, bulk label otherwise
+  const title = hasBulk
+    ? bulkProgress!.type === "verileriAl"
+      ? "Toplu Sorgulama"
+      : "Toplu Kontrol"
+    : group?.receteNo
+      ? `Reçete ${group.receteNo}`
+      : group?.title ?? "İşlem";
+
+  // Header-level icon — reflects validity when done so the user sees status instantly
+  const headerIcon = (() => {
+    if ((hasBulk && !bulkCancelling) || (!allDone && !hasBulk)) {
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
+    }
+    if (hasBulk && bulkCancelling) {
+      return <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />;
+    }
+    if (hasError) {
+      return <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
+    }
+    if (worstTier === "red") {
+      return <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
+    }
+    if (worstTier === "orange") {
+      return (
+        <AlertTriangle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+      );
+    }
+    return <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />;
+  })();
 
   return (
     <div ref={contentRef} className="bg-transparent">
       <div className="rounded-lg border bg-background shadow-xl overflow-hidden">
         {/* Compact header — always visible */}
         <div
-          className="flex items-center gap-2 px-3 py-2 cursor-move select-none"
+          className="flex items-start gap-2 px-3 py-2 cursor-move select-none"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          {/* Status icon */}
-          {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-          ) : hasBulk && bulkCancelling ? (
-            <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-          ) : allDone && !hasError ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
-          ) : (
-            <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-          )}
+          <div className="pt-0.5">{headerIcon}</div>
 
-          {/* Title + progress */}
-          <span className="text-xs font-medium truncate flex-1">
-            {headerText}
-          </span>
-          {progressText && (
-            <span className="text-[10px] text-muted-foreground shrink-0">
-              ({progressText})
-            </span>
-          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold truncate">{title}</span>
+              {progressText && (
+                <span className="text-[10px] text-muted-foreground shrink-0">
+                  {progressText}
+                </span>
+              )}
+            </div>
+            {subtitle && (
+              <p
+                className={cn(
+                  "text-[10px] truncate mt-0.5",
+                  hasError
+                    ? "text-red-500"
+                    : allDone && worstTier === "red"
+                      ? "text-red-500 font-medium"
+                      : allDone && worstTier === "orange"
+                        ? "text-orange-600 font-medium"
+                        : allDone && worstTier === "green"
+                          ? "text-green-600 font-medium"
+                          : "text-muted-foreground",
+                )}
+              >
+                {subtitle}
+              </p>
+            )}
+          </div>
 
           {/* Action buttons in header */}
           <div
@@ -204,26 +319,26 @@ export function TaskPanelWindow() {
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             {/* Show result — opens main app */}
-            {allDone && !hasError && groups.length > 0 && groups[0].receteNo && (
+            {allDone && !hasError && group?.receteNo && (
               <button
                 className="p-0.5 rounded hover:bg-muted"
                 title="Sonucu Gör"
                 onClick={() =>
-                  sendAction({ type: "showResult", payload: groups[0].receteNo })
+                  sendAction({ type: "showResult", payload: group.receteNo })
                 }
               >
                 <Eye className="h-3.5 w-3.5 text-primary" />
               </button>
             )}
             {/* Retry on error */}
-            {allDone && hasError && groups.length > 0 && (
+            {allDone && hasError && group && (
               <button
                 className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950/30"
                 title="Tekrar Dene"
                 onClick={() =>
                   sendAction({
                     type: "retry",
-                    payload: { groupId: groups[0].id, receteNo: groups[0].receteNo },
+                    payload: { groupId: group.id, receteNo: group.receteNo },
                   })
                 }
               >
@@ -231,7 +346,7 @@ export function TaskPanelWindow() {
               </button>
             )}
             {/* Expand/collapse */}
-            {groups.length > 0 && (
+            {group && items.length > 0 && (
               <button
                 className="p-0.5 rounded hover:bg-muted"
                 onClick={() => setExpanded(!expanded)}
@@ -299,46 +414,52 @@ export function TaskPanelWindow() {
           </div>
         )}
 
-        {/* Expanded detail — task items */}
-        {expanded && groups.length > 0 && (
+        {/* Expanded detail — task items for the single current group */}
+        {expanded && group && items.length > 0 && (
           <div className="border-t max-h-60 overflow-y-auto">
-            {groups.map((group) => (
-              <div key={group.id}>
-                {groups.length > 1 && (
-                  <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground bg-muted/30 border-b">
-                    {group.title}
-                  </div>
-                )}
-                <div className="px-3 py-1.5 space-y-0.5">
-                  {group.items.map((item) => (
-                    <div
-                      key={item.id}
+            <div className="px-3 py-1.5 space-y-0.5">
+              {items.map((item) => {
+                const tier = scoreTier(item.validityScore);
+                const clickable = item.status === "done" && !!group.receteNo;
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "flex items-center gap-2 rounded px-2 py-1 text-xs",
+                      clickable && "cursor-pointer hover:bg-muted/50",
+                    )}
+                    onClick={() => {
+                      if (clickable) {
+                        sendAction({
+                          type: "showResult",
+                          payload: group.receteNo,
+                        });
+                      }
+                    }}
+                  >
+                    <ItemStatusIcon item={item} />
+                    <span
                       className={cn(
-                        "flex items-center gap-2 rounded px-2 py-0.5 text-xs",
-                        item.status === "done" && "cursor-pointer hover:bg-muted/50",
+                        "flex-1 truncate",
+                        item.status === "pending" && "text-muted-foreground",
+                        item.status === "error" && "text-red-500",
+                        item.status === "running" && "font-medium",
                       )}
-                      onClick={() => {
-                        if (item.status === "done" && group.receteNo) {
-                          sendAction({ type: "showResult", payload: group.receteNo });
-                        }
-                      }}
                     >
-                      <StatusIcon status={item.status} />
-                      <span
-                        className={cn(
-                          "flex-1 truncate",
-                          item.status === "pending" && "text-muted-foreground",
-                          item.status === "error" && "text-red-500",
-                          item.status === "running" && "font-medium",
-                        )}
-                      >
-                        {item.label}
+                      {item.label}
+                    </span>
+                    {item.status === "done" && tier && (
+                      <ValidityBadge tier={tier} />
+                    )}
+                    {item.status === "error" && item.errorMessage && (
+                      <span className="text-[10px] text-red-500 truncate max-w-[50%]">
+                        {item.errorMessage}
                       </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

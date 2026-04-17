@@ -5,6 +5,8 @@ export interface TaskItem {
   label: string;
   status: "pending" | "running" | "done" | "error";
   errorMessage?: string;
+  isValid?: boolean;
+  validityScore?: number;
 }
 
 export interface TaskGroup {
@@ -44,6 +46,8 @@ const taskQueueSlice = createSlice({
         taskId: string;
         status: TaskItem["status"];
         errorMessage?: string;
+        isValid?: boolean;
+        validityScore?: number;
       }>,
     ) {
       const group = state.groups.find((g) => g.id === action.payload.groupId);
@@ -54,6 +58,17 @@ const taskQueueSlice = createSlice({
       if (action.payload.errorMessage) {
         task.errorMessage = action.payload.errorMessage;
       }
+      if (action.payload.isValid !== undefined) {
+        task.isValid = action.payload.isValid;
+      }
+      if (action.payload.validityScore !== undefined) {
+        task.validityScore = action.payload.validityScore;
+      }
+    },
+    clearDeeplinkGroupsExcept(state, action: PayloadAction<string>) {
+      state.groups = state.groups.filter(
+        (g) => !g.id.startsWith("deeplink-") || g.receteNo === action.payload,
+      );
     },
     removeGroup(state, action: PayloadAction<string>) {
       state.groups = state.groups.filter((g) => g.id !== action.payload);
@@ -69,6 +84,12 @@ const taskQueueSlice = createSlice({
   },
 });
 
-export const { addGroup, updateTask, removeGroup, clearCompleted, setShowResultReceteNo } =
-  taskQueueSlice.actions;
+export const {
+  addGroup,
+  updateTask,
+  removeGroup,
+  clearCompleted,
+  setShowResultReceteNo,
+  clearDeeplinkGroupsExcept,
+} = taskQueueSlice.actions;
 export default taskQueueSlice.reducer;
