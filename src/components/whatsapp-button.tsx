@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/utils/tailwind";
 import { useAppSelector } from "@/store";
+import { openExternalLink } from "@/actions/shell";
 
 const WHATSAPP_NUMBER = "908503052540";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
@@ -11,11 +12,15 @@ export function WhatsAppButton() {
   const bulkProgress = useAppSelector((s) => s.recete.bulkProgress);
   const hasTaskPanel = groups.length > 0 || bulkProgress !== null;
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openExternalLink(WHATSAPP_URL);
+  };
+
   return (
     <a
       href={WHATSAPP_URL}
-      target="_blank"
-      rel="noopener noreferrer"
+      onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={cn(
