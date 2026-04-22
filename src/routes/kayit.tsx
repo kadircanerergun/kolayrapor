@@ -1,6 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
 import {
   Building2,
   CheckCircle2,
@@ -9,7 +7,6 @@ import {
   MapPin,
   Phone,
   Mail,
-  Globe,
   User,
   Hash,
 } from "lucide-react";
@@ -23,125 +20,12 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { EmbeddedRegistrationForm } from "@/components/embedded-registration-form";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useDialog } from "@/hooks/useDialog";
-import {
-  subscriptionApiService,
-  type PendingAgreement,
-} from "@/services/subscription-api";
-
-const REQUIRED_AGREEMENTS = ["terms-of-service", "kvkk"];
-
-interface RegistrationFormValues {
-  name: string;
-  nameSurname: string;
-  pharmacyPhone: string;
-  glnNumber: string;
-  tcNumber: string;
-  address: string;
-  phone: string;
-  email: string;
-  ipAddress: string;
-}
 
 function RegistrationPage() {
-  const { pharmacy, isPending, ipAddress, loading, refresh } =
-    useSubscription();
-  const { showAlert } = useDialog();
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<RegistrationFormValues>({
-    defaultValues: {
-      name: "",
-      nameSurname: "",
-      pharmacyPhone: "",
-      glnNumber: "",
-      tcNumber: "",
-      address: "",
-      phone: "",
-      email: "",
-      ipAddress: ipAddress ?? "",
-    },
-  });
-
-  // Agreements
-  const [agreements, setAgreements] = useState<PendingAgreement[]>([]);
-  const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set());
-  const [previewAgreement, setPreviewAgreement] =
-    useState<PendingAgreement | null>(null);
-
-  useEffect(() => {
-    subscriptionApiService
-      .getRegistrationAgreements(REQUIRED_AGREEMENTS)
-      .then(setAgreements);
-  }, []);
-
-  const allAgreementsAccepted =
-    agreements.length === 0 || agreements.every((a) => acceptedIds.has(a.id));
-
-  const toggleAgreement = (id: string) => {
-    setAcceptedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const onSubmit = async (data: RegistrationFormValues) => {
-    if (!allAgreementsAccepted) {
-      showAlert({
-        title: "Uyarı",
-        description: "Devam etmek için tüm sözleşmeleri kabul etmelisiniz.",
-      });
-      return;
-    }
-
-    try {
-      await subscriptionApiService.registerPharmacy({
-        name: data.name.trim(),
-        nameSurname: data.nameSurname.trim(),
-        pharmacyPhone: data.pharmacyPhone.trim(),
-        glnNumber: data.glnNumber.trim(),
-        tcNumber: data.tcNumber.trim() || undefined,
-        address: data.address.trim() || undefined,
-        phone: data.phone.trim() || undefined,
-        email: data.email.trim() || undefined,
-        ipAddress: data.ipAddress.trim() || undefined,
-        acceptedAgreementVersionIds: [...acceptedIds],
-      });
-      showAlert({
-        title: "Başarılı",
-        description: "Eczane kaydınız alındı. Yönetici onayı bekleniyor.",
-      });
-      await refresh();
-    } catch (err: any) {
-      const message =
-        err.response?.data?.message ||
-        err.message ||
-        "Kayıt işlemi sırasında bir hata oluştu.";
-      showAlert({
-        title: "Hata",
-        description: message,
-      });
-    }
-  };
+  const { pharmacy, isPending, loading, refresh } = useSubscription();
 
   if (loading) {
     return (
@@ -270,7 +154,7 @@ function RegistrationPage() {
     );
   }
 
-  // No pharmacy — registration form
+  // No pharmacy — embed the landing page registration form
   return (
     <div className="p-6 space-y-6">
       <div className="space-y-2">
@@ -283,229 +167,7 @@ function RegistrationPage() {
         </p>
       </div>
 
-      <Card>
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <CardHeader>
-            <CardTitle>Yeni Eczane Kaydı</CardTitle>
-            <CardDescription>
-              Eczane bilgilerinizi girin. Kaydınız yönetici onayı sonrası aktif
-              olacaktır.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pharmacy-name">
-                Eczane Adı <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="pharmacy-name"
-                {...register("name", { required: "Eczane adı zorunludur" })}
-                placeholder="Örnek: Merkez Eczanesi"
-              />
-              {errors.name && (
-                <p className="text-xs text-destructive">
-                  {errors.name.message}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-name-surname">
-                  Ad Soyad <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="pharmacy-name-surname"
-                  {...register("nameSurname", {
-                    required: "Ad soyad zorunludur",
-                  })}
-                  placeholder="Eczacı ad soyad"
-                />
-                {errors.nameSurname && (
-                  <p className="text-xs text-destructive">
-                    {errors.nameSurname.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-tc">
-                  TC Kimlik No <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="pharmacy-tc"
-                  {...register("tcNumber", {
-                    required: "TC Kimlik No zorunludur",
-                    pattern: {
-                      value: /^\d{11}$/,
-                      message: "TC Kimlik No 11 haneli olmalıdır",
-                    },
-                  })}
-                  placeholder="12345678901"
-                  maxLength={11}
-                />
-                {errors.tcNumber && (
-                  <p className="text-xs text-destructive">
-                    {errors.tcNumber.message}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-pharmacy-phone">
-                  Eczane Telefonu <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="pharmacy-pharmacy-phone"
-                  type="tel"
-                  {...register("pharmacyPhone", {
-                    required: "Eczane telefonu zorunludur",
-                  })}
-                  placeholder="0 (2XX) XXX XX XX"
-                />
-                {errors.pharmacyPhone && (
-                  <p className="text-xs text-destructive">
-                    {errors.pharmacyPhone.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-gln-number">
-                  GLN Numarası <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="pharmacy-gln-number"
-                  {...register("glnNumber", {
-                    required: "GLN numarası zorunludur",
-                  })}
-                  placeholder="GLN numarası"
-                />
-                {errors.glnNumber && (
-                  <p className="text-xs text-destructive">
-                    {errors.glnNumber.message}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="pharmacy-address">Adres</Label>
-              <Input
-                id="pharmacy-address"
-                {...register("address")}
-                placeholder="Eczane adresi"
-              />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-phone">Telefon (Kişisel)</Label>
-                <Input
-                  id="pharmacy-phone"
-                  type="tel"
-                  {...register("phone")}
-                  placeholder="0 (5XX) XXX XX XX"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pharmacy-email">E-posta</Label>
-                <Input
-                  id="pharmacy-email"
-                  type="email"
-                  {...register("email")}
-                  placeholder="eczane@ornek.com"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label
-                htmlFor="pharmacy-ip"
-                className="flex items-center gap-1.5"
-              >
-                <Globe className="h-3.5 w-3.5" />
-                IP Adresi
-              </Label>
-              <Input
-                id="pharmacy-ip"
-                {...register("ipAddress")}
-                placeholder="Otomatik algılanır"
-              />
-              <p className="text-xs text-muted-foreground">
-                Mevcut IP adresiniz otomatik olarak dolduruldu. Gerekirse
-                değiştirebilirsiniz.
-              </p>
-            </div>
-            {agreements.length > 0 && (
-              <div className="space-y-3 border-t pt-4">
-                <Label className="text-sm font-medium">
-                  Sözleşmeler <span className="text-destructive">*</span>
-                </Label>
-                {agreements.map((agreement) => (
-                  <div
-                    key={agreement.id}
-                    className="flex items-center gap-2"
-                  >
-                    <Checkbox
-                      id={`agreement-${agreement.id}`}
-                      checked={acceptedIds.has(agreement.id)}
-                      onCheckedChange={() => toggleAgreement(agreement.id)}
-                    />
-                    <label
-                      htmlFor={`agreement-${agreement.id}`}
-                      className="cursor-pointer text-sm"
-                    >
-                      <button
-                        type="button"
-                        className="underline font-medium text-primary hover:text-primary/80"
-                        onClick={() => setPreviewAgreement(agreement)}
-                      >
-                        {agreement.category?.name || agreement.title}
-                      </button>
-                      {"'ni okudum ve kabul ediyorum."}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-
-          {/* Agreement preview modal */}
-          <Dialog
-            open={!!previewAgreement}
-            onOpenChange={() => setPreviewAgreement(null)}
-          >
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {previewAgreement?.category?.name || previewAgreement?.title}
-                </DialogTitle>
-              </DialogHeader>
-              <div
-                className="max-h-96 overflow-y-auto rounded-md border p-4 text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{
-                  __html: previewAgreement?.content || "",
-                }}
-              />
-            </DialogContent>
-          </Dialog>
-
-          <CardFooter>
-            <Button
-              type="submit"
-              disabled={isSubmitting || !allAgreementsAccepted}
-            >
-              {isSubmitting ? (
-                <>
-                  <Spinner size="sm" className="mr-2" />
-                  Kaydediliyor...
-                </>
-              ) : (
-                <>
-                  <Building2 className="h-4 w-4 mr-2" />
-                  Kayıt Ol
-                </>
-              )}
-            </Button>
-          </CardFooter>
-        </form>
-      </Card>
+      <EmbeddedRegistrationForm onRegistered={refresh} />
     </div>
   );
 }

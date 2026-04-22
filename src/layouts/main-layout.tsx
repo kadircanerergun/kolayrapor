@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { version as appVersion } from "../../package.json";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -57,9 +57,17 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { credentials } = useCredentials();
   const { pharmacy, subscription, creditBalance, products, ipAddress, loading, refresh } = usePharmacy();
+  const needsRegistration = !loading && !pharmacy;
+
+  useEffect(() => {
+    if (needsRegistration && location.pathname !== "/kayit") {
+      navigate({ to: "/kayit" });
+    }
+  }, [needsRegistration, location.pathname, navigate]);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -207,6 +215,7 @@ export default function MainLayout({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="bg-background flex h-screen">
+        {!needsRegistration && (
         <Sidebar
           className={cn(
             "border-r shadow-sm transition-[width] duration-300 ease-in-out overflow-hidden",
@@ -464,6 +473,7 @@ export default function MainLayout({
 
           </SidebarFooter>
         </Sidebar>
+        )}
 
         <main className="flex flex-1 flex-col overflow-hidden">
           {/* BrowserView always mounted, hidden when not on /gezinti */}
