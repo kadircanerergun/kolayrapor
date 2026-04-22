@@ -82,8 +82,8 @@ export function setupPlaywrightIPC() {
     return await playwrightService.navigateToPrescription(prescriptionNumber);
   });
 
-  createHandler('playwright:searchByDateRange', async (startDate: string, endDate: string) => {
-    return await playwrightService.searchByDateRange(startDate, endDate);
+  createHandler('playwright:searchByDateRange', async (startDate: string, endDate: string, faturaTuru: '1' | '28' = '1') => {
+    return await playwrightService.searchByDateRange(startDate, endDate, faturaTuru);
   });
 
   // Get current URL

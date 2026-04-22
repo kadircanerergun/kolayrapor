@@ -75,7 +75,7 @@ const GET_RECETE_NO_JS = `
 })();
 `;
 
-// Detect if we're on the Recete List page (A Grubu only)
+// Detect if we're on the Recete List page (A Grubu or C Grubu Sıralı Dağıtım)
 const DETECT_RECETE_LIST_JS = `
 (() => {
   const headers = document.querySelectorAll('td.menuHeader');
@@ -86,7 +86,7 @@ const DETECT_RECETE_LIST_JS = `
   if (!isListPage) return false;
   const select = document.querySelector('select[name="form1:menu1"]');
   if (!select) return false;
-  return select.value === '1';
+  return select.value === '1' || select.value === '28';
 })();
 `;
 

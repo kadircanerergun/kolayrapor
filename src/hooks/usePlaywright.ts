@@ -112,10 +112,10 @@ export function usePlaywright() {
     }
   }, [setLoading, setError, setSuccess]);
 
-  const searchByDateRange = useCallback(async (startDate: string, endDate: string) => {
+  const searchByDateRange = useCallback(async (startDate: string, endDate: string, faturaTuru: '1' | '28' = '1') => {
     setLoading(true);
     try {
-      const result = await getPlaywrightAPI().searchByDateRange(startDate, endDate);
+      const result = await getPlaywrightAPI().searchByDateRange(startDate, endDate, faturaTuru);
       console.log('usePlaywright.searchByDateRange:', result);
       setSuccess(result);
       return result;

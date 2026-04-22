@@ -416,7 +416,29 @@ export default function MainLayout({
             </div>
           </SidebarContent>
 
-          <SidebarFooter className={cn("pt-1 pb-5", collapsed && "px-2")}>
+          <SidebarFooter className={cn("pt-1 pb-5 space-y-2", collapsed && "px-2")}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size={collapsed ? "icon" : "default"}
+                  className={cn(
+                    "w-full",
+                    collapsed && "h-10 w-10 mx-auto",
+                  )}
+                  onClick={() => window.location.reload()}
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4 shrink-0", !collapsed && "mr-2")}
+                  />
+                  {!collapsed && "Uygulamayı Yenile"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                Uygulamayı yeniden yükle
+              </TooltipContent>
+            </Tooltip>
+
             {collapsed ? (
               <p className="text-[10px] text-muted-foreground text-center">v{appVersion}</p>
             ) : (

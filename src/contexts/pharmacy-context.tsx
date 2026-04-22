@@ -9,7 +9,7 @@ import {
 import { subscriptionApiService } from "@/services/subscription-api";
 import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS } from "@/lib/constants";
+import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_INTERVAL_MS } from "@/lib/constants";
 import type { ApiPharmacy } from "@/services/subscription-api";
 import type {
   ApiSubscription,
@@ -109,7 +109,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     loadData();
   }, [loadData]);
 
-  // Sync reports from server after pharmacy loads
+  // Sync reports from server after pharmacy loads, then every SYNC_INTERVAL_MS
   useEffect(() => {
     if (!pharmacy || !pharmacy.isActive) return;
 
@@ -131,6 +131,8 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     };
 
     syncReports();
+    const timer = setInterval(syncReports, SYNC_INTERVAL_MS);
+    return () => clearInterval(timer);
   }, [pharmacy]);
 
   // Deduct 1 credit locally when a report is generated

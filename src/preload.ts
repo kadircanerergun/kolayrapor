@@ -44,8 +44,8 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   navigateToPrescription: (prescriptionNumber: string) =>
     ipcRenderer.invoke('playwright:navigateToPrescription', prescriptionNumber),
 
-  searchByDateRange: (startDate: string, endDate: string) =>
-    ipcRenderer.invoke('playwright:searchByDateRange', startDate, endDate),
+  searchByDateRange: (startDate: string, endDate: string, faturaTuru: '1' | '28' = '1') =>
+    ipcRenderer.invoke('playwright:searchByDateRange', startDate, endDate, faturaTuru),
 
   getCurrentUrl: () => ipcRenderer.invoke('playwright:getCurrentUrl'),
   isReady: () => ipcRenderer.invoke('playwright:isReady'),

@@ -103,7 +103,7 @@ declare global {
       login: (credentials: PlaywrightCredentials) => Promise<PlaywrightLoginResult>;
       navigateToSGK: () => Promise<PlaywrightNavigationResult>;
       searchPrescription: (prescriptionNumber: string) => Promise<PlaywrightSearchResult>;
-      searchByDateRange: (startDate: string, endDate: string) => Promise<PlaywrightDateRangeResult>;
+      searchByDateRange: (startDate: string, endDate: string, faturaTuru?: '1' | '28') => Promise<PlaywrightDateRangeResult>;
       getCurrentUrl: () => Promise<string | null>;
       isReady: () => Promise<boolean>;
       close: () => Promise<void>;

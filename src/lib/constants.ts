@@ -8,3 +8,6 @@ export const LANDING_BASE_URL =
 
 /** Default sync lookback period in days (used on first sync when no lastSyncedAt exists) */
 export const SYNC_DEFAULT_LOOKBACK_DAYS = 90;
+
+/** Periodic report sync interval in milliseconds (while the app is open) */
+export const SYNC_INTERVAL_MS = 10 * 60 * 1000;

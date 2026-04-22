@@ -12,6 +12,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CalendarIcon, Loader2, Search } from "lucide-react";
 import { useState } from "react";
 import { useDialogContext } from "@/contexts/dialog-context";
@@ -31,6 +38,7 @@ const SearchByDateRange = () => {
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
+  const [faturaTuru, setFaturaTuru] = useState<"1" | "28">("1");
   const dialog = useDialogContext();
   const navigate = useNavigate();
   const { credentials } = useCredentials();
@@ -59,6 +67,7 @@ const SearchByDateRange = () => {
       searchByDateRange({
         startDate: fromDate!.toDateString(),
         endDate: toDate!.toDateString(),
+        faturaTuru,
       }),
     );
 
@@ -148,6 +157,22 @@ const SearchByDateRange = () => {
                 </PopoverContent>
               </Popover>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Fatura Türü</label>
+            <Select
+              value={faturaTuru}
+              onValueChange={(v) => setFaturaTuru(v as "1" | "28")}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">A Grubu</SelectItem>
+                <SelectItem value="28">C Grubu Sıralı Dağıtım</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Button type="submit" disabled={isLoading || !fromDate || !toDate}>

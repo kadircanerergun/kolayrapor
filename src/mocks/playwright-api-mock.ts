@@ -36,8 +36,8 @@ export const mockPlaywrightAPI = {
     };
   },
 
-  searchByDateRange: async (startDate: string, endDate: string) => {
-    console.log('Mock search by date range:', startDate, 'to', endDate);
+  searchByDateRange: async (startDate: string, endDate: string, faturaTuru: '1' | '28' = '1') => {
+    console.log('Mock search by date range:', startDate, 'to', endDate, 'faturaTuru:', faturaTuru);
     return {
       success: true,
       prescriptions: ['12345', '67890', '11111'],

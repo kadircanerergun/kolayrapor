@@ -57,6 +57,8 @@ interface SearchByDateResult {
   error?: string;
 }
 
+export type FaturaTuru = "1" | "28";
+
 interface LoginCredentials {
   username: string;
   password: string;
@@ -948,6 +950,7 @@ export class PlaywrightAutomationService {
   async searchByDateRange(
     startDate: string,
     endDate: string,
+    faturaTuru: FaturaTuru = "1",
   ): Promise<SearchByDateResult> {
     if (!this.page) {
       throw new Error("System is not ready.");
@@ -965,7 +968,7 @@ export class PlaywrightAutomationService {
     }
     const recipes = [];
     for (const period of monthYearArray) {
-      const result = await this.getRecipesByPeriod(period);
+      const result = await this.getRecipesByPeriod(period, faturaTuru);
       recipes.push(...result);
     }
     const filteredRecipes = recipes.filter((recete) => {
@@ -982,23 +985,23 @@ export class PlaywrightAutomationService {
     };
   }
 
-  async getRecipesByPeriod(period: string, retried = false): Promise<ReceteOzet[]> {
+  async getRecipesByPeriod(period: string, faturaTuru: FaturaTuru = "1", retried = false): Promise<ReceteOzet[]> {
     if (!this.page) {
       throw new Error("System is not ready.");
     }
     try {
-      return await this._getRecipesByPeriodInner(period);
+      return await this._getRecipesByPeriodInner(period, faturaTuru);
     } catch (err: any) {
       const msg = err?.message || "";
       if (!retried && (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed"))) {
         console.warn("[Playwright] Context/page lost, retrying period query...");
-        return await this.getRecipesByPeriod(period, true);
+        return await this.getRecipesByPeriod(period, faturaTuru, true);
       }
       throw err;
     }
   }
 
-  private async _getRecipesByPeriodInner(period: string): Promise<ReceteOzet[]> {
+  private async _getRecipesByPeriodInner(period: string, faturaTuru: FaturaTuru = "1"): Promise<ReceteOzet[]> {
     await this.navigateToSGKPortal();
     await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
     const menu = this.page
@@ -1017,7 +1020,7 @@ export class PlaywrightAutomationService {
     const sorgulaButton = this.page.locator(
       ELEMENT_SELECTORS.RECETE_LISTESI_SORGULA_BUTTON_SELECTOR,
     );
-    await invoiceSelect.selectOption("1");
+    await invoiceSelect.selectOption(faturaTuru);
     await periodSelect.selectOption(period);
     await sorgulaButton.click();
     await this.page.waitForLoadState("load");

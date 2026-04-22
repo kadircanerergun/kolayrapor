@@ -54,7 +54,7 @@ export const initializePlaywright = createAsyncThunk(
 export const searchByDateRange = createAsyncThunk(
   "playwright/searchByDateRange",
   async (
-    { startDate, endDate }: { startDate: string; endDate: string },
+    { startDate, endDate, faturaTuru = "1" }: { startDate: string; endDate: string; faturaTuru?: "1" | "28" },
     { dispatch, getState },
   ) => {
     dispatch(searchStarted({ startDate, endDate }));
@@ -70,7 +70,7 @@ export const searchByDateRange = createAsyncThunk(
     }
 
     const api = getPlaywrightAPI();
-    const result = await api.searchByDateRange(startDate, endDate);
+    const result = await api.searchByDateRange(startDate, endDate, faturaTuru);
 
     if (result.error) {
       dispatch(searchFailed(result.error));
