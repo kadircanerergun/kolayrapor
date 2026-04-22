@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { LANDING_BASE_URL } from "@/lib/constants";
-
+import {LANDING_BASE_URL} from '../lib/constants'
 interface EmbeddedRegistrationFormProps {
   onRegistered: () => void;
   /** Optional height override; defaults to a tall value so the iframe rarely scrolls internally */
@@ -26,7 +25,7 @@ export function EmbeddedRegistrationForm({
     return url.toString();
   }, []);
 
-  const expectedOrigin = useMemo(() => new URL(LANDING_BASE_URL).origin, []);
+  const expectedOrigin = useMemo(() => new URL(src).origin, [src]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -42,7 +41,7 @@ export function EmbeddedRegistrationForm({
   }, [expectedOrigin]);
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border bg-background">
+    <div className="relative overflow-hidden rounded-lg border bg-white p-8 h-full">
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -53,7 +52,7 @@ export function EmbeddedRegistrationForm({
         src={src}
         title="Eczane Kayıt Formu"
         onLoad={() => setLoaded(true)}
-        className="block w-full border-0"
+        className="block w-full border-0 bg-white"
         style={{ height }}
         sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
       />

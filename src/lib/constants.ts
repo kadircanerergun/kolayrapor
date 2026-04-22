@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://kolayrapor.com.tr/api"
+export const API_BASE_URL = "https://api.kolayrapor.com.tr/api"
 //export const API_BASE_URL = "http://localhost:3000/api";
 
 /** Base URL for the marketing/landing site (used for embedded registration form, etc.) */
