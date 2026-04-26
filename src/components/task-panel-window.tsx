@@ -8,8 +8,6 @@ import {
   Eye,
   RefreshCw,
   StopCircle,
-  ChevronDown,
-  ChevronUp,
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -81,7 +79,7 @@ function ValidityBadge({ tier }: { tier: ValidityTier }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-1.5 py-0 text-[10px] font-medium leading-4",
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide",
         styles[tier],
       )}
     >
@@ -112,7 +110,6 @@ export function TaskPanelWindow() {
     groups: [],
     bulkProgress: null,
   });
-  const [expanded, setExpanded] = useState(false);
   const [bulkCancelling, setBulkCancelling] = useState(false);
 
   useEffect(() => {
@@ -168,6 +165,18 @@ export function TaskPanelWindow() {
   // then show again when tasks finish or encounter errors.
   const wasEverDone = useRef(false);
   const hasAutoHidden = useRef(false);
+  const lastGroupId = useRef<string | null>(null);
+
+  // Reset the auto-hide cycle on every new deeplink invocation so the
+  // "visible 3s → hide → reshow when results land" pattern fires per run.
+  useEffect(() => {
+    if (group?.id && group.id !== lastGroupId.current) {
+      lastGroupId.current = group.id;
+      wasEverDone.current = false;
+      hasAutoHidden.current = false;
+      sendAction({ type: "showPanel" });
+    }
+  }, [group?.id]);
 
   useEffect(() => {
     if (allDone && totalItems > 0) wasEverDone.current = true;
@@ -191,11 +200,6 @@ export function TaskPanelWindow() {
     }
   }, [allDone, totalItems]);
 
-  // Auto-expand when done so the user can see validity per medicine at a glance
-  useEffect(() => {
-    if (allDone && medicineItems.length > 0) setExpanded(true);
-  }, [allDone, medicineItems.length]);
-
   // Auto-resize window to fit content
   const contentRef = useRef<HTMLDivElement>(null);
   const resizeToFit = useCallback(() => {
@@ -206,7 +210,7 @@ export function TaskPanelWindow() {
 
   useEffect(() => {
     resizeToFit();
-  }, [state, expanded, resizeToFit]);
+  }, [state, resizeToFit]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -276,7 +280,7 @@ export function TaskPanelWindow() {
 
   return (
     <div ref={contentRef} className="bg-transparent">
-      <div className="rounded-lg border bg-background shadow-xl overflow-hidden">
+      <div className="rounded-lg border-2 border-brand bg-brand/10 shadow-xl overflow-hidden">
         {/* Compact header — always visible */}
         <div
           className="flex items-start gap-2 px-3 py-2 cursor-move select-none"
@@ -318,55 +322,84 @@ export function TaskPanelWindow() {
             className="flex items-center gap-1 shrink-0"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            {/* Show result — opens main app */}
-            {allDone && !hasError && group?.receteNo && (
-              <button
-                className="p-0.5 rounded hover:bg-muted"
-                title="Sonucu Gör"
-                onClick={() =>
-                  sendAction({ type: "showResult", payload: group.receteNo })
-                }
-              >
-                <Eye className="h-3.5 w-3.5 text-primary" />
-              </button>
-            )}
-            {/* Retry on error */}
-            {allDone && hasError && group && (
-              <button
-                className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-950/30"
-                title="Tekrar Dene"
-                onClick={() =>
-                  sendAction({
-                    type: "retry",
-                    payload: { groupId: group.id, receteNo: group.receteNo },
-                  })
-                }
-              >
-                <RefreshCw className="h-3.5 w-3.5 text-red-500" />
-              </button>
-            )}
-            {/* Expand/collapse */}
-            {group && items.length > 0 && (
-              <button
-                className="p-0.5 rounded hover:bg-muted"
-                onClick={() => setExpanded(!expanded)}
-              >
-                {expanded ? (
-                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-              </button>
-            )}
-            {/* Close */}
+            {/* Close — large hit area, always visible */}
             <button
-              className="p-0.5 rounded hover:bg-muted"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               onClick={() => sendAction({ type: "closePanel" })}
+              title="Kapat"
+              aria-label="Kapat"
             >
-              <X className="h-3 w-3 text-muted-foreground" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
+
+        {/* Prominent result banner — visible whenever the work is finished */}
+        {allDone && (
+          <div
+            className={cn(
+              "border-t px-3 py-2.5",
+              hasError
+                ? "bg-red-50 dark:bg-red-950/30"
+                : worstTier === "green"
+                  ? "bg-green-50 dark:bg-green-950/30"
+                  : worstTier === "orange"
+                    ? "bg-orange-50 dark:bg-orange-950/30"
+                    : worstTier === "red"
+                      ? "bg-red-50 dark:bg-red-950/30"
+                      : "bg-muted/40",
+            )}
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={cn(
+                  "text-base font-bold uppercase tracking-wide",
+                  hasError
+                    ? "text-red-700 dark:text-red-400"
+                    : worstTier === "green"
+                      ? "text-green-700 dark:text-green-400"
+                      : worstTier === "orange"
+                        ? "text-orange-700 dark:text-orange-400"
+                        : worstTier === "red"
+                          ? "text-red-700 dark:text-red-400"
+                          : "text-muted-foreground",
+                )}
+              >
+                {hasError
+                  ? "Hata"
+                  : worstTier
+                    ? tierLabel(worstTier)
+                    : "Tamamlandı"}
+              </span>
+              {hasError && group ? (
+                <Button
+                  variant="destructive"
+                  className="h-9 px-4 text-xs font-bold uppercase tracking-wide"
+                  onClick={() =>
+                    sendAction({
+                      type: "retry",
+                      payload: { groupId: group.id, receteNo: group.receteNo },
+                    })
+                  }
+                >
+                  <RefreshCw className="h-4 w-4 mr-1.5" />
+                  Tekrar Dene
+                </Button>
+              ) : !hasError && group?.receteNo ? (
+                <Button
+                  className="h-9 px-4 text-xs font-bold uppercase tracking-wide"
+                  onClick={() =>
+                    sendAction({ type: "showResult", payload: group.receteNo })
+                  }
+                >
+                  <Eye className="h-4 w-4 mr-1.5" />
+                  Sonucu Göster
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )}
 
         {/* Bulk progress bar (always visible when active) */}
         {hasBulk && (
@@ -414,11 +447,11 @@ export function TaskPanelWindow() {
           </div>
         )}
 
-        {/* Expanded detail — task items for the single current group */}
-        {expanded && group && items.length > 0 && (
+        {/* Always-visible task items for the single current group (cap at 3) */}
+        {group && items.length > 0 && (
           <div className="border-t max-h-60 overflow-y-auto">
             <div className="px-3 py-1.5 space-y-0.5">
-              {items.map((item) => {
+              {items.slice(0, 3).map((item) => {
                 const tier = scoreTier(item.validityScore);
                 const clickable = item.status === "done" && !!group.receteNo;
                 return (
@@ -459,6 +492,11 @@ export function TaskPanelWindow() {
                   </div>
                 );
               })}
+              {items.length > 3 && (
+                <div className="px-2 py-1 text-[10px] text-muted-foreground">
+                  + {items.length - 3} daha
+                </div>
+              )}
             </div>
           </div>
         )}

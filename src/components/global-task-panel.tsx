@@ -101,33 +101,25 @@ function GroupSection({
           )}
           {allGroupDone && hasError && onRetry && (
             <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 px-1.5 text-[10px] text-red-500 hover:text-red-600 shrink-0"
+              variant="destructive"
+              className="h-8 px-3 text-xs font-semibold shrink-0"
               onClick={() => onRetry(group.id, group.receteNo)}
             >
-              <RefreshCw className="h-3 w-3 mr-0.5" />
+              <RefreshCw className="h-4 w-4 mr-1.5" />
               Tekrar Dene
             </Button>
           )}
           {allGroupDone && !hasError && group.receteNo && onShowResult && (
             <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 px-1.5 text-[10px] shrink-0"
-              onClick={() => onShowResult(group.receteNo!)}
+              className="h-8 px-3 text-xs font-semibold shrink-0"
+              onClick={() => {
+                onShowResult(group.receteNo!);
+                onRemove?.(group.id);
+              }}
             >
-              <Eye className="h-3 w-3 mr-0.5" />
+              <Eye className="h-4 w-4 mr-1.5" />
               Sonucu Gör
             </Button>
-          )}
-          {allGroupDone && onRemove && (
-            <button
-              className="p-0.5 rounded hover:bg-muted shrink-0"
-              onClick={() => onRemove(group.id)}
-            >
-              <X className="h-3 w-3 text-muted-foreground" />
-            </button>
           )}
         </div>
 
@@ -179,7 +171,11 @@ function GroupSection({
 
 export function GlobalTaskPanel() {
   const dispatch = useAppDispatch();
-  const groups = useAppSelector((s) => s.taskQueue.groups);
+  // Deeplink-triggered runs are surfaced via the separate task-panel window;
+  // the in-app bottom-right panel only shows in-app work to avoid duplication.
+  const groups = useAppSelector((s) =>
+    s.taskQueue.groups.filter((g) => !g.id.startsWith("deeplink-")),
+  );
   const bulkProgress = useAppSelector((s) => s.recete.bulkProgress);
   const [isOpen, setIsOpen] = useState(true);
   const [bulkCancelling, setBulkCancelling] = useState(false);
@@ -249,7 +245,7 @@ export function GlobalTaskPanel() {
   return createPortal(
     <div
       className={cn(
-        "fixed bottom-4 right-4 z-[100] w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-lg border bg-background shadow-xl transition-opacity duration-300",
+        "fixed bottom-4 right-4 z-[200] pointer-events-auto w-80 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] rounded-lg border bg-background shadow-xl transition-opacity duration-300",
       )}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -277,21 +273,23 @@ export function GlobalTaskPanel() {
             )}
           </span>
           <div className="flex items-center gap-1 shrink-0 ml-2">
-            {!hasBulk && allDone && (
-              <button
-                className="p-0.5 rounded hover:bg-muted"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  dispatch(clearCompleted());
-                }}
-              >
-                <X className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            )}
             {isOpen ? (
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             ) : (
               <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            )}
+            {!hasBulk && allDone && (
+              <button
+                className="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dispatch(clearCompleted());
+                }}
+                title="Kapat"
+                aria-label="Kapat"
+              >
+                <X className="h-5 w-5" />
+              </button>
             )}
           </div>
         </CollapsibleTrigger>

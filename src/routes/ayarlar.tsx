@@ -169,6 +169,12 @@ function SettingsPage() {
     try {
       const statuses = await subscriptionApiService.getAgreementStatus();
       setAgreementStatuses(statuses);
+      const medulaStatus = statuses.find(
+        (s) => s.categorySlug.trim().split(/\s/)[0] === "medula-kvkk",
+      );
+      if (medulaStatus?.accepted) {
+        setMedulaConsent(true);
+      }
     } catch {
       /* empty */
     }
@@ -176,10 +182,8 @@ function SettingsPage() {
   }, [pharmacy]);
 
   useEffect(() => {
-    if (activeSection === "sozlesmeler") {
-      fetchAgreementStatuses();
-    }
-  }, [activeSection, fetchAgreementStatuses]);
+    fetchAgreementStatuses();
+  }, [fetchAgreementStatuses]);
 
   const handleViewAgreement = async (status: AgreementStatus) => {
     try {
@@ -413,7 +417,12 @@ function SettingsPage() {
       });
 
       if (medulaAgreement) {
-        await subscriptionApiService.acceptAgreement(medulaAgreement.id);
+        const ok = await subscriptionApiService.acceptAgreement(medulaAgreement.id);
+        if (!ok) {
+          toast.error("Sözleşme kabulü kaydedilemedi.");
+          return;
+        }
+        await fetchAgreementStatuses();
       }
 
       setCredentialsSaved(true);

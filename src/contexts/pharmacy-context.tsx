@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { subscriptionApiService } from "@/services/subscription-api";
@@ -135,12 +136,31 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, [pharmacy]);
 
-  // Deduct 1 credit locally when a report is generated
+  // Deduct credit locally when a report is generated (optimistic), then
+  // reconcile with the server so the displayed balance always matches truth.
+  const pharmacyRef = useRef(pharmacy);
   useEffect(() => {
-    const handleCreditDeducted = () => {
+    pharmacyRef.current = pharmacy;
+  }, [pharmacy]);
+
+  useEffect(() => {
+    const handleCreditDeducted = async () => {
       setCreditBalance((prev) =>
-        prev ? { ...prev, balance: prev.balance - 1 } : prev,
+        prev ? { ...prev, balance: Number(prev.balance) - 1 } : prev,
       );
+      const id = pharmacyRef.current?.id;
+      if (!id) return;
+      try {
+        const mySubData = await subscriptionApiService.getMySubscription();
+        setCreditBalance(mySubData.credit);
+      } catch {
+        try {
+          const credit = await subscriptionApiService.getCreditBalance(id);
+          setCreditBalance(credit);
+        } catch {
+          /* ignore — keep optimistic value */
+        }
+      }
     };
     window.addEventListener("credit-deducted", handleCreditDeducted);
     return () =>

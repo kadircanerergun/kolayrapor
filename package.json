@@ -1,7 +1,7 @@
 {
   "name": "KolayRapor",
   "productName": "KolayRapor",
-  "version": "0.9.6",
+  "version": "0.9.9",
   "description": "KolayRapor - Eczane Yönetim Sistemi",
   "main": ".vite/build/main.js",
   "private": true,

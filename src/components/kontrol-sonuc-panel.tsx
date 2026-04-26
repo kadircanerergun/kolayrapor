@@ -63,7 +63,24 @@ export function KontrolSonucPanel({
                                     isReAnalyzing,
                                     focusBarkod,
                                   }: KontrolSonucPanelProps) {
-  const entries = Object.entries(sonuclar);
+  // Preserve Medula medicine order when `ilaclar` is provided; fall back to
+  // sonuclar's insertion order otherwise.
+  const entries: Array<[string, ReceteReportResponse]> = (() => {
+    if (!ilaclar?.length) return Object.entries(sonuclar);
+    const ordered: Array<[string, ReceteReportResponse]> = [];
+    const seen = new Set<string>();
+    for (const ilac of ilaclar) {
+      const report = sonuclar[ilac.barkod];
+      if (report) {
+        ordered.push([ilac.barkod, report]);
+        seen.add(ilac.barkod);
+      }
+    }
+    for (const [barkod, report] of Object.entries(sonuclar)) {
+      if (!seen.has(barkod)) ordered.push([barkod, report]);
+    }
+    return ordered;
+  })();
 
   const [openItems, setOpenItems] = useState<Set<string>>(() => {
     if (focusBarkod) return new Set([focusBarkod]);

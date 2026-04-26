@@ -234,6 +234,20 @@ function KontrolMerkezi() {
         <div className="mb-6">
           <SuggestionCard />
         </div>
+
+        <div className="mb-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="aspect-video overflow-hidden rounded-lg border bg-muted">
+              <iframe
+                src="https://www.youtube.com/embed/yqJZ07sFaX8"
+                title="Tanıtım Videosu"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="h-full w-full"
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

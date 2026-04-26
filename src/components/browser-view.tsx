@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import logoSvgRaw from "../../images/logo-transparent.svg?raw";
 import { useCredentials } from "@/contexts/credentials-context";
-import { useDialogContext } from "@/contexts/dialog-context";
 import { useNavigate } from "@tanstack/react-router";
 import { cn } from "@/utils/tailwind";
 import { toUserFriendlyError } from "@/utils/error-messages";
@@ -286,7 +285,6 @@ export function BrowserView() {
   const pendingListKontrolRef = useRef<string | null>(null);
   const handleAnalyzeAllRef = useRef<() => void>(() => {});
   const { credentials } = useCredentials();
-  const { showConfirmDialog } = useDialogContext();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
@@ -791,24 +789,16 @@ export function BrowserView() {
     }
   };
 
-  /** Analyze a single medicine — if not yet analyzed, ask for confirmation first */
+  /** Analyze a single medicine — start immediately if not yet analyzed */
   const handleAnalyzeSingleMedicine = (barkod: string) => {
     if (isAnalyzing || !currentReceteNo) return;
 
-    // If already analyzed, show result directly
     if (analizSonuclari[barkod]) {
       setShowKontrolSonuc(true);
       return;
     }
 
-    // Not yet analyzed — ask for confirmation
-    showConfirmDialog({
-      title: "Rapor Analizi",
-      description: "Bu ilaç henüz analiz edilmedi. Analiz etmek ister misiniz?",
-      confirmText: "Kontrol Et",
-      cancelText: "İptal",
-      onConfirm: () => { runAnalysisSingle(barkod); },
-    });
+    runAnalysisSingle(barkod);
   };
 
   // Keep ref updated so console-message listener always calls latest version
@@ -1118,9 +1108,7 @@ export function BrowserView() {
             {/* Sonucu Gor button — visible when results exist for current prescription */}
             {Object.keys(analizSonuclari).length > 0 && (
               <Button
-                variant="secondary"
-                size="sm"
-                className="gap-1.5"
+                className="h-9 px-4 gap-1.5 font-semibold"
                 onClick={() => setShowKontrolSonuc(true)}
               >
                 <Eye className="h-4 w-4" />
@@ -1221,7 +1209,7 @@ export function BrowserView() {
       </div>
 
       {/* Kontrol Sonucu Sheet */}
-      <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc} modal={false}>
+      <Sheet open={showKontrolSonuc} onOpenChange={setShowKontrolSonuc}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>

@@ -734,7 +734,6 @@ export function ReceteTable({
       <Sheet
         open={!!analizSheetReceteNo}
         onOpenChange={(open) => !open && setAnalizSheetReceteNo(null)}
-        modal={false}
       >
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>

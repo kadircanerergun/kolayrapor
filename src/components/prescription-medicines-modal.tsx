@@ -242,7 +242,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
         )}
       </div>
 
-      <Sheet open={showKontrolSheet} onOpenChange={setShowKontrolSheet} modal={false}>
+      <Sheet open={showKontrolSheet} onOpenChange={setShowKontrolSheet}>
         <SheetContent className="sm:max-w-lg overflow-y-auto z-[60]">
           <SheetHeader>
             <SheetTitle>Kontrol Sonucu</SheetTitle>

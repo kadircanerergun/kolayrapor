@@ -307,3 +307,22 @@
   --color-brand: hsl(var(--brand));
   --color-brand-foreground: hsl(var(--brand-foreground));
 }
+
+[data-sonner-toaster] [data-close-button] {
+  width: 28px !important;
+  height: 28px !important;
+  left: auto !important;
+  right: 8px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  border-radius: 9999px !important;
+}
+
+[data-sonner-toaster] [data-close-button] svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+[data-sonner-toaster] [data-sonner-toast] {
+  padding-right: 44px !important;
+}

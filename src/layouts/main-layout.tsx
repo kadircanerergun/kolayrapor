@@ -511,7 +511,6 @@ export default function MainLayout({
           <Sheet
             open={!!resultSheetReceteNo}
             onOpenChange={(open) => { if (!open) setResultSheetReceteNo(null); }}
-            modal={false}
           >
             <SheetContent className="sm:max-w-lg overflow-y-auto">
               <SheetHeader>
