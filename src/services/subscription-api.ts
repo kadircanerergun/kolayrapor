@@ -29,6 +29,7 @@ function mapPlanToVariant(
   return {
     id: plan.id,
     name: plan.name || label.name,
+    description: plan.description ?? undefined,
     duration: label.duration,
     price: Number(plan.price),
     originalPrice: plan.originalPrice ? Number(plan.originalPrice) : undefined,
@@ -43,14 +44,16 @@ function mapPlanToVariant(
 function mapProductToSubscriptionProduct(
   product: ApiProduct,
 ): SubscriptionProduct {
-  const activePlans = (product.plans || []).filter((p) => p.isActive);
+  const visiblePlans = (product.plans || []).filter(
+    (p) => p.isActive && p.isPurchasable && !p.isDemo,
+  );
 
   return {
     id: product.id,
     name: product.name,
     description: product.description || "",
     features: product.features || [],
-    variants: activePlans.map(mapPlanToVariant),
+    variants: visiblePlans.map(mapPlanToVariant),
     isRecommended: product.isRecommended,
   };
 }
@@ -159,7 +162,8 @@ class SubscriptionApiService {
     );
     return response.data
       .filter((p) => p.type === "subscription")
-      .map(mapProductToSubscriptionProduct);
+      .map(mapProductToSubscriptionProduct)
+      .filter((p) => p.variants.length > 0);
   }
 
   async getCreditPackages(): Promise<CreditPackage[]> {
@@ -228,7 +232,7 @@ class SubscriptionApiService {
       );
       return {
         success: true,
-        message: "Abonelik başarıyla oluşturuldu!",
+        message: "Lisans başarıyla oluşturuldu!",
         data: {
           subscriptionId: response.data.subscription?.id,
           status: response.data.subscription?.status,
@@ -240,7 +244,7 @@ class SubscriptionApiService {
         error:
           error.response?.data?.message ||
           error.message ||
-          "Abonelik işlemi başarısız oldu",
+          "Lisans işlemi başarısız oldu",
       };
     }
   }
@@ -278,7 +282,7 @@ class SubscriptionApiService {
 
       return {
         success: true,
-        message: "Kredi satın alma işlemi başarılı!",
+        message: "Ek kredi satın alma işlemi başarılı!",
         data: {
           subscriptionId: response.data.purchase?.id,
           status: response.data.purchase?.status,
@@ -300,7 +304,7 @@ class SubscriptionApiService {
       await apiClient.post(`${API_BASE_URL}/store/cancel-subscription`);
       return {
         success: true,
-        message: "Abonelik başarıyla iptal edildi.",
+        message: "Lisans başarıyla iptal edildi.",
       };
     } catch (error: any) {
       return {

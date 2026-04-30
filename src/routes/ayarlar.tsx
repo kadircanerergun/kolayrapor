@@ -89,7 +89,7 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   },
   {
     id: "abonelik",
-    label: "Abonelik",
+    label: "Lisans",
     icon: Wallet,
     description: "Plan ve yenileme bilgileri",
   },
@@ -451,9 +451,9 @@ function SettingsPage() {
 
   const handleCancelSubscription = () => {
     showConfirmDialog({
-      title: "Aboneliği İptal Et",
+      title: "Lisansı İptal Et",
       description:
-        "Aboneliğinizi iptal etmek istediğinize emin misiniz? Mevcut dönem sonuna kadar hizmet almaya devam edeceksiniz.",
+        "Lisansınızı iptal etmek istediğinize emin misiniz? Mevcut dönem sonuna kadar hizmet almaya devam edeceksiniz.",
       confirmText: "İptal Et",
       cancelText: "Vazgeç",
       variant: "destructive",
@@ -462,7 +462,7 @@ function SettingsPage() {
         try {
           const result = await subscriptionApiService.cancelSubscription();
           if (result.success) {
-            toast.success(result.message || "Abonelik iptal edildi.");
+            toast.success(result.message || "Lisans iptal edildi.");
             await refresh();
           } else {
             toast.error(result.error || "İptal işlemi başarısız oldu.");
@@ -1025,9 +1025,9 @@ function SettingsPage() {
   const renderAbonelikSection = () => (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Abonelik</h2>
+        <h2 className="text-xl font-semibold">Lisans</h2>
         <p className="text-sm text-muted-foreground">
-          Abonelik planınız, kredi bakiyeniz ve yenileme durumu
+          Lisans planınız, kredi bakiyeniz ve yenileme durumu
         </p>
       </div>
 
@@ -1084,7 +1084,7 @@ function SettingsPage() {
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                   <CreditCard className="h-4 w-4" />
-                  Mevcut Abonelik
+                  Mevcut Lisans
                 </p>
                 {currentSubscription ? (
                   <div className="flex items-center gap-2">
@@ -1095,7 +1095,7 @@ function SettingsPage() {
                   </div>
                 ) : (
                   <p className="text-lg text-muted-foreground">
-                    Aktif abonelik yok
+                    Aktif lisans yok
                   </p>
                 )}
               </div>
@@ -1246,12 +1246,12 @@ function SettingsPage() {
                       <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
                       <div className="text-sm">
                         <p className="font-medium text-yellow-800 dark:text-yellow-300">
-                          Aboneliğiniz askıya alındı
+                          Lisansınız askıya alındı
                         </p>
                         <p className="text-yellow-700/80 dark:text-yellow-400/80 mt-1">
                           Kayıtlı kartınızdan ödeme alınamadı. Sistem saatlik
                           olarak tekrar deneyecektir. 3 başarısız denemeden sonra
-                          aboneliğiniz sona erecektir. Lütfen kart bilgilerinizi
+                          lisansınız sona erecektir. Lütfen kart bilgilerinizi
                           kontrol edin.
                         </p>
                       </div>
@@ -1315,7 +1315,7 @@ function SettingsPage() {
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 mr-2" />
-                      Aboneliği İptal Et
+                      Lisansı İptal Et
                     </>
                   )}
                 </Button>

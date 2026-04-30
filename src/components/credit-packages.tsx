@@ -1,14 +1,21 @@
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Coins } from "lucide-react";
+import { Coins, Lock } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 export function CreditPackages() {
-  const { pharmacy, isPending, creditPackages, creditBalance } = useSubscription();
+  const {
+    pharmacy,
+    isPending,
+    creditPackages,
+    creditBalance,
+    currentSubscription,
+  } = useSubscription();
   const navigate = useNavigate();
+  const hasActiveSubscription = currentSubscription?.status === "active";
 
   const handlePurchase = (pkgId: string) => {
     if (!pharmacy || isPending) {
@@ -24,13 +31,49 @@ export function CreditPackages() {
 
   if (creditPackages.length === 0) return null;
 
+  if (!hasActiveSubscription) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Coins className="h-5 w-5 text-primary" />
+            Ek Kredi Paketleri
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Ek kredi satın alarak hizmetlerimizi kullanmaya devam edin
+          </p>
+        </div>
+
+        <Card>
+          <CardContent className="pt-6 text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Lock className="h-6 w-6 text-primary" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold">
+                Ek kredi satın almak için lisans gerekli
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Ek kredi satın alabilmek için öncelikle aktif bir lisansınızın
+                olması gerekmektedir.
+              </p>
+            </div>
+            <Link to="/subscription">
+              <Button>Lisans Planlarını Görüntüle</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Coins className="h-5 w-5 text-primary" />
-            Kredi Paketleri
+            Ek Kredi Paketleri
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Ek kredi satın alarak hizmetlerimizi kullanmaya devam edin
@@ -54,9 +97,10 @@ export function CreditPackages() {
                 <div>
                   <h3 className="text-lg font-semibold">{pkg.name}</h3>
                   {pkg.description && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {pkg.description}
-                    </p>
+                    <div
+                      className="product-description text-sm text-muted-foreground mt-1"
+                      dangerouslySetInnerHTML={{ __html: pkg.description }}
+                    />
                   )}
                 </div>
                 <div className="space-y-1">

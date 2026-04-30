@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { subscriptionApiService } from "@/services/subscription-api";
 import type { SubscriptionProduct } from "@/types/subscription";
@@ -12,7 +12,53 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+
+const DESCRIPTION_COLLAPSED_HEIGHT = 240;
+
+function ProductDescription({ html }: { html: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [hasOverflow, setHasOverflow] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setHasOverflow(el.scrollHeight > DESCRIPTION_COLLAPSED_HEIGHT + 1);
+  }, [html]);
+
+  return (
+    <div className="space-y-1">
+      <div
+        ref={ref}
+        className={cn(
+          "product-description text-sm text-muted-foreground overflow-hidden",
+          !expanded && "max-h-60",
+        )}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {hasOverflow && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        >
+          {expanded ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" />
+              Daha az göster
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" />
+              Devamını oku
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
 import { cn } from "@/utils/tailwind";
 import { useSubscription } from "@/hooks/useSubscription";
 import { toast } from "sonner";
@@ -45,7 +91,7 @@ export function SubscriptionProducts() {
       });
       setSelectedVariants(defaults);
     } catch {
-      toast.error("Abonelik planları yüklenirken bir hata oluştu.");
+      toast.error("Lisans planları yüklenirken bir hata oluştu.");
     } finally {
       setLoading(false);
     }
@@ -102,36 +148,18 @@ export function SubscriptionProducts() {
 
             <CardHeader>
               <CardTitle className="text-2xl">{product.name}</CardTitle>
-              {product.description && (
-                <div
-                  className="product-description text-sm text-muted-foreground"
-                  dangerouslySetInnerHTML={{ __html: product.description }}
+              {selectedVariant?.description && (
+                <ProductDescription
+                  key={selectedVariant.id}
+                  html={selectedVariant.description}
                 />
               )}
             </CardHeader>
 
             <CardContent className="flex-1 flex flex-col space-y-6">
-              {/* Features */}
-              {product.features.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Özellikler:</h4>
-                  <ul className="space-y-2">
-                    {product.features.map((feature, index) => (
-                      <li
-                        key={index}
-                        className="flex items-start gap-2 text-sm"
-                      >
-                        <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Variants */}
+              {/* Variants — pinned just above the price */}
               {product.variants.length > 0 && (
-                <div className="space-y-3">
+                <div className="mt-auto space-y-3">
                   <h4 className="text-sm font-semibold">Süre Seçin:</h4>
                   <div className="grid grid-cols-2 gap-2">
                     {product.variants.map((variant) => (
@@ -172,9 +200,9 @@ export function SubscriptionProducts() {
                 </div>
               )}
 
-              {/* Price — pushed to bottom with mt-auto */}
+              {/* Price — at the bottom, fixed height across cards */}
               {selectedVariant && (
-                <div className="mt-auto space-y-2 pt-4 border-t">
+                <div className="space-y-2 pt-4 border-t">
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold">
                       ₺{selectedVariant.price}
@@ -182,22 +210,29 @@ export function SubscriptionProducts() {
                     <span className="text-sm text-muted-foreground">
                       + KDV
                     </span>
-                    {selectedVariant.originalPrice && (
+                    {selectedVariant.originalPrice ? (
                       <span className="text-lg text-muted-foreground line-through">
                         ₺{selectedVariant.originalPrice}
                       </span>
-                    )}
+                    ) : null}
                   </div>
-                  {selectedVariant.discount && (
-                    <Badge variant="secondary" className="text-xs">
-                      %{selectedVariant.discount} İndirim
-                    </Badge>
-                  )}
-                  {selectedVariant.includedCreditAmount > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Aylık {selectedVariant.includedCreditAmount} kredi dahil
-                    </p>
-                  )}
+                  <div className="h-5">
+                    {selectedVariant.discount ? (
+                      <Badge variant="secondary" className="text-xs">
+                        %{selectedVariant.discount} İndirim
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      selectedVariant.includedCreditAmount > 0
+                        ? ""
+                        : "invisible",
+                    )}
+                  >
+                    Aylık {selectedVariant.includedCreditAmount} kredi dahil
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {selectedVariant.duration} boyunca geçerli
                   </p>
@@ -213,7 +248,7 @@ export function SubscriptionProducts() {
                   variant="outline"
                   disabled
                 >
-                  Mevcut Aboneliğiniz Aktif
+                  Mevcut Lisansınız Aktif
                 </Button>
               ) : (
                 <Button
@@ -222,7 +257,7 @@ export function SubscriptionProducts() {
                   variant={product.isRecommended ? "default" : "outline"}
                   onClick={() => handleSubscribeClick(product.id)}
                 >
-                  Abone Ol
+                  Lisans Al
                 </Button>
               )}
             </CardFooter>

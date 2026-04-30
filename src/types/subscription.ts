@@ -28,6 +28,8 @@ export interface ApiSubscriptionPlan {
   discount: number | null;
   isPopular: boolean;
   isActive: boolean;
+  isPurchasable: boolean;
+  isDemo: boolean;
   product?: ApiProduct;
   createdAt: string;
   updatedAt: string;
@@ -81,6 +83,7 @@ export interface CreditPackage {
 export interface SubscriptionVariant {
   id: string;
   name: string;
+  description?: string;
   duration: string;
   price: number;
   originalPrice?: number;

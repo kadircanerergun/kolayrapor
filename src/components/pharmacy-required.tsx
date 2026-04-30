@@ -65,16 +65,16 @@ export function PharmacyRequired({ children }: PharmacyRequiredProps) {
               <CreditCard className="h-6 w-6 text-primary" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Abonelik Gerekli</h2>
+              <h2 className="text-lg font-semibold">Lisans Gerekli</h2>
               <p className="text-sm text-muted-foreground">
-                Bu özelliği kullanabilmek için aktif bir aboneliğe sahip
+                Bu özelliği kullanabilmek için aktif bir lisansa sahip
                 olmanız gerekmektedir.
               </p>
             </div>
             <Link to="/subscription">
               <Button>
                 <CreditCard className="h-4 w-4 mr-2" />
-                Abonelik Planlarını Görüntüle
+                Lisans Planlarını Görüntüle
               </Button>
             </Link>
           </CardContent>

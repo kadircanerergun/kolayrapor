@@ -183,8 +183,8 @@ function OdemePage() {
         setSuccessMessage(
           result.message ||
             (type === "subscription"
-              ? "Abonelik başarıyla oluşturuldu!"
-              : "Kredi satın alma işlemi başarıyla tamamlandı."),
+              ? "Lisans başarıyla oluşturuldu!"
+              : "Ek kredi satın alma işlemi başarıyla tamamlandı."),
         );
         setSuccessOpen(true);
       } else {
@@ -193,7 +193,7 @@ function OdemePage() {
           description:
             result.error ||
             (type === "subscription"
-              ? "Abonelik işlemi başarısız oldu."
+              ? "Lisans işlemi başarısız oldu."
               : "Satın alma işlemi başarısız oldu."),
         });
       }
@@ -315,11 +315,11 @@ function OdemePage() {
               <>
                 <div className="space-y-1">
                   <h3 className="text-xl font-semibold">{product.name}</h3>
-                  {product.description && (
+                  {variant.description && (
                     <div
                       className="product-description text-sm text-muted-foreground"
                       dangerouslySetInnerHTML={{
-                        __html: product.description,
+                        __html: variant.description,
                       }}
                     />
                   )}
@@ -420,9 +420,12 @@ function OdemePage() {
                     {creditPackage.name}
                   </h3>
                   {creditPackage.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {creditPackage.description}
-                    </p>
+                    <div
+                      className="product-description text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{
+                        __html: creditPackage.description,
+                      }}
+                    />
                   )}
                 </div>
 
@@ -697,7 +700,7 @@ function OdemePage() {
                       İşleniyor...
                     </>
                   ) : type === "subscription" ? (
-                    "Abone Ol"
+                    "Lisans Al"
                   ) : (
                     "Satın Al"
                   )}

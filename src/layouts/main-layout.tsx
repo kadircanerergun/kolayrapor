@@ -325,7 +325,7 @@ export default function MainLayout({
                 <TooltipContent side="right">
                   {refreshing
                     ? "Veriler yenileniyor..."
-                    : "Eczane ve abonelik bilgilerini yeniden yükle"}
+                    : "Eczane ve lisans bilgilerini yeniden yükle"}
                 </TooltipContent>
               </Tooltip>
             )}
