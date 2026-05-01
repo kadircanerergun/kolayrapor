@@ -269,14 +269,30 @@ class SubscriptionApiService {
         `${API_BASE_URL}/store/purchase`,
         body,
       );
+      const data = response.data ?? {};
 
       // 3D Secure flow — API returns { html, merchantOrderId }
-      if (response.data.html) {
+      if (data.html) {
         return {
           success: true,
           message: "3D doğrulama gerekiyor",
-          threeDHtml: response.data.html,
-          merchantOrderId: response.data.merchantOrderId,
+          threeDHtml: data.html,
+          merchantOrderId: data.merchantOrderId,
+        };
+      }
+
+      // Server can return HTTP 200 but indicate failure in the body. Detect any
+      // of the common shapes and surface the message to the UI.
+      const status = String(data.purchase?.status ?? "").toUpperCase();
+      const failedByStatus = status === "FAILED" || status === "REJECTED" || status === "ERROR";
+      if (data.success === false || data.error || failedByStatus) {
+        return {
+          success: false,
+          error:
+            data.message ||
+            data.error ||
+            data.purchase?.message ||
+            "Satın alma işlemi başarısız oldu",
         };
       }
 
@@ -284,8 +300,8 @@ class SubscriptionApiService {
         success: true,
         message: "Ek kredi satın alma işlemi başarılı!",
         data: {
-          subscriptionId: response.data.purchase?.id,
-          status: response.data.purchase?.status,
+          subscriptionId: data.purchase?.id,
+          status: data.purchase?.status,
         },
       };
     } catch (error: any) {
@@ -293,6 +309,7 @@ class SubscriptionApiService {
         success: false,
         error:
           error.response?.data?.message ||
+          error.response?.data?.error ||
           error.message ||
           "Satın alma işlemi başarısız oldu",
       };

@@ -9,7 +9,7 @@ import type {
   SavedCard,
 } from "@/types/subscription";
 import { useSubscription } from "@/hooks/useSubscription";
-import { useDialog } from "@/hooks/useDialog";
+import { useDialogContext } from "@/contexts/dialog-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ import {
   Coins,
   ShieldCheck,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { calculateKdv, priceWithKdv } from "@/utils/kdv";
 
@@ -59,7 +60,7 @@ function OdemePage() {
   const { type, id } = Route.useSearch();
   const navigate = useNavigate();
   const { pharmacy, isPending, refresh } = useSubscription();
-  const { showAlert } = useDialog();
+  const { showAlert } = useDialogContext();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +84,10 @@ function OdemePage() {
   // Success modal
   const [successOpen, setSuccessOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+
+  // Error modal
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   // 3D Secure modal
   const [threeDOpen, setThreeDOpen] = useState(false);
@@ -188,20 +193,17 @@ function OdemePage() {
         );
         setSuccessOpen(true);
       } else {
-        showAlert({
-          title: "Hata",
-          description:
-            result.error ||
+        setErrorMessage(
+          result.error ||
             (type === "subscription"
               ? "Lisans işlemi başarısız oldu."
               : "Satın alma işlemi başarısız oldu."),
-        });
+        );
+        setErrorOpen(true);
       }
     } catch {
-      showAlert({
-        title: "Hata",
-        description: "Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.",
-      });
+      setErrorMessage("Ödeme işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      setErrorOpen(true);
     } finally {
       setSubmitting(false);
     }
@@ -749,10 +751,19 @@ function OdemePage() {
                       setThreeDOpen(false);
                       setThreeDHtml("");
                       setSubmitting(false);
-                      showAlert({
-                        title: "Ödeme Başarısız",
-                        description: "Kart doğrulama başarısız oldu.",
-                      });
+                      let apiMessage: string | null = null;
+                      try {
+                        const params = new URL(url).searchParams;
+                        apiMessage =
+                          params.get("message") ||
+                          params.get("error") ||
+                          params.get("description") ||
+                          params.get("reason");
+                      } catch {
+                        // Malformed URL — fall back to generic message
+                      }
+                      setErrorMessage(apiMessage || "Kart doğrulama başarısız oldu.");
+                      setErrorOpen(true);
                     }
                   });
 
@@ -792,6 +803,30 @@ function OdemePage() {
               setSuccessOpen(false);
               navigate({ to: "/ayarlar", search: { section: "abonelik" } });
             }}>
+              Tamam
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Modal */}
+      <Dialog open={errorOpen} onOpenChange={(open) => {
+        if (!open) setErrorOpen(false);
+      }}>
+        <DialogContent hideCloseButton>
+          <DialogHeader className="items-center text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 mb-2">
+              <XCircle className="h-8 w-8 text-red-600" />
+            </div>
+            <DialogTitle className="text-center">
+              Ödeme Başarısız
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {errorMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button variant="outline" onClick={() => setErrorOpen(false)}>
               Tamam
             </Button>
           </DialogFooter>

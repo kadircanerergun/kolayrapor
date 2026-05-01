@@ -50,6 +50,8 @@ export interface ReceteTableRow {
   soyad?: string;
   ilaclar?: ReceteIlac[];
   cachedAt?: number;
+  /** True when only sync data is known — no full prescription details. */
+  isPartial?: boolean;
 }
 
 export interface ReceteTableProps {
@@ -500,9 +502,12 @@ export function ReceteTable({
             const hasCachedDetail = !!detaylar[row.receteNo];
             const isLoadingDetail = loadingRecete === row.receteNo;
             const isAnalyzing = analyzingRecete === row.receteNo;
-            const within45 = isWithin45Days
-              ? isWithin45Days(row.sonIslemTarihi || row.receteTarihi)
-              : true;
+            const isPartial = !!row.isPartial;
+            const within45 = isPartial
+              ? true
+              : isWithin45Days
+                ? isWithin45Days(row.sonIslemTarihi || row.receteTarihi)
+                : true;
 
             const { analyzedCount, totalRaporlu, hasAnalysis, isPartiallyAnalyzed, analyzedBarkods } =
               getAnalysisInfo(row.receteNo, ilaclar);
@@ -666,28 +671,30 @@ export function ReceteTable({
                             <p className="max-w-[200px] text-xs">Reçeteyi ve İlaç Raporlarını okur, inceler, analiz eder ama Rapor Uygunluğunu Kontrol Etmez (kredi harcamaz)</p>
                           </TooltipContent>
                         </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
-                              className="bg-brand text-brand-foreground hover:bg-brand/90"
-                              onClick={() =>
-                                onAnalizEt(row.receteNo, hasAnalysis)
-                              }
-                              disabled={isBusy}
-                            >
-                              {isAnalyzing ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FlaskConical className="h-4 w-4" />
-                              )}
-                              {hasAnalysis ? "Tekrar Kontrol" : "Kontrol Et"}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            <p className="max-w-[200px] text-xs">İlaç Raporlarını Yapay Zeka ile inceler ve SUT uygunluğunu kontrol eder</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        {!isPartial && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                className="bg-brand text-brand-foreground hover:bg-brand/90"
+                                onClick={() =>
+                                  onAnalizEt(row.receteNo, hasAnalysis)
+                                }
+                                disabled={isBusy}
+                              >
+                                {isAnalyzing ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FlaskConical className="h-4 w-4" />
+                                )}
+                                {hasAnalysis ? "Tekrar Kontrol" : "Kontrol Et"}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p className="max-w-[200px] text-xs">İlaç Raporlarını Yapay Zeka ile inceler ve SUT uygunluğunu kontrol eder</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </>
                     )}
                   </div>

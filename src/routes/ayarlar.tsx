@@ -63,7 +63,7 @@ import { version as appVersion } from "../../package.json";
 import type { SavedCard, CardInfo } from "@/types/subscription";
 import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS } from "@/lib/constants";
+import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_OVERLAP_MS } from "@/lib/constants";
 
 type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "senkronizasyon" | "sozlesmeler" | "uygulama";
 
@@ -215,9 +215,9 @@ function SettingsPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const since =
-        lastSyncedAt ||
-        new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const since = lastSyncedAt
+        ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
+        : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const reports = await reportApiService.getMyReports(since);
       let synced = 0;
       if (reports.length > 0) {

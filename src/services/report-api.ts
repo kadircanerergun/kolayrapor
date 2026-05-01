@@ -48,7 +48,11 @@ export interface ReportFeedbackResponse {
 class ReportApiService {
   private baseUrl = API_BASE_URL;
 
-  async generateReport(barkod: string, recete: Recete): Promise<ReportResult> {
+  async generateReport(
+    barkod: string,
+    recete: Recete,
+    signal?: AbortSignal,
+  ): Promise<ReportResult> {
     try {
       const requestData: GenerateReportRequest = {
         barkod,
@@ -60,7 +64,7 @@ class ReportApiService {
       const response = await apiClient.post(
         `${this.baseUrl}/report/generate`,
         { encrypted },
-        { timeout: 120_000 },
+        { timeout: 120_000, signal },
       );
 
       const data = await decryptJson<ReceteReportResponse>(

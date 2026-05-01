@@ -19,10 +19,18 @@ import {
   StopCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/utils/tailwind";
 import { useAppSelector, useAppDispatch } from "@/store";
 import { removeGroup, clearCompleted, setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
 import type { TaskItem, TaskGroup } from "@/store/slices/taskQueueSlice";
+import { setBulkProgress, setAnalyzingRecete } from "@/store/slices/receteSlice";
+import { bulkCancel } from "@/lib/bulk-cancel";
+import { ReceteNoLink } from "@/components/recete-no-link";
 
 function StatusIcon({ status }: { status: TaskItem["status"] }) {
   switch (status) {
@@ -77,7 +85,7 @@ function GroupSection({
     <div className="border-t first:border-t-0">
       <Collapsible open={expanded} onOpenChange={setExpanded}>
         <div className="flex w-full items-center gap-2 px-3 py-2 hover:bg-muted/30">
-          <CollapsibleTrigger className="flex items-center gap-2 flex-1 min-w-0 text-left">
+          <CollapsibleTrigger className="flex items-center gap-2 shrink-0 text-left">
             <ChevronRight
               className={cn(
                 "h-3 w-3 text-muted-foreground shrink-0 transition-transform",
@@ -85,11 +93,25 @@ function GroupSection({
               )}
             />
             <GroupStatusIcon group={group} />
-            <span className="text-xs font-medium truncate flex-1">{group.title}</span>
-            <span className="text-[10px] text-muted-foreground shrink-0">
-              {doneCount}/{total}
-            </span>
           </CollapsibleTrigger>
+          {group.receteNo ? (
+            <ReceteNoLink
+              receteNo={group.receteNo}
+              className="text-xs font-medium truncate flex-1 min-w-0"
+            />
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-xs font-medium truncate flex-1 min-w-0">
+                  {group.title}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{group.title}</TooltipContent>
+            </Tooltip>
+          )}
+          <span className="text-[10px] text-muted-foreground shrink-0">
+            {doneCount}/{total}
+          </span>
           {isRunning && onRemove && (
             <button
               className="p-0.5 rounded hover:bg-destructive/10 shrink-0"
@@ -111,6 +133,7 @@ function GroupSection({
           )}
           {allGroupDone && !hasError && group.receteNo && onShowResult && (
             <Button
+              variant="outline"
               className="h-8 px-3 text-xs font-semibold shrink-0"
               onClick={() => {
                 onShowResult(group.receteNo!);
@@ -120,6 +143,19 @@ function GroupSection({
               <Eye className="h-4 w-4 mr-1.5" />
               Sonucu Gör
             </Button>
+          )}
+          {allGroupDone && onRemove && (
+            <button
+              className="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30 shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(group.id);
+              }}
+              title="Kapat"
+              aria-label="Kapat"
+            >
+              <X className="h-5 w-5" />
+            </button>
           )}
         </div>
 
@@ -222,7 +258,13 @@ export function GlobalTaskPanel() {
 
   const handleBulkCancel = () => {
     setBulkCancelling(true);
-    window.dispatchEvent(new CustomEvent("kolayrapor:bulk-cancel"));
+    bulkCancel.cancel();
+  };
+
+  const handleBulkForceStop = () => {
+    bulkCancel.forceStop();
+    dispatch(setBulkProgress(null));
+    dispatch(setAnalyzingRecete(null));
   };
 
   if (!hasContent) return null;
@@ -323,7 +365,7 @@ export function GlobalTaskPanel() {
                           className="h-6 px-2 text-[10px]"
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.dispatchEvent(new CustomEvent("kolayrapor:bulk-force-stop"));
+                            handleBulkForceStop();
                           }}
                         >
                           <X className="h-3 w-3 mr-1" />

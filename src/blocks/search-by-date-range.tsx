@@ -19,6 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CalendarIcon, Loader2, Search } from "lucide-react";
 import { useState } from "react";
 import { useDialogContext } from "@/contexts/dialog-context";
@@ -42,6 +47,18 @@ const SearchByDateRange = () => {
   const dialog = useDialogContext();
   const navigate = useNavigate();
   const { credentials } = useCredentials();
+
+  const setThisMonth = () => {
+    const now = new Date();
+    setFromDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setToDate(now);
+  };
+
+  const setLastMonth = () => {
+    const now = new Date();
+    setFromDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    setToDate(new Date(now.getFullYear(), now.getMonth(), 0));
+  };
 
   const checkCredentials = (): boolean => {
     if (!credentials || !credentials.username || !credentials.password) {
@@ -157,37 +174,79 @@ const SearchByDateRange = () => {
                 </PopoverContent>
               </Popover>
             </div>
+
+            {/* Fatura Türü */}
+            <div className="flex-1 space-y-1.5">
+              <label className="text-sm font-medium">Fatura Türü</label>
+              <Select
+                value={faturaTuru}
+                onValueChange={(v) => setFaturaTuru(v as "1" | "28")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">A Grubu</SelectItem>
+                  <SelectItem value="28">C Grubu Sıralı Dağıtım</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Fatura Türü</label>
-            <Select
-              value={faturaTuru}
-              onValueChange={(v) => setFaturaTuru(v as "1" | "28")}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-3 text-xs capitalize"
+              onClick={setLastMonth}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">A Grubu</SelectItem>
-                <SelectItem value="28">C Grubu Sıralı Dağıtım</SelectItem>
-              </SelectContent>
-            </Select>
+              {format(
+                new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
+                "LLLL yyyy",
+                { locale: tr },
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-3 text-xs capitalize"
+              onClick={setThisMonth}
+            >
+              {format(new Date(), "LLLL yyyy", { locale: tr })}
+            </Button>
           </div>
 
-          <Button type="submit" disabled={isLoading || !fromDate || !toDate}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isReady ? "Aranıyor..." : "Başlatılıyor..."}
-              </>
-            ) : (
-              <>
-                <Search className="mr-2 h-4 w-4" />
-                Ara
-              </>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="block">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading || !fromDate || !toDate || !isReady}
+                >
+                  {isLoading || !isReady ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {isReady ? "Aranıyor..." : "Medula'ya bağlanılıyor..."}
+                    </>
+                  ) : (
+                    <>
+                      <Search className="mr-2 h-4 w-4" />
+                      Ara
+                    </>
+                  )}
+                </Button>
+              </div>
+            </TooltipTrigger>
+            {!isReady && (
+              <TooltipContent side="top">
+                Medula bağlantısı hazırlanıyor. Hazır olduğunda arama
+                yapabilirsiniz.
+              </TooltipContent>
             )}
-          </Button>
+          </Tooltip>
         </form>
       </CardContent>
     </Card>

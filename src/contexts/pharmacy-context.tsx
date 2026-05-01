@@ -10,7 +10,7 @@ import {
 import { subscriptionApiService } from "@/services/subscription-api";
 import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_INTERVAL_MS } from "@/lib/constants";
+import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_INTERVAL_MS, SYNC_OVERLAP_MS } from "@/lib/constants";
 import type { ApiPharmacy } from "@/services/subscription-api";
 import type {
   ApiSubscription,
@@ -118,9 +118,9 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
       try {
         const SYNC_KEY = "kolayrapor_lastSyncedAt";
         const lastSyncedAt = localStorage.getItem(SYNC_KEY);
-        const since =
-          lastSyncedAt ||
-          new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const since = lastSyncedAt
+          ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
+          : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
         const reports = await reportApiService.getMyReports(since);
         if (reports.length > 0) {
           await syncReportsFromServer(reports);

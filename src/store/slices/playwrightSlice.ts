@@ -206,7 +206,13 @@ export const analyzePrescription = createAsyncThunk(
 const playwrightSlice = createSlice({
   name: "playwright",
   initialState,
-  reducers: {},
+  reducers: {
+    markReady(state) {
+      state.isReady = true;
+      state.isLoading = false;
+      state.error = null;
+    },
+  },
   extraReducers: (builder) => {
     builder.addCase(initializePlaywright.pending, (state) => {
       state.isLoading = true;
@@ -235,5 +241,7 @@ const playwrightSlice = createSlice({
     });
   },
 });
+
+export const { markReady } = playwrightSlice.actions;
 
 export default playwrightSlice.reducer;

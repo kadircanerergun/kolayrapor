@@ -8,6 +8,7 @@ import {
   Database,
   FlaskConical,
   Loader2,
+  CalendarSearch,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -32,6 +33,7 @@ import {
 } from "@/store/slices/playwrightSlice";
 import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
 import { cacheAnalysis } from "@/lib/db";
+import { bulkCancel } from "@/lib/bulk-cancel";
 import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
 import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import { PharmacyRequired } from "@/components/pharmacy-required";
@@ -50,11 +52,11 @@ function SearchReport() {
     analyzingRecete,
     bulkProgress,
   } = useAppSelector((s) => s.recete);
+  const playwrightLoading = useAppSelector((s) => s.playwright.isLoading);
   const dialog = useDialogContext();
   const modal = useModal();
   const pageSize = 40;
 
-  const bulkCancelRef = useRef(false);
   const sortedOrderRef = useRef<string[]>([]);
   const isBulkRef = useRef(false);
 
@@ -93,7 +95,11 @@ function SearchReport() {
     if (cached) openDetailModal(cached, receteNo);
   };
 
-  const handleAnalizEt = async (receteNo: string, _force: boolean) => {
+  const handleAnalizEt = async (
+    receteNo: string,
+    _force: boolean,
+    signal?: AbortSignal,
+  ) => {
     const groupId = `analyze-${receteNo}`;
     dispatch(setAnalyzingRecete(receteNo));
 
@@ -108,6 +114,8 @@ function SearchReport() {
       // 1. Fetch prescription detail
       const recete = await dispatch(searchPrescriptionDetail({ receteNo })).unwrap();
       dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+      if (signal?.aborted || bulkCancel.isCancelled()) return;
 
       const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
       if (raporluIlaclar.length === 0) {
@@ -132,16 +140,21 @@ function SearchReport() {
 
       // 3. Analyze one by one
       for (let i = 0; i < raporluIlaclar.length; i++) {
+        if (signal?.aborted || bulkCancel.isCancelled()) break;
         const ilac = raporluIlaclar[i];
         dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "running" }));
         try {
-          const result = await reportApiService.generateReport(ilac.barkod, recete);
+          const result = await reportApiService.generateReport(ilac.barkod, recete, signal);
           if (result.success && result.data) {
             await cacheAnalysis(receteNo, ilac.barkod, result.data);
             dispatch(analizCompleted({ receteNo, sonuclar: { [ilac.barkod]: result.data } }));
           }
           dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "done" }));
         } catch (err: any) {
+          if (signal?.aborted || err?.name === "CanceledError" || err?.code === "ERR_CANCELED") {
+            dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "pending" }));
+            break;
+          }
           dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: "Analiz başarısız" }));
         }
       }
@@ -189,45 +202,51 @@ function SearchReport() {
   };
 
   const handleBulkVerileriAl = async () => {
-    bulkCancelRef.current = false;
+    bulkCancel.start();
     const selected = getSelectedInTableOrder();
-    for (let i = 0; i < selected.length; i++) {
-      if (bulkCancelRef.current) break;
-      dispatch(
-        setBulkProgress({
-          type: "verileriAl",
-          current: i + 1,
-          total: selected.length,
-          currentReceteNo: selected[i],
-        }),
-      );
-      await dispatch(searchPrescriptionDetail({ receteNo: selected[i] }));
+    try {
+      for (let i = 0; i < selected.length; i++) {
+        if (bulkCancel.isCancelled()) break;
+        dispatch(
+          setBulkProgress({
+            type: "verileriAl",
+            current: i + 1,
+            total: selected.length,
+            currentReceteNo: selected[i],
+          }),
+        );
+        await dispatch(searchPrescriptionDetail({ receteNo: selected[i] }));
+        if (bulkCancel.isCancelled()) break;
+      }
+    } finally {
+      bulkCancel.reset();
+      dispatch(setBulkProgress(null));
     }
-    dispatch(setBulkProgress(null));
   };
 
   const handleBulkAnalizEt = async () => {
-    bulkCancelRef.current = false;
     isBulkRef.current = true;
+    const signal = bulkCancel.start();
     const selected = getSelectedInTableOrder();
-    for (let i = 0; i < selected.length; i++) {
-      if (bulkCancelRef.current) break;
-      dispatch(
-        setBulkProgress({
-          type: "analizEt",
-          current: i + 1,
-          total: selected.length,
-          currentReceteNo: selected[i],
-        }),
-      );
-      await handleAnalizEt(selected[i], true);
+    try {
+      for (let i = 0; i < selected.length; i++) {
+        if (bulkCancel.isCancelled()) break;
+        dispatch(
+          setBulkProgress({
+            type: "analizEt",
+            current: i + 1,
+            total: selected.length,
+            currentReceteNo: selected[i],
+          }),
+        );
+        await handleAnalizEt(selected[i], true, signal);
+        if (bulkCancel.isCancelled()) break;
+      }
+    } finally {
+      bulkCancel.reset();
+      isBulkRef.current = false;
+      dispatch(setBulkProgress(null));
     }
-    isBulkRef.current = false;
-    dispatch(setBulkProgress(null));
-  };
-
-  const handleBulkCancel = () => {
-    bulkCancelRef.current = true;
   };
 
   const handleAnalizEtRef = useRef(handleAnalizEt);
@@ -238,20 +257,9 @@ function SearchReport() {
       const { receteNo } = (e as CustomEvent).detail;
       handleAnalizEtRef.current(receteNo, true);
     };
-    const cancelHandler = () => {
-      bulkCancelRef.current = true;
-    };
-    const forceStopHandler = () => {
-      bulkCancelRef.current = true;
-      dispatch(setBulkProgress(null));
-    };
     window.addEventListener("kolayrapor:retry-analysis", retryHandler);
-    window.addEventListener("kolayrapor:bulk-cancel", cancelHandler);
-    window.addEventListener("kolayrapor:bulk-force-stop", forceStopHandler);
     return () => {
       window.removeEventListener("kolayrapor:retry-analysis", retryHandler);
-      window.removeEventListener("kolayrapor:bulk-cancel", cancelHandler);
-      window.removeEventListener("kolayrapor:bulk-force-stop", forceStopHandler);
     };
   }, []);
 
@@ -271,6 +279,20 @@ function SearchReport() {
           <div className={"flex flex-row gap-3 overflow-y-hidden"}>
             <SearchByDateRange />
           </div>
+
+          {receteler.length === 0 && !playwrightLoading && (
+            <div className="mt-10 flex flex-col items-center justify-center text-center py-12 px-6 rounded-lg border border-dashed bg-muted/30">
+              <div className="rounded-full bg-background p-3 mb-3 border">
+                <CalendarSearch className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <h3 className="text-base font-semibold">Henüz sonuç yok</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                Yukarıdan tarih aralığı ve fatura türü seçip{" "}
+                <span className="font-medium">Ara</span>'ya basın. Bulunan
+                reçeteler burada listelenir.
+              </p>
+            </div>
+          )}
 
           {receteler.length > 0 && (
             <div className="mt-6">

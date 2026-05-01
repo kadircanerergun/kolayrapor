@@ -12,6 +12,8 @@ import {
 import { getPlaywrightAPI } from "@/utils/playwright-api-loader";
 import { useCredentials } from "@/contexts/credentials-context";
 import { useNavigate } from "@tanstack/react-router";
+import { useAppDispatch } from "@/store";
+import { markReady } from "@/store/slices/playwrightSlice";
 
 interface SystemStatusState {
   status: "checking" | "ready" | "error" | "initializing" | "validating";
@@ -29,6 +31,7 @@ interface SystemStatusProps {
 
 export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [state, setState] = useState<SystemStatusState>(
     cachedState ?? {
       status: "checking",
@@ -103,6 +106,7 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
         if (result.status === "ready") {
           cachedState = result;
           setState(result);
+          dispatch(markReady());
           return;
         }
 
@@ -137,11 +141,30 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
     // Only run the check if we don't have a cached result from this session
     if (!cachedState) {
       checkStatus();
+    } else if (cachedState.status === "ready") {
+      // Re-sync Redux on remount when we already know we're ready
+      dispatch(markReady());
     }
   }, []);
 
   const handleRetry = async () => {
     setIsRetrying(true);
+    await checkStatus();
+    setIsRetrying(false);
+  };
+
+  const handleReconnect = async () => {
+    setIsRetrying(true);
+    cachedState = null;
+    setState({
+      status: "initializing",
+      message: "Medula bağlantısı yenileniyor...",
+    });
+    try {
+      await getPlaywrightAPI().restart();
+    } catch (err) {
+      console.error("[SystemStatus] Restart failed:", err);
+    }
     await checkStatus();
     setIsRetrying(false);
   };
@@ -227,6 +250,28 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
             <div className="text-xs text-muted-foreground">
               <p>Sistem hazır, sorgulama yapabilirsiniz.</p>
             </div>
+          )}
+
+          {(state.status === "ready" || state.status === "error") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReconnect}
+              disabled={isRetrying}
+              className="h-7 px-2 text-xs mt-1 -ml-2"
+            >
+              {isRetrying ? (
+                <>
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  Yenileniyor...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                  Bağlantıyı Yenile
+                </>
+              )}
+            </Button>
           )}
         </div>
       </CardContent>

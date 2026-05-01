@@ -12,7 +12,8 @@ import {
   searchPrescriptionDetail,
 } from "@/store/slices/playwrightSlice";
 import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
-import { cacheAnalysis } from "@/lib/db";
+import { cacheAnalysis, syncReportsFromServer } from "@/lib/db";
+import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_OVERLAP_MS } from "@/lib/constants";
 import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import {
   type CachedRecete,
@@ -59,7 +60,16 @@ export function SonIslemlerTable({
     try {
       // Sync reports from API first
       try {
-        await reportApiService.getMyReports();
+        const SYNC_KEY = "kolayrapor_lastSyncedAt";
+        const lastSyncedAt = localStorage.getItem(SYNC_KEY);
+        const since = lastSyncedAt
+          ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
+          : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const reports = await reportApiService.getMyReports(since);
+        if (reports.length > 0) {
+          await syncReportsFromServer(reports);
+        }
+        localStorage.setItem(SYNC_KEY, new Date().toISOString());
       } catch {
         // Sync failure is non-blocking
       }
@@ -73,17 +83,18 @@ export function SonIslemlerTable({
       setLocalAnalizSonuclari(analiz);
       setAnalysisTimestamps(timestamps);
 
-      // Also hydrate Redux state so re-analyze/re-fetch work properly
+      // Also hydrate Redux state so re-analyze/re-fetch work properly. Skip
+      // partial rows so the "Reçete" detail button stays hidden until the user
+      // runs Sorgula and we have a full Recete.
       for (const r of receteler) {
+        if (r.isPartial) continue;
         if (!detaylar[r.receteNo]) {
-          const { cachedAt: _, ...recete } = r;
+          const { cachedAt: _, isPartial: __, ...recete } = r;
           dispatch(detayFetched(recete));
         }
       }
       for (const [receteNo, sonuclar] of Object.entries(analiz)) {
-        if (!analizSonuclari[receteNo]) {
-          dispatch(analizCompleted({ receteNo, sonuclar }));
-        }
+        dispatch(analizCompleted({ receteNo, sonuclar }));
       }
 
       onDataLoaded?.({ cachedReceteler: receteler, analizSonuclari: analiz });

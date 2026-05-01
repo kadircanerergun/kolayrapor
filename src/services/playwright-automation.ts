@@ -369,6 +369,8 @@ export class PlaywrightAutomationService {
   private loginCounter = 0;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
   private operationInProgress = false;
+  private initializePromise: Promise<void> | null = null;
+  private loginPromise: Promise<LoginResult> | null = null;
 
   private static readonly KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -450,6 +452,27 @@ export class PlaywrightAutomationService {
   }
 
   async initialize(forceRestart: boolean = false, onProgress?: ProgressCallback): Promise<void> {
+    // Fast path: already initialized and not restarting
+    if (this.isInitialized && !forceRestart) {
+      console.log("[Playwright] Already initialized, skipping...");
+      return;
+    }
+
+    // Dedupe concurrent callers: share the in-flight initialization promise so
+    // we don't end up launching multiple browser instances when several routes
+    // / hooks call initialize() at the same time.
+    if (this.initializePromise && !forceRestart) {
+      console.log("[Playwright] Initialization already in progress, awaiting existing call...");
+      return this.initializePromise;
+    }
+
+    this.initializePromise = this._doInitialize(forceRestart, onProgress).finally(() => {
+      this.initializePromise = null;
+    });
+    return this.initializePromise;
+  }
+
+  private async _doInitialize(forceRestart: boolean, onProgress?: ProgressCallback): Promise<void> {
     try {
       console.log("[Playwright] Starting initialization...");
 
@@ -473,9 +496,9 @@ export class PlaywrightAutomationService {
       await loadPlaywright();
       console.log("[Playwright] Playwright module loaded");
 
-      // If already initialized and not forcing restart, return
+      // Re-check after async work in case another caller finished initializing
       if (this.isInitialized && !forceRestart) {
-        console.log("[Playwright] Already initialized, skipping...");
+        console.log("[Playwright] Initialized while we waited, skipping launch...");
         return;
       }
 
@@ -566,6 +589,20 @@ export class PlaywrightAutomationService {
   }
 
   async performLogin(credentials: LoginCredentials): Promise<LoginResult> {
+    // Dedupe concurrent callers: when navigateTo() detects a redirect to /login
+    // and triggers performLogin from multiple in-flight operations, share the
+    // single in-flight login attempt instead of racing on the same page.
+    if (this.loginPromise) {
+      console.log("[Playwright] Login already in progress, awaiting existing call...");
+      return this.loginPromise;
+    }
+    this.loginPromise = this._doLogin(credentials).finally(() => {
+      this.loginPromise = null;
+    });
+    return this.loginPromise;
+  }
+
+  private async _doLogin(credentials: LoginCredentials): Promise<LoginResult> {
     if (!this.page) {
       throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
     }
@@ -611,7 +648,7 @@ export class PlaywrightAutomationService {
       await this.page.context().clearCookies();
       await this.page.goto(URLS.MEDULA_HOME);
       await this.page.waitForLoadState("load");
-      return await this.performLogin(credentials);
+      return await this._doLogin(credentials);
     }
 
     // Fill captcha solution
@@ -665,7 +702,7 @@ export class PlaywrightAutomationService {
         await this.page.context().clearCookies();
         await this.page.goto(URLS.MEDULA_HOME);
         await this.page.waitForLoadState("load");
-        return await this.performLogin(credentials);
+        return await this._doLogin(credentials);
       }
     }
     await this.page.goto(URLS.MEDULA_HOME);
@@ -683,7 +720,7 @@ export class PlaywrightAutomationService {
       }
       await this.page.context().clearCookies();
       await this.page.goto(URLS.MEDULA_HOME);
-      return await this.performLogin(credentials);
+      return await this._doLogin(credentials);
     }
     this.loginCounter = 0;
     this.startKeepAlive();
@@ -781,7 +818,53 @@ export class PlaywrightAutomationService {
 
   async navigateToSGKPortal(): Promise<NavigationResult> {
     const sgkUrl = URLS.MEDULA_HOME;
-    return this.navigateTo(sgkUrl);
+    const result = await this.navigateTo(sgkUrl);
+
+    if (result.success && this.page && (await this.isPageBlank())) {
+      console.warn(
+        "[Playwright] SGK portal returned a blank page — clearing storage and retrying",
+      );
+      await this.resetBrowserState();
+      return this.navigateTo(sgkUrl);
+    }
+
+    return result;
+  }
+
+  private async isPageBlank(): Promise<boolean> {
+    if (!this.page) return true;
+    try {
+      return await this.page.evaluate(() => {
+        const body = document.body;
+        if (!body) return true;
+        const text = (body.innerText ?? "").trim();
+        return text.length === 0 && body.children.length === 0;
+      });
+    } catch {
+      // If evaluation itself fails (e.g. page in weird state), treat as blank
+      return true;
+    }
+  }
+
+  private async resetBrowserState(): Promise<void> {
+    if (!this.page) return;
+    try {
+      await this.page.context().clearCookies();
+    } catch (err) {
+      console.warn("[Playwright] clearCookies failed during recovery:", err);
+    }
+    try {
+      await this.page.evaluate(() => {
+        try {
+          localStorage.clear();
+        } catch {}
+        try {
+          sessionStorage.clear();
+        } catch {}
+      });
+    } catch (err) {
+      console.warn("[Playwright] storage clear failed during recovery:", err);
+    }
   }
 
   /**

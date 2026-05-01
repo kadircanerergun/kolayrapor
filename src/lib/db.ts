@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable, type Table } from "dexie";
-import type { Recete } from "@/types/recete";
+import type { Recete, ReceteIlac } from "@/types/recete";
 import type {
   ReceteReportResponse,
   SyncedReport,
@@ -7,6 +7,9 @@ import type {
 
 export interface CachedRecete extends Recete {
   cachedAt: number;
+  /** True when this row was created from server sync only and lacks full
+   *  prescription details (no patient name, no full medicine list, etc.). */
+  isPartial?: boolean;
 }
 
 interface CachedAnaliz {
@@ -123,31 +126,104 @@ export async function getAllCachedAnalysis(): Promise<Record<string, Record<stri
 export async function syncReportsFromServer(
   reports: SyncedReport[],
 ): Promise<number> {
-  let synced = 0;
-  for (const report of reports) {
-    const existing = await db.analizSonuclari
-      .where("[receteNo+barkod]")
-      .equals([report.receteNo, report.barkod])
-      .first();
-    if (!existing) {
-      const result: ReceteReportResponse = {
-        reportId: report.id,
-        isValid: report.isValid,
-        validityScore: report.validityScore,
-        reportEvolutionDetails: report.reportEvolutionDetails,
-        processedAt: report.processedAt,
-        pharmacyId: "",
-      };
-      await db.analizSonuclari.put({
-        receteNo: report.receteNo,
-        barkod: report.barkod,
-        result,
-        cachedAt: new Date(report.processedAt).getTime(),
-      });
-      synced++;
+  if (reports.length === 0) return 0;
+
+  // Dedupe: for each [receteNo, barkod], keep only the report with the latest
+  // processedAt — the server may return multiple historical entries per key.
+  const latestByKey = new Map<string, SyncedReport>();
+  for (const r of reports) {
+    const key = `${r.receteNo}|${r.barkod}`;
+    const existing = latestByKey.get(key);
+    if (
+      !existing ||
+      new Date(r.processedAt).getTime() >
+        new Date(existing.processedAt).getTime()
+    ) {
+      latestByKey.set(key, r);
     }
   }
-  return synced;
+
+  // Skip incoming reports that are older than the local cache so we don't
+  // clobber a fresh local analysis with stale server data.
+  const candidates = [...latestByKey.values()];
+  const localRows = await db.analizSonuclari.bulkGet(
+    candidates.map((r) => [r.receteNo, r.barkod] as [string, string]),
+  );
+  const entries: CachedAnaliz[] = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const r = candidates[i];
+    const incomingAt = new Date(r.processedAt).getTime();
+    const local = localRows[i];
+    if (local && local.cachedAt >= incomingAt) continue;
+    entries.push({
+      receteNo: r.receteNo,
+      barkod: r.barkod,
+      result: {
+        reportId: r.id,
+        isValid: r.isValid,
+        validityScore: r.validityScore,
+        reportEvolutionDetails: r.reportEvolutionDetails,
+        processedAt: r.processedAt,
+        pharmacyId: "",
+      },
+      cachedAt: incomingAt,
+    });
+  }
+  if (entries.length > 0) {
+    await db.analizSonuclari.bulkPut(entries);
+  }
+
+  // Build/refresh partial prescription rows for receteNos we don't have a full
+  // cached detail for, so synced reports surface in the prescription list and
+  // the user can click Sorgula to fill in the rest.
+  const byReceteNo = new Map<string, SyncedReport[]>();
+  for (const r of reports) {
+    const arr = byReceteNo.get(r.receteNo) ?? [];
+    arr.push(r);
+    byReceteNo.set(r.receteNo, arr);
+  }
+
+  const partialEntries: CachedRecete[] = [];
+  for (const [receteNo, group] of byReceteNo) {
+    const existing = await db.receteDetaylar.get(receteNo);
+    if (existing && !existing.isPartial) continue;
+
+    const ilacMap = new Map<string, ReceteIlac>();
+    if (existing?.ilaclar) {
+      for (const ilac of existing.ilaclar) ilacMap.set(ilac.barkod, ilac);
+    }
+    for (const sr of group) {
+      if (!ilacMap.has(sr.barkod)) {
+        ilacMap.set(sr.barkod, {
+          barkod: sr.barkod,
+          ad: sr.ilacAd ?? "",
+          verilebilecegiTarih: "",
+          adet: 0,
+          periyot: "",
+          doz: "",
+          raporluMu: true,
+        });
+      }
+    }
+
+    partialEntries.push({
+      receteNo,
+      receteTarihi: existing?.receteTarihi ?? "",
+      sonIslemTarihi: existing?.sonIslemTarihi ?? "",
+      tesisKodu: existing?.tesisKodu ?? "",
+      doktorBrans: existing?.doktorBrans ?? "",
+      ad: existing?.ad ?? "",
+      soyad: existing?.soyad ?? "",
+      ilaclar: [...ilacMap.values()],
+      cachedAt: existing?.cachedAt ?? Date.now(),
+      isPartial: true,
+    });
+  }
+  if (partialEntries.length > 0) {
+    await db.receteDetaylar.bulkPut(partialEntries);
+  }
+
+  return entries.length;
 }
 
 // --- Clear all ---
