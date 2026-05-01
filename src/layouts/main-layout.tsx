@@ -96,7 +96,13 @@ export default function MainLayout({
   // Derive display values from pharmacy context
   const activePlanName = (() => {
     if (!subscription || subscription.status !== "active") return null;
-    // Find matching product name from plans
+    // Prefer the plan name embedded in the subscription (covers DEMO and other
+    // non-purchasable plans that are filtered out of `products`).
+    if (subscription.plan?.name) {
+      return subscription.plan.product?.name
+        ? `${subscription.plan.product.name} — ${subscription.plan.name}`
+        : subscription.plan.name;
+    }
     const matchedProduct = products.find((p) =>
       p.variants.some((v) => v.id === subscription.planId),
     );
