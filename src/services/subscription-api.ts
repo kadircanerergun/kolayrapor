@@ -334,6 +334,24 @@ class SubscriptionApiService {
     }
   }
 
+  async resumeSubscription(): Promise<SubscriptionResponse> {
+    try {
+      await apiClient.post(`${API_BASE_URL}/store/resume-subscription`);
+      return {
+        success: true,
+        message: "Lisansınız devam ettirildi.",
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          "Lisans devam ettirilemedi",
+      };
+    }
+  }
+
   // ─── Agreements ──────────────────────────────────────────
 
   async getRegistrationAgreements(

@@ -45,6 +45,7 @@ export interface ApiSubscription {
   endDate: string | null;
   requestCount: number;
   autoRenew: boolean;
+  cancelAtPeriodEnd: boolean;
   nextBillingDate: string | null;
   renewalRetryCount: number;
   createdAt: string;

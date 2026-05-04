@@ -146,6 +146,7 @@ function SettingsPage() {
   const { section } = Route.useSearch();
   const [activeSection, setActiveSection] = useState<SettingsSection>(section || "eczane");
   const [cancelling, setCancelling] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<
@@ -451,10 +452,14 @@ function SettingsPage() {
   };
 
   const handleCancelSubscription = () => {
+    const endDateText = currentSubscription?.endDate
+      ? new Date(currentSubscription.endDate).toLocaleDateString("tr-TR")
+      : null;
     showConfirmDialog({
       title: "Lisansı İptal Et",
-      description:
-        "Lisansınızı iptal etmek istediğinize emin misiniz? Mevcut dönem sonuna kadar hizmet almaya devam edeceksiniz.",
+      description: endDateText
+        ? `Lisansınızı iptal etmek istediğinize emin misiniz? ${endDateText} tarihine kadar hizmet almaya devam edeceksiniz.`
+        : "Lisansınızı iptal etmek istediğinize emin misiniz? Mevcut dönem sonuna kadar hizmet almaya devam edeceksiniz.",
       confirmText: "İptal Et",
       cancelText: "Vazgeç",
       variant: "destructive",
@@ -463,7 +468,11 @@ function SettingsPage() {
         try {
           const result = await subscriptionApiService.cancelSubscription();
           if (result.success) {
-            toast.success(result.message || "Lisans iptal edildi.");
+            toast.success(
+              endDateText
+                ? `Lisansınız ${endDateText} tarihinde sona erecek. O tarihe kadar hizmet almaya devam edebilirsiniz.`
+                : result.message || "Lisans iptal edildi.",
+            );
             await refresh();
           } else {
             toast.error(result.error || "İptal işlemi başarısız oldu.");
@@ -475,6 +484,23 @@ function SettingsPage() {
         }
       },
     });
+  };
+
+  const handleResumeSubscription = async () => {
+    setResuming(true);
+    try {
+      const result = await subscriptionApiService.resumeSubscription();
+      if (result.success) {
+        toast.success(result.message || "Lisansınız devam ettirildi.");
+        await refresh();
+      } else {
+        toast.error(result.error || "Lisans devam ettirilemedi.");
+      }
+    } catch {
+      toast.error("Devam ettirme işlemi sırasında bir hata oluştu.");
+    } finally {
+      setResuming(false);
+    }
   };
 
   const getCardTypeColor = (cardType: string) => {
@@ -1155,6 +1181,26 @@ function SettingsPage() {
                 </div>
               </div>
 
+              {/* Pending cancellation banner */}
+              {currentSubscription.cancelAtPeriodEnd &&
+                currentSubscription.status === "active" && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 p-3 bg-amber-50 dark:bg-amber-900/10">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-medium text-amber-800 dark:text-amber-300">
+                          Lisansınız iptal edilecek
+                        </p>
+                        <p className="text-amber-700/80 dark:text-amber-400/80 mt-1">
+                          {currentSubscription.endDate
+                            ? `${new Date(currentSubscription.endDate).toLocaleDateString("tr-TR")} tarihine kadar hizmet almaya devam edebilirsiniz. Vazgeçmek için "Lisansı Devam Ettir" butonunu kullanabilirsiniz.`
+                            : "Mevcut dönem sonuna kadar hizmet almaya devam edebilirsiniz."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               {/* Renewal Info */}
               <Separator />
               <div className="space-y-3">
@@ -1174,6 +1220,10 @@ function SettingsPage() {
                         {currentSubscription.autoRenew ? (
                           <span className="text-green-600 dark:text-green-400">
                             Aktif
+                          </span>
+                        ) : currentSubscription.cancelAtPeriodEnd ? (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            Dönem sonunda iptal
                           </span>
                         ) : (
                           <span className="text-muted-foreground">
@@ -1302,24 +1352,46 @@ function SettingsPage() {
               <Separator />
 
               <div className="flex gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleCancelSubscription}
-                  disabled={cancelling}
-                >
-                  {cancelling ? (
-                    <>
-                      <Spinner size="sm" className="mr-2" />
-                      İptal Ediliyor...
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-4 w-4 mr-2" />
-                      Lisansı İptal Et
-                    </>
-                  )}
-                </Button>
+                {currentSubscription.cancelAtPeriodEnd &&
+                currentSubscription.status === "active" ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleResumeSubscription}
+                    disabled={resuming}
+                  >
+                    {resuming ? (
+                      <>
+                        <Spinner size="sm" className="mr-2" />
+                        Devam Ettiriliyor...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw className="h-4 w-4 mr-2" />
+                        Lisansı Devam Ettir
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelling}
+                  >
+                    {cancelling ? (
+                      <>
+                        <Spinner size="sm" className="mr-2" />
+                        İptal Ediliyor...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Lisansı İptal Et
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
