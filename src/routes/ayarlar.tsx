@@ -1134,10 +1134,13 @@ function SettingsPage() {
         </Card>
       </div>
 
-      {/* Active/Suspended Subscription Details */}
+      {/* Active/Suspended Subscription Details (also: cancelled but still within paid period) */}
       {currentSubscription &&
         (currentSubscription.status === "active" ||
-          currentSubscription.status === "suspended") && (
+          currentSubscription.status === "suspended" ||
+          (currentSubscription.status === "cancelled" &&
+            currentSubscription.endDate &&
+            new Date(currentSubscription.endDate).getTime() > Date.now())) && (
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="grid gap-4 sm:grid-cols-4">
@@ -1182,8 +1185,8 @@ function SettingsPage() {
               </div>
 
               {/* Pending cancellation banner */}
-              {currentSubscription.cancelAtPeriodEnd &&
-                currentSubscription.status === "active" && (
+              {(currentSubscription.cancelAtPeriodEnd ||
+                currentSubscription.status === "cancelled") && (
                   <div className="rounded-lg border border-amber-200 dark:border-amber-800 p-3 bg-amber-50 dark:bg-amber-900/10">
                     <div className="flex items-start gap-2">
                       <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
@@ -1352,8 +1355,8 @@ function SettingsPage() {
               <Separator />
 
               <div className="flex gap-2">
-                {currentSubscription.cancelAtPeriodEnd &&
-                currentSubscription.status === "active" ? (
+                {currentSubscription.cancelAtPeriodEnd ||
+                currentSubscription.status === "cancelled" ? (
                   <Button
                     variant="default"
                     size="sm"
