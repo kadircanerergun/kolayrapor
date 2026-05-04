@@ -65,7 +65,6 @@ function OdemePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [card, setCard] = useState<CardInfo>(EMPTY_CARD);
-  const [saveCard, setSaveCard] = useState(false);
 
   // Saved cards
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
@@ -156,7 +155,7 @@ function OdemePage() {
                 savedCardId: selectedCardId,
               })
             : await subscriptionApiService.subscribe(variant.id, card, {
-                saveCard,
+                saveCard: true,
               });
       } else if (type === "credit" && creditPackage) {
         result =
@@ -169,7 +168,7 @@ function OdemePage() {
             : await subscriptionApiService.purchaseCredits(
                 creditPackage.id,
                 card,
-                { saveCard },
+                { saveCard: true },
               );
       } else {
         return;
@@ -662,28 +661,18 @@ function OdemePage() {
                     </div>
                   </div>
 
-                  {/* Save card checkbox */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={saveCard}
-                      onChange={(e) => setSaveCard(e.target.checked)}
-                      className="accent-primary h-4 w-4"
-                    />
-                    <span className="text-sm">
-                      Kartımı sonraki ödemeler için kaydet
+                  {/* Card storage notice */}
+                  <div className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    <ShieldCheck className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <span>
+                      Sonraki ödemelerinizde kullanılmak üzere kartınız
+                      kaydedilecektir. Kart bilgileriniz tarafımızda
+                      saklanmaz; yalnızca banka tarafında güvenli olarak
+                      tutulur.
                     </span>
-                  </label>
+                  </div>
                 </>
               )}
-
-              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
-                <ShieldCheck className="h-4 w-4 flex-shrink-0" />
-                <span>
-                  Ödeme bilgileriniz güvenli bir şekilde işlenmektedir. Kart
-                  bilgileri banka tarafında saklanır.
-                </span>
-              </div>
 
               <div className="flex gap-2 pt-4">
                 <Button

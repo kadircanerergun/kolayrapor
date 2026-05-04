@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -25,51 +25,16 @@ import { Spinner } from "@/components/ui/spinner";
 import { EmbeddedRegistrationForm } from "@/components/embedded-registration-form";
 import { useSubscription } from "@/hooks/useSubscription";
 
-const POST_REGISTER_POLL_INTERVAL_MS = 1500;
-const POST_REGISTER_POLL_MAX_ATTEMPTS = 6;
-
 function RegistrationPage() {
   const { pharmacy, isPending, loading, refresh } = useSubscription();
-  const navigate = useNavigate();
   const [justRegistered, setJustRegistered] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
 
   const handleRegistered = useCallback(() => {
     setJustRegistered(true);
-    refresh();
-  }, [refresh]);
-
-  // Poll the API a few times after registration to catch auto-approval
-  // (e.g. Kolay Asistan SSO) that completes shortly after the iframe message.
-  useEffect(() => {
-    if (!justRegistered) return;
-    let attempts = 0;
-    pollRef.current = setInterval(() => {
-      attempts++;
-      refresh();
-      if (attempts >= POST_REGISTER_POLL_MAX_ATTEMPTS) {
-        stopPolling();
-        setJustRegistered(false);
-      }
-    }, POST_REGISTER_POLL_INTERVAL_MS);
-    return stopPolling;
-  }, [justRegistered, refresh, stopPolling]);
-
-  // When auto-approval is detected, drop into the app immediately.
-  useEffect(() => {
-    if (justRegistered && pharmacy && !isPending) {
-      stopPolling();
-      setJustRegistered(false);
-      navigate({ to: "/home" });
-    }
-  }, [justRegistered, pharmacy, isPending, navigate, stopPolling]);
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  }, []);
 
   if (loading) {
     return (

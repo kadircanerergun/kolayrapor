@@ -395,6 +395,7 @@ function SettingsPage() {
       setUsername(credentials.username || "");
       setPassword(credentials.password || "");
       setCredentialsSaved(true);
+      setMedulaConsent(true);
     } else {
       setUsername("");
       setPassword("");
@@ -1607,7 +1608,7 @@ function SettingsPage() {
       <div>
         <h2 className="text-xl font-semibold">Senkronizasyon</h2>
         <p className="text-sm text-muted-foreground">
-          Sunucudaki rapor verilerinizi yerel onbellege senkronize edin
+          Farklı bilgisayarlardan yaptığınız Rapor Kontrol işlemleri ve sonuçlarını senkronize ederek bir arada görüntüleyin.
         </p>
       </div>
 
