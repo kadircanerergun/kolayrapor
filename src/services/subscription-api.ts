@@ -249,6 +249,45 @@ class SubscriptionApiService {
     }
   }
 
+  async changePlan(
+    planId: string,
+    cardInfo?: CardInfo,
+    options?: { savedCardId?: string; saveCard?: boolean },
+  ): Promise<SubscriptionResponse> {
+    try {
+      const body: Record<string, unknown> = { planId };
+      if (options?.savedCardId) {
+        body.savedCardId = options.savedCardId;
+      } else {
+        body.cardInfo = cardInfo;
+        if (options?.saveCard) {
+          body.saveCard = "true";
+        }
+      }
+
+      const response = await apiClient.post(
+        `${API_BASE_URL}/store/change-plan`,
+        body,
+      );
+      return {
+        success: true,
+        message: "Lisans planı başarıyla değiştirildi!",
+        data: {
+          subscriptionId: response.data.subscription?.id,
+          status: response.data.subscription?.status,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          "Plan değişikliği başarısız oldu",
+      };
+    }
+  }
+
   async purchaseCredits(
     productId: string,
     cardInfo?: CardInfo,

@@ -71,6 +71,7 @@ export function SubscriptionProducts() {
   >({});
   const { pharmacy, isPending, currentSubscription } = useSubscription();
   const hasActiveSubscription = currentSubscription?.status === "active";
+  const currentPlanId = currentSubscription?.planId;
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -107,9 +108,15 @@ export function SubscriptionProducts() {
       return;
     }
 
+    const isPlanChange =
+      hasActiveSubscription && currentSubscription?.planId !== variantId;
+
     navigate({
       to: "/odeme",
-      search: { type: "subscription", id: variantId },
+      search: {
+        type: isPlanChange ? "plan-change" : "subscription",
+        id: variantId,
+      },
     });
   };
 
@@ -241,7 +248,8 @@ export function SubscriptionProducts() {
             </CardContent>
 
             <CardFooter>
-              {hasActiveSubscription ? (
+              {hasActiveSubscription &&
+              currentPlanId === selectedVariantId ? (
                 <Button
                   className="w-full"
                   size="lg"
@@ -249,6 +257,15 @@ export function SubscriptionProducts() {
                   disabled
                 >
                   Mevcut Lisansınız Aktif
+                </Button>
+              ) : hasActiveSubscription ? (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  variant={product.isRecommended ? "default" : "outline"}
+                  onClick={() => handleSubscribeClick(product.id)}
+                >
+                  Planı Değiştir
                 </Button>
               ) : (
                 <Button

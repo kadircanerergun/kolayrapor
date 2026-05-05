@@ -38,11 +38,12 @@ import {
   ShieldCheck,
   Trash2,
   XCircle,
+  Info,
 } from "lucide-react";
 import { calculateKdv, priceWithKdv } from "@/utils/kdv";
 
 interface OdemeSearch {
-  type: "subscription" | "credit";
+  type: "subscription" | "credit" | "plan-change";
   id: string;
 }
 
@@ -59,8 +60,16 @@ type PaymentMode = "saved" | "new";
 function OdemePage() {
   const { type, id } = Route.useSearch();
   const navigate = useNavigate();
-  const { pharmacy, isPending, refresh } = useSubscription();
+  const {
+    pharmacy,
+    isPending,
+    refresh,
+    currentSubscription,
+    creditBalance,
+    currentVariant,
+  } = useSubscription();
   const { showAlert } = useDialogContext();
+  const isPlanChange = type === "plan-change";
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -123,7 +132,7 @@ function OdemePage() {
   };
 
   const loadProductData = async () => {
-    if (type === "subscription") {
+    if (type === "subscription" || type === "plan-change") {
       const products = await subscriptionApiService.getProducts();
       for (const p of products) {
         const v = p.variants.find((v) => v.id === id);
@@ -148,7 +157,16 @@ function OdemePage() {
     try {
       let result: Awaited<ReturnType<typeof subscriptionApiService.subscribe>>;
 
-      if (type === "subscription" && variant) {
+      if (type === "plan-change" && variant) {
+        result =
+          paymentMode === "saved" && selectedCardId
+            ? await subscriptionApiService.changePlan(variant.id, undefined, {
+                savedCardId: selectedCardId,
+              })
+            : await subscriptionApiService.changePlan(variant.id, card, {
+                saveCard: true,
+              });
+      } else if (type === "subscription" && variant) {
         result =
           paymentMode === "saved" && selectedCardId
             ? await subscriptionApiService.subscribe(variant.id, undefined, {
@@ -186,17 +204,21 @@ function OdemePage() {
         await refresh();
         setSuccessMessage(
           result.message ||
-            (type === "subscription"
-              ? "Lisans başarıyla oluşturuldu!"
-              : "Ek kredi satın alma işlemi başarıyla tamamlandı."),
+            (type === "plan-change"
+              ? "Lisans planınız başarıyla değiştirildi!"
+              : type === "subscription"
+                ? "Lisans başarıyla oluşturuldu!"
+                : "Ek kredi satın alma işlemi başarıyla tamamlandı."),
         );
         setSuccessOpen(true);
       } else {
         setErrorMessage(
           result.error ||
-            (type === "subscription"
-              ? "Lisans işlemi başarısız oldu."
-              : "Satın alma işlemi başarısız oldu."),
+            (type === "plan-change"
+              ? "Plan değişikliği başarısız oldu."
+              : type === "subscription"
+                ? "Lisans işlemi başarısız oldu."
+                : "Satın alma işlemi başarısız oldu."),
         );
         setErrorOpen(true);
       }
@@ -291,9 +313,13 @@ function OdemePage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Ödeme</h1>
+          <h1 className="text-2xl font-bold">
+            {isPlanChange ? "Plan Değişikliği" : "Ödeme"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Ödeme bilgilerinizi girerek işlemi tamamlayın
+            {isPlanChange
+              ? "Yeni planınız için ödeme yaparak plan değişikliğini tamamlayın"
+              : "Ödeme bilgilerinizi girerek işlemi tamamlayın"}
           </p>
         </div>
       </div>
@@ -312,7 +338,56 @@ function OdemePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {type === "subscription" && product && variant && (
+            {isPlanChange && product && variant && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-900 space-y-1.5">
+                    <p className="font-semibold">Plan değişikliği bilgileri</p>
+                    {currentVariant && (
+                      <p>
+                        <span className="text-amber-800">Mevcut plan:</span>{" "}
+                        <span className="font-medium">
+                          {currentVariant.name} ({currentVariant.duration})
+                        </span>
+                      </p>
+                    )}
+                    <p>
+                      <span className="text-amber-800">
+                        Mevcut krediniz korunacak:
+                      </span>{" "}
+                      <span className="font-medium">
+                        {creditBalance?.balance ?? 0} kredi
+                      </span>{" "}
+                      mevcut geçerlilik süreleri içinde kullanılabilir.
+                    </p>
+                    <p>
+                      <span className="text-amber-800">Yeni krediler:</span>{" "}
+                      <span className="font-medium">
+                        {variant.includedCreditAmount} kredi
+                      </span>{" "}
+                      hesabınıza eklenecek.
+                    </p>
+                    <p>
+                      <span className="text-amber-800">Yeni dönem:</span>{" "}
+                      bugünden itibaren {variant.duration} geçerli.
+                    </p>
+                    {currentSubscription?.endDate && (
+                      <p className="text-amber-700 text-xs">
+                        Not: Mevcut planın kalan süresi (
+                        {new Date(
+                          currentSubscription.endDate,
+                        ).toLocaleDateString("tr-TR")}
+                        'a kadar) iade edilmez.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {(type === "subscription" || type === "plan-change") &&
+              product &&
+              variant && (
               <>
                 <div className="space-y-1">
                   <h3 className="text-xl font-semibold">{product.name}</h3>
@@ -690,6 +765,8 @@ function OdemePage() {
                       <Spinner size="sm" className="mr-2" />
                       İşleniyor...
                     </>
+                  ) : type === "plan-change" ? (
+                    "Planı Değiştir"
                   ) : type === "subscription" ? (
                     "Lisans Al"
                   ) : (
@@ -826,9 +903,14 @@ function OdemePage() {
 }
 
 export const Route = createFileRoute("/odeme")({
-  validateSearch: (search: Record<string, unknown>): OdemeSearch => ({
-    type: (search.type as OdemeSearch["type"]) || "subscription",
-    id: (search.id as string) || "",
-  }),
+  validateSearch: (search: Record<string, unknown>): OdemeSearch => {
+    const t = search.type as string | undefined;
+    const validType: OdemeSearch["type"] =
+      t === "credit" || t === "plan-change" ? t : "subscription";
+    return {
+      type: validType,
+      id: (search.id as string) || "",
+    };
+  },
   component: OdemePage,
 });
