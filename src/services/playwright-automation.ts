@@ -368,11 +368,39 @@ export class PlaywrightAutomationService {
   private storedCredentials: LoginCredentials | null = null;
   private loginCounter = 0;
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
-  private operationInProgress = false;
+  // Depth counter so nested operations (e.g. searchPrescription → navigateToSGKPortal → navigateTo)
+  // compose safely. Keep-alive only fires when depth === 0.
+  private operationDepth = 0;
   private initializePromise: Promise<void> | null = null;
   private loginPromise: Promise<LoginResult> | null = null;
 
   private static readonly KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+
+  private get operationInProgress(): boolean {
+    return this.operationDepth > 0;
+  }
+
+  // Wraps any high-level browser operation: tracks depth so keep-alive can't
+  // collide mid-flight, and resets the keep-alive cadence on exit so the next
+  // tick is 2 min from the end of real activity rather than from launch.
+  private async withOperation<T>(fn: () => Promise<T>): Promise<T> {
+    this.operationDepth++;
+    try {
+      return await fn();
+    } finally {
+      this.operationDepth--;
+      if (this.operationDepth === 0) {
+        this.restartKeepAliveTimer();
+      }
+    }
+  }
+
+  private restartKeepAliveTimer(): void {
+    // Only reset cadence if keep-alive is actually active (post-login).
+    if (this.keepAliveTimer !== null) {
+      this.startKeepAlive();
+    }
+  }
 
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
@@ -405,21 +433,20 @@ export class PlaywrightAutomationService {
     this.keepAliveTimer = setInterval(async () => {
       if (!this.isReady() || this.operationInProgress) return;
       try {
-        console.log("[Playwright] Keep-alive: refreshing session...");
-        this.operationInProgress = true;
-        await this.page!.goto(URLS.MEDULA_HOME, { waitUntil: "load", timeout: 30000 });
-        await this.page!.waitForLoadState("networkidle").catch(() => {});
-        // If redirected to login, re-login automatically
-        const url = this.page!.url();
-        if (url.includes("/login") && this.hasCredentials()) {
-          console.log("[Playwright] Keep-alive: session expired, re-logging in...");
-          await this.performLogin(this.storedCredentials!);
-        }
-        console.log("[Playwright] Keep-alive: session refreshed");
+        await this.withOperation(async () => {
+          console.log("[Playwright] Keep-alive: refreshing session...");
+          await this.page!.goto(URLS.MEDULA_HOME, { waitUntil: "load", timeout: 30000 });
+          await this.page!.waitForLoadState("networkidle").catch(() => {});
+          // If redirected to login, re-login automatically
+          const url = this.page!.url();
+          if (url.includes("/login") && this.hasCredentials()) {
+            console.log("[Playwright] Keep-alive: session expired, re-logging in...");
+            await this.performLogin(this.storedCredentials!);
+          }
+          console.log("[Playwright] Keep-alive: session refreshed");
+        });
       } catch (err) {
         console.warn("[Playwright] Keep-alive failed:", err);
-      } finally {
-        this.operationInProgress = false;
       }
     }, PlaywrightAutomationService.KEEP_ALIVE_INTERVAL_MS);
     console.log("[Playwright] Keep-alive started (every 2 min)");
@@ -448,7 +475,7 @@ export class PlaywrightAutomationService {
       };
     }
 
-    return this.performLogin(this.storedCredentials!);
+    return this.withOperation(() => this.performLogin(this.storedCredentials!));
   }
 
   async initialize(forceRestart: boolean = false, onProgress?: ProgressCallback): Promise<void> {
@@ -542,12 +569,11 @@ export class PlaywrightAutomationService {
       throw new Error("Playwright not initialized");
     }
 
-    this.operationInProgress = true;
-    try {
+    return this.withOperation(async () => {
       // Retry goto on ERR_ABORTED (common with SGK portal during concurrent navigations)
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          await this.page.goto(url, { waitUntil: "load" });
+          await this.page!.goto(url, { waitUntil: "load" });
           break;
         } catch (err: any) {
           if (attempt < 2 && err?.message?.includes("ERR_ABORTED")) {
@@ -557,10 +583,10 @@ export class PlaywrightAutomationService {
           throw err;
         }
       }
-      await this.page.waitForLoadState("networkidle").catch(() => {
+      await this.page!.waitForLoadState("networkidle").catch(() => {
         // networkidle timeout is non-fatal — page is already loaded
       });
-      const currentUrl = this.page.url();
+      const currentUrl = this.page!.url();
 
       // Check if redirected to login page
       const redirectedToLogin =
@@ -583,9 +609,7 @@ export class PlaywrightAutomationService {
         currentUrl,
         redirectedToLogin,
       };
-    } finally {
-      this.operationInProgress = false;
-    }
+    });
   }
 
   async performLogin(credentials: LoginCredentials): Promise<LoginResult> {
@@ -817,18 +841,20 @@ export class PlaywrightAutomationService {
   }
 
   async navigateToSGKPortal(): Promise<NavigationResult> {
-    const sgkUrl = URLS.MEDULA_HOME;
-    const result = await this.navigateTo(sgkUrl);
+    return this.withOperation(async () => {
+      const sgkUrl = URLS.MEDULA_HOME;
+      const result = await this.navigateTo(sgkUrl);
 
-    if (result.success && this.page && (await this.isPageBlank())) {
-      console.warn(
-        "[Playwright] SGK portal returned a blank page — clearing storage and retrying",
-      );
-      await this.resetBrowserState();
-      return this.navigateTo(sgkUrl);
-    }
+      if (result.success && this.page && (await this.isPageBlank())) {
+        console.warn(
+          "[Playwright] SGK portal returned a blank page — clearing storage and retrying",
+        );
+        await this.resetBrowserState();
+        return this.navigateTo(sgkUrl);
+      }
 
-    return result;
+      return result;
+    });
   }
 
   private async isPageBlank(): Promise<boolean> {
@@ -872,107 +898,111 @@ export class PlaywrightAutomationService {
    * Does NOT parse the result — just visually navigates the browser.
    */
   async navigateToPrescription(prescriptionNumber: string): Promise<NavigationResult> {
-    try {
-      if (!this.page) {
-        throw new Error("System is not ready.");
+    return this.withOperation(async () => {
+      try {
+        if (!this.page) {
+          throw new Error("System is not ready.");
+        }
+        await this.navigateToSGKPortal();
+        await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+        const menu = this.page
+          .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
+          .nth(5);
+        await menu.click();
+        await this.page.waitForSelector('input[name="form1:text2"]', {
+          timeout: 3000,
+        });
+
+        const prescriptionField = await this.page.$('input[name="form1:text2"]');
+        if (!prescriptionField) {
+          throw new Error("Could not find prescription number field");
+        }
+        await prescriptionField.fill(prescriptionNumber);
+
+        const searchButton = await this.page.$(
+          'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
+        );
+        if (!searchButton) {
+          throw new Error("Could not find search button");
+        }
+
+        await searchButton.click();
+        await this.page.waitForLoadState("load");
+
+        return {
+          success: true,
+          currentUrl: this.page.url(),
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Navigation failed",
+        };
       }
-      await this.navigateToSGKPortal();
-      await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
-      const menu = this.page
-        .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
-        .nth(5);
-      await menu.click();
-      await this.page.waitForSelector('input[name="form1:text2"]', {
-        timeout: 3000,
-      });
-
-      const prescriptionField = await this.page.$('input[name="form1:text2"]');
-      if (!prescriptionField) {
-        throw new Error("Could not find prescription number field");
-      }
-      await prescriptionField.fill(prescriptionNumber);
-
-      const searchButton = await this.page.$(
-        'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
-      );
-      if (!searchButton) {
-        throw new Error("Could not find search button");
-      }
-
-      await searchButton.click();
-      await this.page.waitForLoadState("load");
-
-      return {
-        success: true,
-        currentUrl: this.page.url(),
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Navigation failed",
-      };
-    }
+    });
   }
 
   async searchPrescription(
     prescriptionNumber: string,
   ): Promise<NavigationResult & { prescriptionData?: Recete }> {
-    try {
-      if (!this.page) {
-        throw new Error("System is not ready.");
-      }
-      await this.navigateToSGKPortal();
-      await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
-      const menu = this.page
-        .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
-        .nth(5);
-      await menu.click();
-      await this.page.waitForSelector('input[name="form1:text2"]', {
-        timeout: 3000,
-      });
-
-      const prescriptionField = await this.page.$('input[name="form1:text2"]');
-      if (!prescriptionField) {
-        throw new Error("Could not find prescription number field");
-      }
-      await prescriptionField.fill(prescriptionNumber);
-
-      // Click the search button
-      const searchButton = await this.page.$(
-        'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
-      );
-      if (!searchButton) {
-        throw new Error("Could not find search button");
-      }
-
-      await searchButton.click();
-      await this.page.waitForLoadState("load");
-
-      // Parse recete from current page
-      const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
-      await this.ilaclaraRaporEkle(recete);
-      return {
-        success: true,
-        currentUrl: this.page.url(),
-        prescriptionData: recete,
-      };
-    } catch (error: any) {
-      const msg = error?.message || "";
-      if (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed")) {
-        console.warn("[Playwright] Context/page lost during prescription search, retrying...");
-        try {
-          return await this.searchPrescription(prescriptionNumber);
-        } catch {
-          // fall through to error return below
+    return this.withOperation(async () => {
+      try {
+        if (!this.page) {
+          throw new Error("System is not ready.");
         }
+        await this.navigateToSGKPortal();
+        await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+        const menu = this.page
+          .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
+          .nth(5);
+        await menu.click();
+        await this.page.waitForSelector('input[name="form1:text2"]', {
+          timeout: 3000,
+        });
+
+        const prescriptionField = await this.page.$('input[name="form1:text2"]');
+        if (!prescriptionField) {
+          throw new Error("Could not find prescription number field");
+        }
+        await prescriptionField.fill(prescriptionNumber);
+
+        // Click the search button
+        const searchButton = await this.page.$(
+          'input[type="submit"][value="Sorgula"]#form1\\:buttonReceteNoSorgula',
+        );
+        if (!searchButton) {
+          throw new Error("Could not find search button");
+        }
+
+        await searchButton.click();
+        await this.page.waitForLoadState("load");
+
+        // Parse recete from current page
+        const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
+        await this.ilaclaraRaporEkle(recete);
+        return {
+          success: true,
+          currentUrl: this.page.url(),
+          prescriptionData: recete,
+        };
+      } catch (error: any) {
+        const msg = error?.message || "";
+        if (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed")) {
+          console.warn("[Playwright] Context/page lost during prescription search, retrying...");
+          try {
+            return await this.searchPrescription(prescriptionNumber);
+          } catch {
+            // fall through to error return below
+          }
+        }
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : "Prescription search failed",
+        };
       }
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Prescription search failed",
-      };
-    }
+    });
   }
 
   async ilaclaraRaporEkle(recete: Recete): Promise<void> {
@@ -1038,34 +1068,36 @@ export class PlaywrightAutomationService {
     if (!this.page) {
       throw new Error("System is not ready.");
     }
-    const startDateObj = dayjs(startDate);
-    const endDateObj = dayjs(endDate);
-    const monthYearArray: string[] = [];
+    return this.withOperation(async () => {
+      const startDateObj = dayjs(startDate);
+      const endDateObj = dayjs(endDate);
+      const monthYearArray: string[] = [];
 
-    let current = startDateObj.startOf("month");
-    const end = endDateObj.startOf("month");
+      let current = startDateObj.startOf("month");
+      const end = endDateObj.startOf("month");
 
-    while (current.isBefore(end) || current.isSame(end)) {
-      monthYearArray.push(current.format("YYYYMM01"));
-      current = current.add(1, "month");
-    }
-    const recipes = [];
-    for (const period of monthYearArray) {
-      const result = await this.getRecipesByPeriod(period, faturaTuru);
-      recipes.push(...result);
-    }
-    const filteredRecipes = recipes.filter((recete) => {
-      const receteDate = dayjs(recete.receteTarihi, "DD/MM/YYYY");
-      return (
-        receteDate.isSame(startDateObj, 'date') ||
-        receteDate.isSame(endDateObj, 'date') ||
-        (receteDate.isAfter(startDateObj, 'date') && receteDate.isBefore(endDateObj, 'date'))
-      );
+      while (current.isBefore(end) || current.isSame(end)) {
+        monthYearArray.push(current.format("YYYYMM01"));
+        current = current.add(1, "month");
+      }
+      const recipes = [];
+      for (const period of monthYearArray) {
+        const result = await this.getRecipesByPeriod(period, faturaTuru);
+        recipes.push(...result);
+      }
+      const filteredRecipes = recipes.filter((recete) => {
+        const receteDate = dayjs(recete.receteTarihi, "DD/MM/YYYY");
+        return (
+          receteDate.isSame(startDateObj, 'date') ||
+          receteDate.isSame(endDateObj, 'date') ||
+          (receteDate.isAfter(startDateObj, 'date') && receteDate.isBefore(endDateObj, 'date'))
+        );
+      });
+      return {
+        success: true,
+        prescriptions: filteredRecipes,
+      };
     });
-    return {
-      success: true,
-      prescriptions: filteredRecipes,
-    };
   }
 
   async getRecipesByPeriod(period: string, faturaTuru: FaturaTuru = "1", retried = false): Promise<ReceteOzet[]> {

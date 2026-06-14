@@ -435,24 +435,51 @@ export function BrowserView() {
     };
   }, [updateNavState, checkPageState]);
 
-  // Keep-alive: reload webview every 2 minutes to prevent session timeout
+  // Keep-alive: silently ping Medula every 2 minutes to refresh the session
+  // cookie. Uses fetch from inside the webview so the user's current page is
+  // never navigated. If the ping reveals an expired session, reset the
+  // auto-login flag and re-login proactively.
   useEffect(() => {
     if (loginStatus !== "logged-in") return;
 
     const KEEP_ALIVE_MS = 2 * 60 * 1000;
-    const timer = setInterval(() => {
+    const timer = setInterval(async () => {
       const webview = webviewRef.current;
-      if (!webview || isLoading || isAnalyzing || isAutoScraping) return;
+      if (!webview) return;
       try {
-        console.log("[WebView] Keep-alive: refreshing session...");
-        webview.loadURL(MEDULA_URL);
+        const result: { ok: boolean; expired: boolean } | null = await webview
+          .executeJavaScript(`
+            fetch(${JSON.stringify(MEDULA_URL)}, { credentials: 'same-origin', method: 'GET', cache: 'no-store' })
+              .then(async r => {
+                const text = await r.text();
+                const expired =
+                  /value=["']Giriş Yap["']/.test(text) ||
+                  /name=["'][^"']*text1["']/i.test(text);
+                return { ok: r.ok, expired };
+              })
+              .catch(() => null)
+          `)
+          .catch(() => null);
+
+        if (!result) return;
+
+        if (result.expired) {
+          console.log("[WebView] Keep-alive detected expired session, re-logging in");
+          setLoginStatus("idle");
+          cachedLoginStatus = "idle";
+          if (credentials) {
+            autoLoginAttempted.current = false;
+            cachedAutoLoginAttempted = false;
+            performLoginRef.current(false);
+          }
+        }
       } catch (err) {
-        console.warn("[WebView] Keep-alive failed:", err);
+        console.warn("[WebView] Keep-alive ping error:", err);
       }
     }, KEEP_ALIVE_MS);
 
     return () => clearInterval(timer);
-  }, [loginStatus, isLoading, isAnalyzing, isAutoScraping]);
+  }, [loginStatus, credentials]);
 
   // Inject buttons and attach click handlers when on Recete Detay, results change, or analysis state changes
   useEffect(() => {

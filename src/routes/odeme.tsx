@@ -256,7 +256,8 @@ function OdemePage() {
   };
 
   const getBaseAmount = (): number => {
-    if (type === "subscription" && variant) return variant.price;
+    if ((type === "subscription" || type === "plan-change") && variant)
+      return variant.price;
     if (type === "credit" && creditPackage) return Number(creditPackage.price);
     return 0;
   };

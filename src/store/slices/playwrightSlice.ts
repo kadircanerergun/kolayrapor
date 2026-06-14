@@ -112,6 +112,12 @@ export const searchPrescriptionDetail = createAsyncThunk(
         }
       }
 
+      // Ensure the headless browser is initialized before we try to use it.
+      // searchPrescription itself handles /login redirects via stored credentials,
+      // but it throws "System is not ready." if the browser was never launched
+      // (e.g. cold-start deeplink before any other flow initialized it).
+      await dispatch(initializePlaywright()).unwrap();
+
       const api = getPlaywrightAPI();
       const result = await api.searchPrescription(receteNo);
 
@@ -169,6 +175,7 @@ export const analyzePrescription = createAsyncThunk(
       }
 
       if (!recete) {
+        await dispatch(initializePlaywright()).unwrap();
         const api = getPlaywrightAPI();
         const result = await api.searchPrescription(receteNo);
         if (!result.success) {
