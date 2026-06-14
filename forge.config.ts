@@ -43,7 +43,13 @@ const config: ForgeConfig = {
       bucket: process.env.S3_BUCKET || "kolay-rapor-releases",
       region: process.env.S3_REGION || "auto",
       endpoint: process.env.S3_ENDPOINT || undefined,
-      folder: "kolay-rapor/releases",
+      // Per-channel publishing: set RELEASE_CHANNEL to publish into a channel
+      // subfolder (e.g. `beta` → kolay-rapor/releases/beta/win32/x64). Leave
+      // unset to publish the default channel at the legacy root. This must
+      // match an AppReleaseChannel.folder on the API side.
+      folder: process.env.RELEASE_CHANNEL
+        ? `kolay-rapor/releases/${process.env.RELEASE_CHANNEL}`
+        : "kolay-rapor/releases",
       public: true,
       // R2 doesn't support ACLs — set omitAcl to true for Cloudflare R2
       // For AWS S3, set to false or remove

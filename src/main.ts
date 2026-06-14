@@ -300,7 +300,41 @@ function cleanupOldVersions(keep = 2) {
 
 const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
 
-function setupAutoUpdater() {
+// Default feed (the "stable" channel at the legacy root). Used when the API
+// can't tell us which channel this pharmacy is on.
+const DEFAULT_FEED_URL =
+  "https://kolayasistan.uk/kolay-rapor/releases/win32/x64";
+
+/**
+ * Ask the API which release channel this pharmacy is on (resolved by client
+ * IP) and return its feed URL. Falls back to the default channel on any error
+ * so updates keep working if the API is unreachable or the pharmacy is not
+ * registered.
+ */
+async function resolveFeedUrl(): Promise<string> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${API_BASE_URL}/my-pharmacy/update-info`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return DEFAULT_FEED_URL;
+    const data = await res.json();
+    if (data && typeof data.feedUrl === "string" && data.feedUrl) {
+      console.log(
+        `Update channel: ${data.channel ?? "?"} (target ${data.targetVersion ?? "?"}) → ${data.feedUrl}`,
+      );
+      return data.feedUrl;
+    }
+    return DEFAULT_FEED_URL;
+  } catch (err) {
+    console.warn("Failed to resolve update feed URL, using default:", err);
+    return DEFAULT_FEED_URL;
+  }
+}
+
+async function setupAutoUpdater() {
   // Clean up old versions on startup
   cleanupOldVersions(2);
   // Don't check updates on first install — Squirrel holds a lock
@@ -312,9 +346,9 @@ function setupAutoUpdater() {
     return;
   }
 
-  // Feed URL: directory containing RELEASES + .nupkg files
-  // Squirrel appends /RELEASES automatically
-  const feedURL = "https://kolayasistan.uk/kolay-rapor/releases/win32/x64";
+  // Feed URL: directory containing RELEASES + .nupkg files, resolved per
+  // pharmacy's release channel. Squirrel appends /RELEASES automatically.
+  const feedURL = await resolveFeedUrl();
 
   try {
     autoUpdater.setFeedURL({ url: feedURL });

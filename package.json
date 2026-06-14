@@ -11,6 +11,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
+    "publish:beta": "cross-env RELEASE_CHANNEL=beta electron-forge publish",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
