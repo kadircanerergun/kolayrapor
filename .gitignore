@@ -103,3 +103,6 @@ out/
 # Tanstack
 .tanstack/
 /playwright-browsers/
+
+# Local captcha solver binary (downloaded at runtime in prod; dropped here for dev)
+/cs-bin/

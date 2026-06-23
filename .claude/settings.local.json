@@ -17,7 +17,24 @@
       "WebFetch(domain:kolayasistan.uk)",
       "Bash(del \"C:\\\\Users\\\\kadir\\\\kolayrapor\\\\src\\\\components\\\\report-result-modal.tsx\")",
       "Bash(dir:*)",
-      "Bash(nslookup release-assets.githubusercontent.com)"
+      "Bash(nslookup release-assets.githubusercontent.com)",
+      "Read(//c/Users/kadir/Documents/captcha/**)",
+      "Bash(ls -la *.py *.sh *.bat *.txt *.toml *.cfg Dockerfile* requirements*)",
+      "Bash(wc -l api.py)",
+      "Bash(find . -name \"*.pth\" -not -path '*/.venv/*')",
+      "Bash(cat .claude/settings.local.json)",
+      "Bash(py --version)",
+      "Bash(uv --version)",
+      "PowerShell(winget *)",
+      "PowerShell(winget install *)",
+      "PowerShell(py *)",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
+      "Bash(node scripts/upload-captcha-solver.mjs \"C:/Users/kadir/Documents/captcha/captcha-solve/captcha-solver-win64-1.0.0.zip\" \"kolay-rapor/libs/captcha-solver-win64-1.0.0.zip\")",
+      "Bash(curl -sI \"https://kolayasistan.uk/kolay-rapor/libs/captcha-solver-win64-1.0.0.zip\")",
+      "Bash(curl -s -i \"https://api.kolayrapor.com.tr/api/my-pharmacy/feature-flags\")",
+      "Read(//c/Users/kadir/AppData/Local/Temp/**)",
+      "Bash(break)"
     ]
   }
 }

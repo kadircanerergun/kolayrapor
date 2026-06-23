@@ -21,6 +21,7 @@ import { ipcContext } from "@/ipc/context";
 import { IPC_CHANNELS } from "./constants";
 import { setupPlaywrightIPC } from "./ipc/playwright";
 import { setupSecureStorageIPC } from "./ipc/secure-storage";
+import { captchaSolverService } from "./services/captcha-solver";
 
 // Handle Squirrel events (install, uninstall, update) on Windows.
 // This must be at the top before any other logic runs.
@@ -601,6 +602,11 @@ if (gotTheLock) {
       console.error('App initialization error:', error);
       Sentry.captureException(error, { tags: { component: "appInit" } });
     });
+
+  app.on("before-quit", () => {
+    // Tear down the long-lived captcha solver child process on exit.
+    captchaSolverService.stop();
+  });
 
   app.on("window-all-closed", () => {
     if (inDevelopment) {

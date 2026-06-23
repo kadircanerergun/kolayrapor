@@ -1,7 +1,6 @@
 // Lazy import of Playwright to avoid Electron startup issues
 import type { ChromiumBrowser, Page } from "playwright";
 import { ELEMENT_SELECTORS } from "@/constants";
-import { API_BASE_URL } from "@/lib/constants";
 import dayjs from "dayjs";
 import { WrongIpException } from "@/exceptions/wrong-ip.exception";
 import { WrongCaptchaException } from "@/exceptions/wrong-captcha.exception";
@@ -33,6 +32,7 @@ import {
   ReceteRapor,
 } from "@/types/recete";
 import { isEmpty } from "lodash";
+import { solveCaptcha } from "@/services/captcha-solver";
 
 let chromium: typeof import("playwright").chromium;
 
@@ -804,32 +804,16 @@ export class PlaywrightAutomationService {
         console.log("Debug mode: Captcha detected");
       }
 
-      // Send to captcha solving API
-      const response = await fetch(`${API_BASE_URL}/medula/numbers`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          image: base64Image,
-        }),
-      });
+      // Solve local-first (bundled EasyOCR solver), falling back to the remote API.
+      const outcome = await solveCaptcha(base64Image);
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log("Got result: ", result);
-
-      if (!result.code) {
-        throw new Error("No captcha solution received from API");
+      if (!outcome.success || !outcome.code) {
+        throw new Error(outcome.error || "No captcha solution received");
       }
 
       return {
         success: true,
-        solution: result.code,
+        solution: outcome.code,
       };
     } catch (error) {
       return {
