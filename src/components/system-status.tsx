@@ -14,12 +14,16 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppDispatch } from "@/store";
 import { markReady } from "@/store/slices/playwrightSlice";
+import { toast } from "sonner";
 
 interface SystemStatusState {
   status: "checking" | "ready" | "error" | "initializing" | "validating";
   message: string;
   browserInstalled?: boolean;
   currentUrl?: string;
+  // Set when the failure is a wrong username/password — this is terminal and
+  // must NOT be retried (retrying will never succeed).
+  credentialError?: boolean;
 }
 
 // Module-level cache: persists across mounts within the same session
@@ -78,6 +82,16 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
       };
     }
 
+    // Wrong username/password is terminal — flag it so we stop retrying.
+    if (navResult?.error?.includes("şifre yanlış")) {
+      return {
+        status: "error",
+        message: "Kullanıcı adı veya şifre yanlış. Lütfen bilgilerinizi kontrol edin.",
+        browserInstalled: true,
+        credentialError: true,
+      };
+    }
+
     return {
       status: "error",
       message: "SGK portalına bağlanılamadı",
@@ -107,6 +121,14 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
           cachedState = result;
           setState(result);
           dispatch(markReady());
+          return;
+        }
+
+        // Wrong credentials — terminal. Stop retrying and alert the user.
+        if (result.credentialError) {
+          cachedState = result;
+          setState(result);
+          toast.error(result.message, { duration: Infinity });
           return;
         }
 

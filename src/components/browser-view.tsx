@@ -1035,12 +1035,20 @@ export function BrowserView() {
           setLoginError("IP adresi bu eczane için yetkili değil.");
           return;
         }
-        if (errorText.includes("Kullanıcı Adı veya Şifre Yanlış") || errorText.includes("Yeniden giriş")) {
+        if (errorText.includes("Kullanıcı Adı veya Şifre Yanlış")) {
+          const msg = "Kullanıcı adı veya şifre yanlış. Lütfen bilgilerinizi kontrol edin.";
+          // Stop the login retry loop entirely — a wrong password will never
+          // succeed on retry, so block any further auto-login re-trigger.
+          loginAttemptRef.current = getMaxLoginAttempts() + 1;
+          autoLoginAttempted.current = true;
           setLoginStatus("error");
-          setLoginError("Kullanıcı adı veya şifre yanlış. Lütfen bilgilerinizi kontrol edin.");
+          setLoginError(msg);
+          toast.error(msg, { duration: Infinity });
           return;
         }
-        if (errorText.includes("Geçersiz güvenlik kodu")) {
+        // Wrong captcha or "Yeniden Giriş Yapınız." session-expiry prompt are
+        // NOT credential errors — reload and retry the login.
+        if (errorText.includes("Geçersiz güvenlik kodu") || errorText.includes("Yeniden Giriş")) {
           webview.loadURL(MEDULA_URL);
           await waitForLoadStop();
           await attemptLogin(webview);

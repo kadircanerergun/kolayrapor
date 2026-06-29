@@ -711,11 +711,13 @@ export class PlaywrightAutomationService {
       if (error instanceof WrongIpException) {
         throw error;
       }
+      // Wrong username/password is fatal — stop retrying and surface it so the
+      // UI can alert the user.
       if (error instanceof InvalidLoginException) {
         this.loginCounter = 0;
         throw new InvalidLoginException();
       }
-      // Wrong captcha or other page errors — retry login
+      // Wrong captcha — fetch a fresh captcha and retry.
       if (error instanceof WrongCaptchaException) {
         console.warn("[Playwright] Wrong captcha code, retrying login...");
         this.loginCounter += 1;
@@ -728,6 +730,8 @@ export class PlaywrightAutomationService {
         await this.page.waitForLoadState("load");
         return await this._doLogin(credentials);
       }
+      // Any other warning (e.g. "Yeniden Giriş Yapınız." session-expiry) is NOT
+      // a credential error — fall through to the re-login retry below.
     }
     await this.page.goto(URLS.MEDULA_HOME);
     await this.page.waitForLoadState('load');
@@ -961,6 +965,19 @@ export class PlaywrightAutomationService {
 
         await searchButton.click();
         await this.page.waitForLoadState("load");
+
+        // Check for a portal warning (e.g. "... reçete numarasına ait reçete bulunamadı.")
+        const warningSpan = this.page.locator("td.message > span.outputText");
+        const warningText = await warningSpan
+          .textContent({ timeout: 500 })
+          .catch(() => "");
+        if (warningText && warningText.trim().length > 0) {
+          return {
+            success: false,
+            currentUrl: this.page.url(),
+            error: warningText.trim(),
+          };
+        }
 
         // Parse recete from current page
         const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
@@ -1717,11 +1734,14 @@ export class PlaywrightAutomationService {
       if (message.includes("Geçersiz güvenlik kodu")) {
         return new WrongCaptchaException();
       }
-      if (message.includes("Kullanıcı Adı veya Şifre Yanlış") || message.includes("Yeniden giriş")) {
+      if (message.includes("Kullanıcı Adı veya Şifre Yanlış")) {
         const context = await page.context();
         await context.clearCookies();
         return new InvalidLoginException();
       }
+      // Anything else (e.g. "Yeniden Giriş Yapınız." session-expiry prompt) is
+      // NOT a credential error — return undefined so the caller re-logs in.
+      return undefined;
     };
     const errorElement = await page.$("table#box1");
     if (errorElement) {

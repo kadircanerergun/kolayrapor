@@ -4,7 +4,7 @@ import { useAppSelector } from "@/store";
 import { openExternalLink } from "@/actions/shell";
 
 const WHATSAPP_NUMBER = "908503052540";
-const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
+const WHATSAPP_URL = `https://web.whatsapp.com/send?phone=${WHATSAPP_NUMBER}`;
 
 export function WhatsAppButton() {
   const [hovered, setHovered] = useState(false);

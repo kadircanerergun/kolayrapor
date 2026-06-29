@@ -87,7 +87,10 @@ const SearchByRecipe = () => {
         }
       );
     } else {
-      toast.error("Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
+      toast.error(
+        searchResult.error || "Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.",
+        { duration: Infinity },
+      );
     }
   };
   return (

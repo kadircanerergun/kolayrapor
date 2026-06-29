@@ -29,8 +29,11 @@ function SonIslemler() {
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">Kontrol Geçmişi</h1>
-              <p className="text-muted-foreground">
-                Daha önce sorgulanan ve analiz edilen reçeteler
+              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">
+                Reçetedeki kişisel veriler sunucularımızda kaydedilmez. Bu yüzden
+                Kontrol Geçmişi sayfasında sadece bu bilgisayarda yaptığınız
+                kontrollerde Hasta Adı Soyadı bilgisi görünür. Bu bilgisayar
+                dışında yaptığınız kontrollerde ise ADI S***** şeklinde görünür.
               </p>
             </div>
             <Button

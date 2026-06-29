@@ -430,6 +430,14 @@ function setupTray() {
       },
     },
     {
+      label: "Yenile",
+      click: () => {
+        (app as any).isQuitting = true;
+        app.relaunch();
+        app.exit();
+      },
+    },
+    {
       label: "Çıkış",
       click: () => {
         (app as any).isQuitting = true;
