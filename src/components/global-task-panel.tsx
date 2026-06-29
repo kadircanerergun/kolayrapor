@@ -76,6 +76,21 @@ function GroupSection({
   const isRunning = group.items.some((i) => i.status === "running");
   const [expanded, setExpanded] = useState(false);
 
+  // Color the "Sonucu Gör" icon by the worst result tier for this prescription:
+  // red = a check failed (uygun değil), orange = suspect (şüpheli), green = all valid.
+  const analizSonuclari = useAppSelector((s) =>
+    group.receteNo ? s.recete.analizSonuclari[group.receteNo] ?? {} : {},
+  );
+  const resultIconColor = (() => {
+    const scores = Object.values(analizSonuclari).map(
+      (r: any) => Math.round(r.validityScore ?? 0),
+    );
+    if (scores.length === 0) return "";
+    if (scores.some((sc) => sc < 60)) return "text-red-500";
+    if (scores.some((sc) => sc < 80)) return "text-orange-400";
+    return "text-green-600";
+  })();
+
   // Auto-expand when there's an error
   useEffect(() => {
     if (hasError && allGroupDone) setExpanded(true);
@@ -140,7 +155,7 @@ function GroupSection({
                 onRemove?.(group.id);
               }}
             >
-              <Eye className="h-4 w-4 mr-1.5" />
+              <Eye className={cn("h-4 w-4 mr-1.5", resultIconColor)} />
               Sonucu Gör
             </Button>
           )}

@@ -34,7 +34,9 @@
       "Bash(curl -sI \"https://kolayasistan.uk/kolay-rapor/libs/captcha-solver-win64-1.0.0.zip\")",
       "Bash(curl -s -i \"https://api.kolayrapor.com.tr/api/my-pharmacy/feature-flags\")",
       "Read(//c/Users/kadir/AppData/Local/Temp/**)",
-      "Bash(break)"
+      "Bash(break)",
+      "Bash(git -C /c/Users/kadir/kolayrapor status --short)",
+      "Bash(git -C /c/Users/kadir/kolayrapor diff --stat)"
     ]
   }
 }

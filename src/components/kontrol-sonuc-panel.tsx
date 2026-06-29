@@ -56,6 +56,17 @@ function getBadgeClasses(tier: "green" | "orange" | "red") {
   }
 }
 
+function getTierIcon(tier: "green" | "orange" | "red") {
+  switch (tier) {
+    case "green":
+      return <CheckCircle className="h-4 w-4 flex-shrink-0 text-green-500" />;
+    case "orange":
+      return <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-400" />;
+    case "red":
+      return <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-500" />;
+  }
+}
+
 export function KontrolSonucPanel({
                                     sonuclar,
                                     ilaclar,
@@ -63,8 +74,8 @@ export function KontrolSonucPanel({
                                     isReAnalyzing,
                                     focusBarkod,
                                   }: KontrolSonucPanelProps) {
-  // Preserve Medula medicine order when `ilaclar` is provided; fall back to
-  // sonuclar's insertion order otherwise.
+  // Preserve Medula medicine order when `ilaclar` is provided (it's scraped in
+  // Medula row order); fall back to sonuclar's insertion order otherwise.
   const entries: Array<[string, ReceteReportResponse]> = (() => {
     if (!ilaclar?.length) return Object.entries(sonuclar);
     const ordered: Array<[string, ReceteReportResponse]> = [];
@@ -142,7 +153,8 @@ export function KontrolSonucPanel({
               {/* CARD HEADER */}
               <CollapsibleTrigger asChild>
                 <button className="w-full p-3 flex items-center justify-between text-left">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 flex items-center gap-2">
+                    {getTierIcon(tier)}
                     <p className="font-semibold text-sm truncate">
                       {medicineName}
                     </p>
