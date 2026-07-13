@@ -1013,8 +1013,14 @@ export class PlaywrightAutomationService {
     for (let i = 0; i < (recete.ilaclar?.length || 0); i++) {
       const ilac = recete.ilaclar![i];
       if (ilac.raporluMu) {
-        ilac.rapor = await this.getReportForMedicine(i);
-        ilac.detay = await this.getIlacBilgiForMedicine(i);
+        // Use the real Medula JSF row index captured during scraping, not the
+        // array position — they diverge when rows are skipped (empty name) or
+        // Medula renders non-contiguous row indices, which would otherwise
+        // scrape the wrong medicine's report/info. Fall back to the array
+        // index for safety if rowIndex is somehow missing.
+        const rowIndex = ilac.rowIndex ?? i;
+        ilac.rapor = await this.getReportForMedicine(rowIndex);
+        ilac.detay = await this.getIlacBilgiForMedicine(rowIndex);
       }
     }
   }
@@ -1292,6 +1298,7 @@ export class PlaywrightAutomationService {
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
         rapor: raportText,
         raporluMu: !isEmpty(raportText?.trim()),
+        rowIndex: i,
       };
       if (!isEmpty(ilac.ad)) {
         ilaclar.push(ilac);
@@ -1393,6 +1400,7 @@ export class PlaywrightAutomationService {
         verilebilecegiTarih: this.normalizeText(verilebilecegiText),
         rapor: raportText,
         raporluMu: !isEmpty(raportText?.trim()),
+        rowIndex: i,
       };
       result.push(ilac);
     }
@@ -1430,7 +1438,7 @@ export class PlaywrightAutomationService {
     );
     await closeButton?.waitFor({ state: "visible" });
     const data = await this.scrapeRaporPage(page!);
-    closeButton?.click();
+    await closeButton?.click();
     return data;
   }
 
@@ -1450,7 +1458,7 @@ export class PlaywrightAutomationService {
     const closeButton = page?.locator("input[name='form1:buttonGeriDon']");
     await closeButton?.waitFor({ state: "visible" });
     const bilgi: IlacBilgi = await this.scrapeIlacBilgiPage(page!);
-    closeButton?.click();
+    await closeButton?.click();
     return bilgi;
   }
 

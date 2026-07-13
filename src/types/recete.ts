@@ -7,6 +7,12 @@ type IlacOzet = {
   periyot: string;
   doz: string;
   raporluMu: boolean;
+  /**
+   * Real Medula JSF row index (from element id `f:tbl1:<idx>:...`).
+   * Used to fetch the correct row's report/drug-info; differs from the array
+   * position when rows are skipped or Medula renders non-contiguous indices.
+   */
+  rowIndex?: number;
 };
 type ReceteOzet = {
   receteNo: string;
