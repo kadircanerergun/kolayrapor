@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { subscriptionApiService } from "@/services/subscription-api";
 import type {
@@ -100,10 +100,95 @@ function OdemePage() {
   // 3D Secure modal
   const [threeDOpen, setThreeDOpen] = useState(false);
   const [threeDHtml, setThreeDHtml] = useState("");
+  const [threeDUrl, setThreeDUrl] = useState("");
+  const [threeDOrderId, setThreeDOrderId] = useState("");
+  // The navigation event and the status poll race each other; whichever wins,
+  // the outcome must be shown exactly once.
+  const threeDSettled = useRef(false);
 
   useEffect(() => {
     loadData();
   }, [type, id]);
+
+  /** Close the 3D window and report the outcome — at most once. */
+  const settleThreeD = useCallback(
+    (success: boolean, message?: string) => {
+      if (threeDSettled.current) return;
+      threeDSettled.current = true;
+
+      setThreeDOpen(false);
+      setThreeDHtml("");
+      setThreeDUrl("");
+      setThreeDOrderId("");
+      setSubmitting(false);
+
+      if (success) {
+        refresh();
+        setSuccessMessage(message || "Ödeme başarıyla tamamlandı!");
+        setSuccessOpen(true);
+      } else {
+        setErrorMessage(message || "Kart doğrulama başarısız oldu.");
+        setErrorOpen(true);
+      }
+    },
+    [refresh],
+  );
+
+  // Ask the server where the payment stands while the bank page is open. The
+  // webview navigation event is the fast path; this is the one that cannot be
+  // missed — the money moves on the server, so the server is the source of truth.
+  useEffect(() => {
+    if (!threeDOpen || !threeDOrderId) return;
+
+    let stopped = false;
+    const startedAt = Date.now();
+    const POLL_INTERVAL_MS = 2500;
+    const GIVE_UP_MS = 15 * 60 * 1000;
+
+    const timer = setInterval(async () => {
+      if (stopped) return;
+      if (Date.now() - startedAt > GIVE_UP_MS) {
+        clearInterval(timer);
+        return;
+      }
+
+      const status = await subscriptionApiService.get3DStatus(threeDOrderId);
+      // null → transient error; keep waiting rather than calling it a failure.
+      if (stopped || !status || status.pending) return;
+
+      settleThreeD(status.success, status.message ?? undefined);
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [threeDOpen, threeDOrderId, settleThreeD]);
+
+  /**
+   * The user closed the 3D window. The bank may already have taken the money,
+   * so check once before walking away from it.
+   */
+  const handleThreeDClose = useCallback(async () => {
+    if (threeDSettled.current) return;
+
+    const orderId = threeDOrderId;
+    setThreeDOpen(false);
+    setThreeDHtml("");
+    setThreeDUrl("");
+
+    if (orderId) {
+      const status = await subscriptionApiService.get3DStatus(orderId);
+      if (status && !status.pending) {
+        settleThreeD(status.success, status.message ?? undefined);
+        return;
+      }
+    }
+
+    threeDSettled.current = true;
+    setThreeDOrderId("");
+    setSubmitting(false);
+  }, [threeDOrderId, settleThreeD]);
 
   const loadData = async () => {
     try {
@@ -163,18 +248,14 @@ function OdemePage() {
             ? await subscriptionApiService.changePlan(variant.id, undefined, {
                 savedCardId: selectedCardId,
               })
-            : await subscriptionApiService.changePlan(variant.id, card, {
-                saveCard: true,
-              });
+            : await subscriptionApiService.changePlan(variant.id, card);
       } else if (type === "subscription" && variant) {
         result =
           paymentMode === "saved" && selectedCardId
             ? await subscriptionApiService.subscribe(variant.id, undefined, {
                 savedCardId: selectedCardId,
               })
-            : await subscriptionApiService.subscribe(variant.id, card, {
-                saveCard: true,
-              });
+            : await subscriptionApiService.subscribe(variant.id, card);
       } else if (type === "credit" && creditPackage) {
         result =
           paymentMode === "saved" && selectedCardId
@@ -186,17 +267,19 @@ function OdemePage() {
             : await subscriptionApiService.purchaseCredits(
                 creditPackage.id,
                 card,
-                { saveCard: true },
               );
       } else {
         return;
       }
 
       // 3D Secure — show bank verification page in modal
-      if (result.threeDHtml) {
-        setThreeDHtml(result.threeDHtml);
+      if (result.threeDUrl || result.threeDHtml) {
+        threeDSettled.current = false;
+        setThreeDUrl(result.threeDUrl || "");
+        setThreeDHtml(result.threeDHtml || "");
+        setThreeDOrderId(result.merchantOrderId || "");
         setThreeDOpen(true);
-        // Keep submitting=true — will be reset when 3D modal closes
+        // Keep submitting=true — will be reset when the 3D flow settles
         return;
       }
 
@@ -781,13 +864,12 @@ function OdemePage() {
       </div>
 
       {/* 3D Secure Modal */}
-      <Dialog open={threeDOpen} onOpenChange={(open) => {
-        if (!open) {
-          setThreeDOpen(false);
-          setThreeDHtml("");
-          setSubmitting(false);
-        }
-      }}>
+      <Dialog
+        open={threeDOpen}
+        onOpenChange={(open) => {
+          if (!open) void handleThreeDClose();
+        }}
+      >
         <DialogContent className="max-w-lg p-0 overflow-hidden [&>button]:z-10">
           <DialogHeader className="px-4 pt-4 pb-2">
             <DialogTitle className="flex items-center gap-2">
@@ -798,7 +880,7 @@ function OdemePage() {
               Bankanız tarafından gönderilen SMS kodunu girerek ödemeyi onaylayın.
             </DialogDescription>
           </DialogHeader>
-          {threeDHtml && (
+          {(threeDUrl || threeDHtml) && (
             <div className="w-full h-[450px]">
               <webview
                 ref={(ref: any) => {
@@ -808,16 +890,8 @@ function OdemePage() {
                   ref.addEventListener("did-navigate", (e: any) => {
                     const url = e.url || "";
                     if (url.includes("/store/3d-callback/ok")) {
-                      setThreeDOpen(false);
-                      setThreeDHtml("");
-                      setSubmitting(false);
-                      refresh();
-                      setSuccessMessage("Ödeme başarıyla tamamlandı!");
-                      setSuccessOpen(true);
+                      settleThreeD(true);
                     } else if (url.includes("/store/3d-callback/fail")) {
-                      setThreeDOpen(false);
-                      setThreeDHtml("");
-                      setSubmitting(false);
                       let apiMessage: string | null = null;
                       try {
                         const params = new URL(url).searchParams;
@@ -829,13 +903,15 @@ function OdemePage() {
                       } catch {
                         // Malformed URL — fall back to generic message
                       }
-                      setErrorMessage(apiMessage || "Kart doğrulama başarısız oldu.");
-                      setErrorOpen(true);
+                      settleThreeD(false, apiMessage || undefined);
                     }
                   });
 
-                  const encoded = encodeURIComponent(threeDHtml);
-                  ref.src = `data:text/html;charset=utf-8,${encoded}`;
+                  // Prefer the hosted page: it loads over https, so the bank
+                  // page posts back from a real origin instead of `data:`.
+                  ref.src =
+                    threeDUrl ||
+                    `data:text/html;charset=utf-8,${encodeURIComponent(threeDHtml)}`;
                 }}
                 style={{ width: "100%", height: "100%" }}
                 // @ts-expect-error webview is an Electron-specific tag

@@ -10,6 +10,7 @@ import type {
   SubscriptionProduct,
   SubscriptionResponse,
   SavedCard,
+  ThreeDStatus,
 } from "@/types/subscription";
 
 const BILLING_CYCLE_LABELS: Record<string, { name: string; duration: string }> =
@@ -213,7 +214,7 @@ class SubscriptionApiService {
   async subscribe(
     planId: string,
     cardInfo?: CardInfo,
-    options?: { savedCardId?: string; saveCard?: boolean },
+    options?: { savedCardId?: string },
   ): Promise<SubscriptionResponse> {
     try {
       const body: Record<string, unknown> = { planId };
@@ -221,21 +222,31 @@ class SubscriptionApiService {
         body.savedCardId = options.savedCardId;
       } else {
         body.cardInfo = cardInfo;
-        if (options?.saveCard) {
-          body.saveCard = "true";
-        }
       }
 
       const response = await apiClient.post(
         `${API_BASE_URL}/store/subscribe`,
         body,
       );
+      const data = response.data ?? {};
+
+      // 3D Secure flow — API returns { url, html, merchantOrderId }
+      if (data.url || data.html) {
+        return {
+          success: true,
+          message: "3D doğrulama gerekiyor",
+          threeDUrl: data.url,
+          threeDHtml: data.html,
+          merchantOrderId: data.merchantOrderId,
+        };
+      }
+
       return {
         success: true,
         message: "Lisans başarıyla oluşturuldu!",
         data: {
-          subscriptionId: response.data.subscription?.id,
-          status: response.data.subscription?.status,
+          subscriptionId: data.subscription?.id,
+          status: data.subscription?.status,
         },
       };
     } catch (error: any) {
@@ -252,7 +263,7 @@ class SubscriptionApiService {
   async changePlan(
     planId: string,
     cardInfo?: CardInfo,
-    options?: { savedCardId?: string; saveCard?: boolean },
+    options?: { savedCardId?: string },
   ): Promise<SubscriptionResponse> {
     try {
       const body: Record<string, unknown> = { planId };
@@ -260,21 +271,31 @@ class SubscriptionApiService {
         body.savedCardId = options.savedCardId;
       } else {
         body.cardInfo = cardInfo;
-        if (options?.saveCard) {
-          body.saveCard = "true";
-        }
       }
 
       const response = await apiClient.post(
         `${API_BASE_URL}/store/change-plan`,
         body,
       );
+      const data = response.data ?? {};
+
+      // 3D Secure flow — API returns { url, html, merchantOrderId }
+      if (data.url || data.html) {
+        return {
+          success: true,
+          message: "3D doğrulama gerekiyor",
+          threeDUrl: data.url,
+          threeDHtml: data.html,
+          merchantOrderId: data.merchantOrderId,
+        };
+      }
+
       return {
         success: true,
         message: "Lisans planı başarıyla değiştirildi!",
         data: {
-          subscriptionId: response.data.subscription?.id,
-          status: response.data.subscription?.status,
+          subscriptionId: data.subscription?.id,
+          status: data.subscription?.status,
         },
       };
     } catch (error: any) {
@@ -291,7 +312,7 @@ class SubscriptionApiService {
   async purchaseCredits(
     productId: string,
     cardInfo?: CardInfo,
-    options?: { savedCardId?: string; saveCard?: boolean },
+    options?: { savedCardId?: string },
   ): Promise<SubscriptionResponse> {
     try {
       const body: Record<string, unknown> = { productId };
@@ -299,9 +320,6 @@ class SubscriptionApiService {
         body.savedCardId = options.savedCardId;
       } else {
         body.cardInfo = cardInfo;
-        if (options?.saveCard) {
-          body.saveCard = "true";
-        }
       }
 
       const response = await apiClient.post(
@@ -310,11 +328,12 @@ class SubscriptionApiService {
       );
       const data = response.data ?? {};
 
-      // 3D Secure flow — API returns { html, merchantOrderId }
-      if (data.html) {
+      // 3D Secure flow — API returns { url, html, merchantOrderId }
+      if (data.url || data.html) {
         return {
           success: true,
           message: "3D doğrulama gerekiyor",
+          threeDUrl: data.url,
           threeDHtml: data.html,
           merchantOrderId: data.merchantOrderId,
         };
@@ -453,6 +472,28 @@ class SubscriptionApiService {
     }
   }
 
+  // ─── 3D Secure ─────────────────────────────────────────
+
+  /**
+   * Where a 3D payment actually stands, according to the server.
+   *
+   * The webview navigation event is only a hint — it can be missed, and the
+   * user can close the window mid-flow. This is what we trust.
+   *
+   * Returns null when the answer is not yet knowable (offline, transient
+   * error), so callers keep polling instead of treating it as a failure.
+   */
+  async get3DStatus(merchantOrderId: string): Promise<ThreeDStatus | null> {
+    try {
+      const response = await apiClient.get<ThreeDStatus>(
+        `${API_BASE_URL}/store/3d-status/${encodeURIComponent(merchantOrderId)}`,
+      );
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Saved Cards ───────────────────────────────────────
 
   async getSavedCards(): Promise<SavedCard[]> {
@@ -464,14 +505,6 @@ class SubscriptionApiService {
     } catch {
       return [];
     }
-  }
-
-  async addCard(cardInfo: CardInfo): Promise<SavedCard> {
-    const response = await apiClient.post<SavedCard>(
-      `${API_BASE_URL}/store/cards`,
-      { cardInfo },
-    );
-    return response.data;
   }
 
   async removeCard(cardId: string): Promise<boolean> {

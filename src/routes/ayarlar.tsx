@@ -60,7 +60,7 @@ import {
 import { useCredentials } from "@/contexts/credentials-context";
 import { ipc } from "@/ipc/manager";
 import { version as appVersion } from "../../package.json";
-import type { SavedCard, CardInfo } from "@/types/subscription";
+import type { SavedCard } from "@/types/subscription";
 import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
 import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_OVERLAP_MS } from "@/lib/constants";
@@ -118,14 +118,6 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
     description: "Sürüm ve güncellemeler",
   },
 ];
-
-const EMPTY_CARD: CardInfo = {
-  cardNumber: "",
-  cardHolderName: "",
-  expireMonth: "",
-  expireYear: "",
-  cvc: "",
-};
 
 function SettingsPage() {
   const {
@@ -244,11 +236,6 @@ function SettingsPage() {
   const [loadingCards, setLoadingCards] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
 
-  // Add card form
-  const [showAddCard, setShowAddCard] = useState(false);
-  const [newCard, setNewCard] = useState<CardInfo>(EMPTY_CARD);
-  const [addingCard, setAddingCard] = useState(false);
-
   const loadSavedCards = useCallback(async () => {
     if (!pharmacy || isPending) return;
     setLoadingCards(true);
@@ -265,37 +252,6 @@ function SettingsPage() {
   useEffect(() => {
     loadSavedCards();
   }, [loadSavedCards]);
-
-  const handleAddCard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (
-      !newCard.cardNumber ||
-      !newCard.cardHolderName ||
-      !newCard.expireMonth ||
-      !newCard.expireYear ||
-      !newCard.cvc
-    ) {
-      toast.warning("Lütfen tüm kart bilgilerini doldurun.");
-      return;
-    }
-
-    setAddingCard(true);
-    try {
-      const saved = await subscriptionApiService.addCard(newCard);
-      setSavedCards((prev) => [...prev, saved]);
-      setNewCard(EMPTY_CARD);
-      setShowAddCard(false);
-      toast.success("Kart başarıyla kaydedildi.");
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Kart kaydedilirken bir hata oluştu.";
-      toast.error(message);
-    } finally {
-      setAddingCard(false);
-    }
-  };
 
   const handleDeleteCard = (cardId: string, maskedNumber: string) => {
     showConfirmDialog({
@@ -514,11 +470,6 @@ function SettingsPage() {
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
     }
-  };
-
-  const formatCardNumber = (value: string) => {
-    const digits = value.replace(/\D/g, "").slice(0, 16);
-    return digits.replace(/(.{4})/g, "$1 ").trim();
   };
 
   const getStatusBadge = (status: string) => {
@@ -1408,19 +1359,9 @@ function SettingsPage() {
         <div>
           <h2 className="text-xl font-semibold">Ödeme Yöntemleri</h2>
           <p className="text-sm text-muted-foreground">
-            Kayıtlı kartlarınızı yönetin ve yeni kart ekleyin
+            Kayıtlı kartlarınızı görüntüleyin ve yönetin
           </p>
         </div>
-        {pharmacy && !isPending && !showAddCard && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowAddCard(true)}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Kart Ekle
-          </Button>
-        )}
       </div>
 
       {!pharmacy || isPending ? (
@@ -1450,144 +1391,6 @@ function SettingsPage() {
         </Card>
       ) : (
         <>
-          {/* Add Card Form */}
-          {showAddCard && (
-            <Card>
-              <CardContent className="pt-6">
-                <form onSubmit={handleAddCard} className="space-y-4">
-                  <p className="text-sm font-medium">Yeni Kart Bilgileri</p>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="newCardNumber">Kart Numarası</Label>
-                    <Input
-                      id="newCardNumber"
-                      placeholder="0000 0000 0000 0000"
-                      value={formatCardNumber(newCard.cardNumber)}
-                      onChange={(e) =>
-                        setNewCard({
-                          ...newCard,
-                          cardNumber: e.target.value.replace(/\s/g, ""),
-                        })
-                      }
-                      required
-                      maxLength={19}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="newCardHolder">Kart Sahibi</Label>
-                    <Input
-                      id="newCardHolder"
-                      placeholder="AD SOYAD"
-                      value={newCard.cardHolderName}
-                      onChange={(e) =>
-                        setNewCard({
-                          ...newCard,
-                          cardHolderName: e.target.value.toUpperCase(),
-                        })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="newExpireMonth">Ay</Label>
-                      <Input
-                        id="newExpireMonth"
-                        placeholder="MM"
-                        value={newCard.expireMonth}
-                        onChange={(e) =>
-                          setNewCard({
-                            ...newCard,
-                            expireMonth: e.target.value
-                              .replace(/\D/g, "")
-                              .slice(0, 2),
-                          })
-                        }
-                        required
-                        maxLength={2}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newExpireYear">Yıl</Label>
-                      <Input
-                        id="newExpireYear"
-                        placeholder="YY"
-                        value={newCard.expireYear}
-                        onChange={(e) =>
-                          setNewCard({
-                            ...newCard,
-                            expireYear: e.target.value
-                              .replace(/\D/g, "")
-                              .slice(0, 2),
-                          })
-                        }
-                        required
-                        maxLength={2}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newCvc">CVC</Label>
-                      <Input
-                        id="newCvc"
-                        placeholder="000"
-                        type="password"
-                        value={newCard.cvc}
-                        onChange={(e) =>
-                          setNewCard({
-                            ...newCard,
-                            cvc: e.target.value
-                              .replace(/\D/g, "")
-                              .slice(0, 4),
-                          })
-                        }
-                        required
-                        maxLength={4}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <ShieldCheck className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span>
-                      Kart bilgileri banka tarafında güvenle saklanır.
-                      Sunucularımızda kart numarası tutulmaz.
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button type="submit" size="sm" disabled={addingCard}>
-                      {addingCard ? (
-                        <>
-                          <Spinner size="sm" className="mr-2" />
-                          Kaydediliyor...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4 mr-2" />
-                          Kartı Kaydet
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setShowAddCard(false);
-                        setNewCard(EMPTY_CARD);
-                      }}
-                      disabled={addingCard}
-                    >
-                      Vazgeç
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Saved Cards List */}
           <Card>
             <CardContent className="pt-6">
@@ -1605,8 +1408,8 @@ function SettingsPage() {
                       Kayıtlı kartınız bulunmuyor
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Yukarıdaki &quot;Kart Ekle&quot; butonu ile yeni kart
-                      ekleyebilirsiniz
+                      İlk ödemenizde kullandığınız kart, 3D Secure doğrulaması
+                      sonrasında otomatik olarak burada listelenir
                     </p>
                   </div>
                 </div>

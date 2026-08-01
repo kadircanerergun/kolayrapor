@@ -119,7 +119,18 @@ export interface SubscriptionResponse {
   error?: string;
   /** 3D Secure HTML — if present, show in a webview for card verification */
   threeDHtml?: string;
+  /** Hosted 3D page; preferred over threeDHtml (real https origin) */
+  threeDUrl?: string;
   merchantOrderId?: string;
+}
+
+/** Server-side truth for a 3D payment, polled while the bank page is open. */
+export interface ThreeDStatus {
+  merchantOrderId: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  pending: boolean;
+  success: boolean;
+  message: string | null;
 }
 
 export interface SavedCard {
