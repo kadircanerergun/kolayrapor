@@ -1,5 +1,6 @@
 import { os } from "@orpc/server";
 import { app, autoUpdater } from "electron";
+import { captchaSolverService } from "../../services/captcha-solver";
 
 export const currentPlatfom = os.handler(() => {
   return process.platform;
@@ -7,6 +8,16 @@ export const currentPlatfom = os.handler(() => {
 
 export const appVersion = os.handler(() => {
   return app.getVersion();
+});
+
+/** Fully quit and restart the app (not just a renderer reload). */
+export const relaunchApp = os.handler(() => {
+  (app as any).isQuitting = true;
+  // app.exit() skips the before-quit hook, so tear the captcha solver child
+  // down here to avoid leaving an orphaned process behind on every relaunch.
+  captchaSolverService.stop();
+  app.relaunch();
+  app.exit(0);
 });
 
 export const checkForUpdates = os.handler(async () => {

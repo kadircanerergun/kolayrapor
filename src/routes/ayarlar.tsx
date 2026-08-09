@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Settings,
   CreditCard,
@@ -40,8 +40,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useModal } from "@/hooks/useModal";
 import { useDialogContext } from "@/contexts/dialog-context";
-import { SubscriptionModal } from "@/components/subscription-modal";
-import { CreditPackagesModal } from "@/components/credit-packages-modal";
 import { toast } from "sonner";
 import { ModalProvider } from "@/components/modal-provider";
 import { useState, useEffect, useCallback } from "react";
@@ -135,6 +133,7 @@ function SettingsPage() {
 
   const { modal, openModal, closeModal } = useModal();
   const { showConfirmDialog } = useDialogContext();
+  const navigate = useNavigate();
   const { section } = Route.useSearch();
   const [activeSection, setActiveSection] = useState<SettingsSection>(section || "eczane");
   const [cancelling, setCancelling] = useState(false);
@@ -401,10 +400,7 @@ function SettingsPage() {
   };
 
   const handleViewAllPlans = () => {
-    openModal(<SubscriptionModal onClose={closeModal} />, {
-      size: "6xl",
-      showCloseButton: true,
-    });
+    navigate({ to: "/subscription" });
   };
 
   const handleCancelSubscription = () => {
@@ -1011,6 +1007,34 @@ function SettingsPage() {
 
       {/* Credit + Subscription summary */}
       <div className="grid gap-4 md:grid-cols-2">
+             {/* Subscription Status */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4" />
+                  Mevcut Lisans
+                </p>
+                {currentSubscription ? (
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-semibold">
+                      {currentProduct?.name}
+                    </p>
+                    {getStatusBadge(currentSubscription.status)}
+                  </div>
+                ) : (
+                  <p className="text-lg text-muted-foreground">
+                    Aktif lisans yok
+                  </p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleViewAllPlans}>
+                Planlar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         {/* Credit Balance */}
         <Card>
           <CardContent className="pt-6">
@@ -1042,47 +1066,17 @@ function SettingsPage() {
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  openModal(<CreditPackagesModal />, {
-                    size: "4xl",
-                    showCloseButton: true,
-                  })
+                  navigate({ to: "/subscription", search: { section: "credits" } })
                 }
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Satın Al
+                Ek Kredi Satın Al
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Subscription Status */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4" />
-                  Mevcut Lisans
-                </p>
-                {currentSubscription ? (
-                  <div className="flex items-center gap-2">
-                    <p className="text-lg font-semibold">
-                      {currentProduct?.name}
-                    </p>
-                    {getStatusBadge(currentSubscription.status)}
-                  </div>
-                ) : (
-                  <p className="text-lg text-muted-foreground">
-                    Aktif lisans yok
-                  </p>
-                )}
-              </div>
-              <Button variant="outline" size="sm" onClick={handleViewAllPlans}>
-                Planlar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+   
       </div>
 
       {/* Active/Suspended Subscription Details (also: cancelled but still within paid period) */}
@@ -1265,29 +1259,7 @@ function SettingsPage() {
                 )}
               </div>
 
-              {/* Features */}
-              {currentProduct?.features &&
-                currentProduct.features.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Dahil Olan Özellikler
-                      </p>
-                      <ul className="grid gap-1.5 sm:grid-cols-2">
-                        {currentProduct.features.map((feature, index) => (
-                          <li
-                            key={index}
-                            className="flex items-start gap-2 text-sm"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                )}
+          
 
               {/* Request usage */}
               {currentVariant && currentVariant.maxRequests > 0 && (

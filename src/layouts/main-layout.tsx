@@ -41,6 +41,11 @@ import { GlobalTaskPanel } from "@/components/global-task-panel";
 import { KontrolSonucPanel } from "@/components/kontrol-sonuc-panel";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { setShowResultReceteNo } from "@/store/slices/taskQueueSlice";
+import { searchPrescriptionDetail } from "@/store/slices/playwrightSlice";
+import { analizCompleted } from "@/store/slices/receteSlice";
+import { reportApiService } from "@/services/report-api";
+import { cacheAnalysis } from "@/lib/db";
+import { relaunchApp } from "@/actions/app";
 import {
   Sheet,
   SheetContent,
@@ -92,6 +97,44 @@ export default function MainLayout({
       dispatch(setShowResultReceteNo(null));
     }
   }, [showResultReceteNo, dispatch]);
+
+  // Re-run the check from the layout-level result sheet (used by the automated
+  // KA / deeplink flow and any other caller that opens results here), so the
+  // "Yeniden Kontrol Et" button is available regardless of where it was opened.
+  const [resultReAnalyzing, setResultReAnalyzing] = useState(false);
+  const handleResultReAnalyze = async (barkod?: string) => {
+    if (!resultSheetReceteNo) return;
+    setResultReAnalyzing(true);
+    try {
+      const recete = await dispatch(
+        searchPrescriptionDetail({ receteNo: resultSheetReceteNo, force: true }),
+      ).unwrap();
+
+      const targets = barkod
+        ? [barkod]
+        : (recete?.ilaclar ?? [])
+            .filter((m: any) => m.raporluMu)
+            .map((m: any) => m.barkod);
+
+      for (const b of targets) {
+        const result = await reportApiService.generateReport(b, recete);
+        if (result.success && result.data) {
+          await cacheAnalysis(resultSheetReceteNo, b, result.data);
+          dispatch(
+            analizCompleted({
+              receteNo: resultSheetReceteNo,
+              sonuclar: { [b]: result.data },
+            }),
+          );
+        }
+      }
+      toast.success("Yeniden kontrol tamamlandı");
+    } catch {
+      toast.error("Yeniden kontrol sırasında hata oluştu.");
+    } finally {
+      setResultReAnalyzing(false);
+    }
+  };
 
   // Derive display values from pharmacy context
   const activePlanName = (() => {
@@ -233,6 +276,7 @@ export default function MainLayout({
                     KolayRapor
                   </h2>
                   <p className="text-muted-foreground text-xs">Rapor Kontrol Asistanı</p>
+                  <p className="text-muted-foreground/80 text-[10px] font-medium">v{appVersion}</p>
                 </div>
               )}
               <Tooltip>
@@ -432,7 +476,7 @@ export default function MainLayout({
                     "w-full",
                     collapsed && "h-10 w-10 mx-auto",
                   )}
-                  onClick={() => window.location.reload()}
+                  onClick={() => relaunchApp()}
                 >
                   <RefreshCw
                     className={cn("h-4 w-4 shrink-0", !collapsed && "mr-2")}
@@ -441,14 +485,12 @@ export default function MainLayout({
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                Uygulamayı yeniden yükle
+                Uygulamayı kapatıp yeniden başlatır
               </TooltipContent>
             </Tooltip>
 
-            {collapsed ? (
-              <p className="text-[10px] text-muted-foreground text-center">v{appVersion}</p>
-            ) : (
-              <p className="text-[10px] text-muted-foreground text-center">Kolay Rapor 2026 &copy; &middot; v{appVersion}</p>
+            {!collapsed && (
+              <p className="text-[10px] text-muted-foreground text-center">Kolay Rapor 2026 &copy;</p>
             )}
 
             {/* Debug Mode Toggle */}
@@ -529,6 +571,8 @@ export default function MainLayout({
                     receteNo={resultSheetReceteNo}
                     sonuclar={analizSonuclari}
                     ilaclar={resultIlaclar}
+                    onReAnalyze={handleResultReAnalyze}
+                    isReAnalyzing={resultReAnalyzing}
                   />
                 )}
               </div>

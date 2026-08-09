@@ -508,28 +508,6 @@ function OdemePage() {
                   )}
                 </div>
 
-                {/* Features */}
-                {product.features.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold">Özellikler:</h4>
-                      <ul className="space-y-1.5">
-                        {product.features.map((feature, index) => (
-                          <li
-                            key={index}
-                            className="flex items-start gap-2 text-sm"
-                          >
-                            <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                )}
-
-                <Separator />
 
                 {/* Price with KDV breakdown */}
                 <div className="space-y-2">

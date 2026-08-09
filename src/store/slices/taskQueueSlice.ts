@@ -17,14 +17,40 @@ export interface TaskGroup {
   createdAt: number;
 }
 
+/** Per-medicine outcome shown in the finished notification. */
+export interface DeeplinkNotificationResult {
+  barkod: string;
+  label: string;
+  /** Undefined when the medicine could not be analyzed. */
+  validityScore?: number;
+  failed?: boolean;
+}
+
+/** Notification for the top-right panel window driving an automated
+ *  (KA / deeplink) check. `id` is unique per trigger so the panel re-shows
+ *  even for the same prescription. It goes through two phases: `running`
+ *  while the check runs, then `done` with the results — the `done` phase is
+ *  the only thing the user sees when the main window is hidden in the tray. */
+export interface DeeplinkNotification {
+  id: string;
+  receteNo: string;
+  patientName: string;
+  status: "running" | "done";
+  /** Set when there is nothing to report (no raporlu medicine, fetch failed). */
+  message?: string;
+  results?: DeeplinkNotificationResult[];
+}
+
 interface TaskQueueState {
   groups: TaskGroup[];
   showResultReceteNo: string | null;
+  notification: DeeplinkNotification | null;
 }
 
 const initialState: TaskQueueState = {
   groups: [],
   showResultReceteNo: null,
+  notification: null,
 };
 
 const taskQueueSlice = createSlice({
@@ -81,6 +107,12 @@ const taskQueueSlice = createSlice({
     setShowResultReceteNo(state, action: PayloadAction<string | null>) {
       state.showResultReceteNo = action.payload;
     },
+    setDeeplinkNotification(
+      state,
+      action: PayloadAction<DeeplinkNotification | null>,
+    ) {
+      state.notification = action.payload;
+    },
   },
 });
 
@@ -91,5 +123,6 @@ export const {
   clearCompleted,
   setShowResultReceteNo,
   clearDeeplinkGroupsExcept,
+  setDeeplinkNotification,
 } = taskQueueSlice.actions;
 export default taskQueueSlice.reducer;

@@ -1,10 +1,8 @@
 import { useEffect, useCallback } from "react";
 import { useAppDispatch } from "@/store";
 import {
-  addGroup,
-  updateTask,
-  setShowResultReceteNo,
-  clearDeeplinkGroupsExcept,
+  setDeeplinkNotification,
+  type DeeplinkNotificationResult,
 } from "@/store/slices/taskQueueSlice";
 import { searchPrescriptionDetail } from "@/store/slices/playwrightSlice";
 import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
@@ -18,62 +16,31 @@ export function useDeeplinkHandler() {
 
   const handleDeeplink = useCallback(
     async (params: { receteNo: string; barkodlar: string[]; kontrol: boolean }) => {
-      const { receteNo, barkodlar, kontrol } = params;
+      const { receteNo, barkodlar } = params;
 
-      const groupId = `deeplink-${receteNo}`;
-
-      // Only one recete should be visible in the task window — drop any
-      // previously-tracked deeplink groups for other recetes.
-      dispatch(clearDeeplinkGroupsExcept(receteNo));
-
-      // If kontrol param is set, check cache first
-      if (kontrol) {
-        const cached = await getCachedAnalysis([receteNo]);
-        const cachedForRecete = cached[receteNo];
-        if (cachedForRecete && Object.keys(cachedForRecete).length > 0) {
-          const allCached = barkodlar.length === 0 ||
-            barkodlar.every((b) => cachedForRecete[b]);
-
-          if (allCached) {
-            dispatch(analizCompleted({ receteNo, sonuclar: cachedForRecete }));
-            // Show a completed task group so the panel appears
-            const items = Object.entries(cachedForRecete).map(
-              ([barkod, report]) => ({
-                id: barkod,
-                label: barkod,
-                status: "done" as const,
-                isValid: report.isValid,
-                validityScore: report.validityScore,
-              }),
-            );
-            dispatch(addGroup({ id: groupId, title: `Reçete ${receteNo}`, receteNo, items }));
-            dispatch(setShowResultReceteNo(receteNo));
-            return;
-          }
-        }
-      }
+      // Unique per trigger so the panel window re-shows for the same reçete.
+      const notificationId = `${receteNo}-${Date.now()}`;
+      let patientName = "";
 
       dispatch(setAnalyzingRecete(receteNo));
-      dispatch(
-        addGroup({
-          id: groupId,
-          title: `Reçete ${receteNo}`,
-          receteNo,
-          items: [
-            {
-              id: "fetch",
-              label: "Reçete verileri toplanıyor",
-              status: "running",
-            },
-          ],
-        }),
-      );
 
       try {
         const recete = await dispatch(
           searchPrescriptionDetail({ receteNo }),
         ).unwrap();
-        dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
+
+        // Fire the "otomatik kontrol başladı" notification now that we know
+        // the patient. The top-right panel window shows it while the
+        // per-medicine work below runs, then swaps to the results.
+        patientName = `${recete?.ad ?? ""} ${recete?.soyad ?? ""}`.trim();
+        dispatch(
+          setDeeplinkNotification({
+            id: notificationId,
+            receteNo,
+            patientName,
+            status: "running",
+          }),
+        );
 
         let raporluIlaclar = (recete?.ilaclar ?? []).filter(
           (m: any) => m.raporluMu,
@@ -88,45 +55,41 @@ export function useDeeplinkHandler() {
 
         if (raporluIlaclar.length === 0) {
           dispatch(
-            updateTask({
-              groupId,
-              taskId: "fetch",
-              status: "error",
-              errorMessage: "Raporlu ilaç bulunamadı",
+            setDeeplinkNotification({
+              id: notificationId,
+              receteNo,
+              patientName,
+              status: "done",
+              message: "Bu reçetede raporlu ilaç bulunamadı.",
+              results: [],
             }),
           );
           return;
         }
 
-        // Add per-medicine tasks
-        dispatch(
-          addGroup({
-            id: groupId,
-            title: `Reçete ${receteNo}`,
-            receteNo,
-            items: [
-              {
-                id: "fetch",
-                label: "Reçete verileri toplanıyor",
-                status: "done",
-              },
-              ...raporluIlaclar.map((m: any, idx: number) => ({
-                id: m.barkod,
-                label: m.ad || m.barkod,
-                status: (idx === 0 ? "running" : "pending") as
-                  | "running"
-                  | "pending",
-              })),
-            ],
-          }),
-        );
+        // Reuse cached analyses; only call the API for uncached medicines.
+        const cached = await getCachedAnalysis([receteNo]);
+        const cachedForRecete = cached[receteNo] ?? {};
 
-        // Analyze one by one
-        for (let i = 0; i < raporluIlaclar.length; i++) {
-          const ilac = raporluIlaclar[i];
-          dispatch(
-            updateTask({ groupId, taskId: ilac.barkod, status: "running" }),
-          );
+        const results: DeeplinkNotificationResult[] = [];
+
+        for (const ilac of raporluIlaclar) {
+          const label = ilac.ad || ilac.barkod;
+          const cachedReport = cachedForRecete[ilac.barkod];
+          if (cachedReport) {
+            dispatch(
+              analizCompleted({
+                receteNo,
+                sonuclar: { [ilac.barkod]: cachedReport },
+              }),
+            );
+            results.push({
+              barkod: ilac.barkod,
+              label,
+              validityScore: cachedReport.validityScore,
+            });
+            continue;
+          }
           try {
             const result = await reportApiService.generateReport(
               ilac.barkod,
@@ -140,41 +103,42 @@ export function useDeeplinkHandler() {
                   sonuclar: { [ilac.barkod]: result.data },
                 }),
               );
-              dispatch(
-                updateTask({
-                  groupId,
-                  taskId: ilac.barkod,
-                  status: "done",
-                  isValid: result.data.isValid,
-                  validityScore: result.data.validityScore,
-                }),
-              );
+              results.push({
+                barkod: ilac.barkod,
+                label,
+                validityScore: result.data.validityScore,
+              });
             } else {
-              dispatch(
-                updateTask({ groupId, taskId: ilac.barkod, status: "done" }),
-              );
+              results.push({ barkod: ilac.barkod, label, failed: true });
             }
           } catch {
-            dispatch(
-              updateTask({
-                groupId,
-                taskId: ilac.barkod,
-                status: "error",
-                errorMessage: "Analiz başarısız",
-              }),
-            );
+            // Individual failures are reported as such; the rest still show.
+            results.push({ barkod: ilac.barkod, label, failed: true });
           }
         }
 
-        // Show results when done
-        dispatch(setShowResultReceteNo(receteNo));
-      } catch {
+        // Surface the results in the always-on-top panel window — the main
+        // window may be hidden in the tray, so this is the only thing the
+        // user sees. Clicking "Detayları Gör" there opens the in-app sheet.
         dispatch(
-          updateTask({
-            groupId,
-            taskId: "fetch",
-            status: "error",
-            errorMessage: "Reçete verileri alınamadı",
+          setDeeplinkNotification({
+            id: notificationId,
+            receteNo,
+            patientName,
+            status: "done",
+            results,
+          }),
+        );
+      } catch {
+        // Prescription fetch failed — tell the user instead of going silent.
+        dispatch(
+          setDeeplinkNotification({
+            id: notificationId,
+            receteNo,
+            patientName,
+            status: "done",
+            message: "Reçete bilgileri alınamadı. Lütfen tekrar deneyin.",
+            results: [],
           }),
         );
       } finally {

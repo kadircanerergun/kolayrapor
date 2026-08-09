@@ -127,13 +127,13 @@ export const searchPrescriptionDetail = createAsyncThunk(
 
       const recete = result.prescriptionData as Recete;
 
-      // Merge ad/soyad from ReceteOzet if available
+      // Merge ad/soyad from ReceteOzet if available. Only overwrite with a
+      // non-empty value — the detail page (#f:t15/#f:t16) already carries the
+      // patient name and it must survive for the /report/generate payload.
       const state = getState() as RootState;
       const ozet = state.recete.receteler.find((r) => r.receteNo === receteNo);
-      if (ozet) {
-        recete.ad = ozet.ad;
-        recete.soyad = ozet.soyad;
-      }
+      if (ozet?.ad) recete.ad = ozet.ad;
+      if (ozet?.soyad) recete.soyad = ozet.soyad;
 
       await cacheDetail(recete);
       dispatch(detayFetched(recete));

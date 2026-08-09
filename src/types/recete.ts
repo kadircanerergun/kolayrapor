@@ -49,6 +49,19 @@ type RaporHasta = {
   cinsiyet: string;
   dogumTarihi: string;
 };
+/**
+ * "Rapor İlave Değer Bilgileri" satırı — Medula'nın rapora eklediği ölçüm
+ * değerleri (Kilo, Boy, Günlük Kalori Miktarı vb.). SUT kurallarının bir kısmı
+ * (enteral beslenme kalorisi, VKİ'ye bağlı ilaçlar) bu değerlere dayanır.
+ */
+type RaporIlaveDeger = {
+  /** "Kilo", "Boy", "Günlük Kalori Miktarı" … */
+  tur: string;
+  /** Medula'da yazdığı gibi ham değer ("88", "2500"). */
+  deger: string;
+  aciklama: string;
+  eklenmeZamani: string;
+};
 type ReceteRapor = {
   raporNo: string;
   raporTarihi: string;
@@ -63,6 +76,7 @@ type ReceteRapor = {
   doktorlar?: RaporDoktor[];
   etkenMaddeler?: RaporEtkenMadde[];
   aciklamalar?: RaporAciklama[];
+  ilaveDegerler?: RaporIlaveDeger[];
   hastaBilgileri?: RaporHasta;
 };
 
@@ -160,6 +174,8 @@ type Recete = {
   receteTarihi: string;
   sonIslemTarihi: string;
   ilaclar?: ReceteIlac[];
+  /** Reçete üzerindeki ICD-10 tanıları (rapor tanılarından ayrı). */
+  tanilar?: ReceteTani[];
   tesisKodu: string;
   doktorBrans: string;
   ad?: string;
@@ -184,6 +200,7 @@ export {
   RaporAciklama,
   RaporHasta,
   RaporEtkenMadde,
+  RaporIlaveDeger,
   SutBilgi,
   SutDetay,
   OzelDurum,

@@ -87,8 +87,9 @@ function handleDeeplink(params: { receteNo: string; barkodlar: string[]; kontrol
     mainWindow.hide();
   }
 
-  // Pre-create the task panel so user sees immediate feedback
-  createTaskPanelWindow();
+  // The task panel window is created on demand when the renderer sends the
+  // one-shot "otomatik kontrol başladı" notification (after the prescription
+  // is fetched), so no empty window lingers if the fetch fails.
 
   // Send deeplink params to the main window renderer
   if (mainWindow.webContents.isLoading()) {
@@ -155,8 +156,8 @@ function createTaskPanelWindow() {
 
 // IPC: main window sends state updates, relay to task panel window
 ipcMain.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => {
-  const hasContent = (state.groups && state.groups.length > 0) || state.bulkProgress !== null;
-  console.log('[TaskPanel] State received, hasContent:', hasContent, 'groups:', state.groups?.length, 'bulk:', !!state.bulkProgress);
+  const hasContent = !!state.notification;
+  console.log('[TaskPanel] State received, hasContent:', hasContent);
 
   if (hasContent) {
     createTaskPanelWindow();
@@ -473,6 +474,10 @@ function createWindow() {
       nodeIntegrationInSubFrames: false,
       preload: preload,
       webviewTag: true,
+      // KA / deeplink checks run in this window while it sits hidden in the
+      // tray; throttling would stall the renderer's timers and the state
+      // pushes that drive the result popup.
+      backgroundThrottling: false,
     },
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     trafficLightPosition:

@@ -1,45 +1,32 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  X,
-  Eye,
-  RefreshCw,
-  StopCircle,
   AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  X,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
 
-interface TaskItem {
-  id: string;
+interface DeeplinkNotificationResult {
+  barkod: string;
   label: string;
-  status: "pending" | "running" | "done" | "error";
-  errorMessage?: string;
-  isValid?: boolean;
   validityScore?: number;
+  failed?: boolean;
 }
 
-interface TaskGroup {
+interface DeeplinkNotification {
   id: string;
-  title: string;
-  receteNo?: string;
-  items: TaskItem[];
-  createdAt: number;
-}
-
-interface BulkProgress {
-  type: "verileriAl" | "analizEt";
-  current: number;
-  total: number;
-  currentReceteNo: string;
+  receteNo: string;
+  patientName: string;
+  status: "running" | "done";
+  message?: string;
+  results?: DeeplinkNotificationResult[];
 }
 
 interface TaskPanelState {
-  groups: TaskGroup[];
-  bulkProgress: BulkProgress | null;
+  notification: DeeplinkNotification | null;
 }
 
 type ValidityTier = "green" | "orange" | "red";
@@ -49,6 +36,15 @@ const taskPanelAPI = (window as any).taskPanelAPI;
 function sendAction(action: { type: string; payload?: any }) {
   taskPanelAPI?.sendAction(action);
 }
+
+/** The "kontrol başladı" phase is only informational — hide it after this long
+ *  so a long-running check doesn't leave a spinner floating over other apps.
+ *  The window reappears by itself when the results land. */
+const RUNNING_HIDE_MS = 4000;
+
+/** When every medicine came back "Uygun" there is nothing to act on, so the
+ *  result popup closes itself. Anything else waits to be dismissed. */
+const ALL_CLEAR_CLOSE_MS = 8000;
 
 function scoreTier(score: number | undefined): ValidityTier | null {
   if (score === undefined) return null;
@@ -68,150 +64,82 @@ function tierLabel(tier: ValidityTier) {
   }
 }
 
-function ValidityBadge({ tier }: { tier: ValidityTier }) {
-  const styles: Record<ValidityTier, string> = {
-    green:
-      "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
-    orange:
-      "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400",
-    red: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
-  };
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide",
-        styles[tier],
-      )}
-    >
-      {tierLabel(tier)}
-    </span>
-  );
-}
-
-function ItemStatusIcon({ item }: { item: TaskItem }) {
-  if (item.status === "pending")
-    return <Clock className="h-3 w-3 text-muted-foreground/60" />;
-  if (item.status === "running")
-    return <Loader2 className="h-3 w-3 animate-spin text-primary" />;
-  if (item.status === "error")
-    return <XCircle className="h-3 w-3 text-red-500" />;
-  // done
-  const tier = scoreTier(item.validityScore);
+function TierIcon({ tier }: { tier: ValidityTier | null }) {
   if (tier === "green")
-    return <CheckCircle2 className="h-3 w-3 text-green-600" />;
+    return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />;
   if (tier === "orange")
-    return <AlertTriangle className="h-3 w-3 text-orange-500" />;
-  if (tier === "red") return <XCircle className="h-3 w-3 text-red-500" />;
-  return <CheckCircle2 className="h-3 w-3 text-green-600" />;
+    return <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-orange-500" />;
+  if (tier === "red")
+    return <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />;
+  return <XCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
 }
 
 export function TaskPanelWindow() {
-  const [state, setState] = useState<TaskPanelState>({
-    groups: [],
-    bulkProgress: null,
-  });
-  const [bulkCancelling, setBulkCancelling] = useState(false);
+  const [notification, setNotification] = useState<DeeplinkNotification | null>(
+    null,
+  );
 
   useEffect(() => {
     taskPanelAPI?.onState((newState: TaskPanelState) => {
-      setState(newState);
+      setNotification(newState?.notification ?? null);
     });
   }, []);
 
-  const { groups, bulkProgress } = state;
+  const status = notification?.status;
+  const results = notification?.results ?? [];
+  const scored = results.filter((r) => !r.failed && r.validityScore !== undefined);
+  const failedCount = results.filter((r) => r.failed).length;
+  const worstTier: ValidityTier | null = scored.some(
+    (r) => scoreTier(r.validityScore) === "red",
+  )
+    ? "red"
+    : scored.some((r) => scoreTier(r.validityScore) === "orange")
+      ? "orange"
+      : scored.length > 0
+        ? "green"
+        : null;
+  const allClear =
+    status === "done" &&
+    failedCount === 0 &&
+    !notification?.message &&
+    worstTier === "green";
 
-  // Deeplink flow guarantees a single group at a time. Pick the most recent
-  // just in case, so stale groups never dominate the UI.
-  const group = groups.length
-    ? [...groups].sort((a, b) => b.createdAt - a.createdAt)[0]
-    : null;
+  // Keyed on id+phase so a re-sent (identical) state never re-triggers the
+  // show/hide cycle, while each real phase change does.
+  const phaseKey = notification ? `${notification.id}:${status}` : null;
 
-  const items = group?.items ?? [];
-  const medicineItems = items.filter((i) => i.id !== "fetch");
-  const totalItems = items.length;
-  const doneItems = items.filter(
-    (i) => i.status === "done" || i.status === "error",
-  ).length;
-  const allDone = totalItems > 0 && doneItems === totalItems;
-  const hasError = items.some((i) => i.status === "error");
-  const errorCount = items.filter((i) => i.status === "error").length;
-  const runningItem = items.find((i) => i.status === "running");
-
-  // Validity summary across medicine items (excluding the "fetch" step)
-  const medicineDone = medicineItems.filter((i) => i.status === "done");
-  const scoredMedicine = medicineDone.filter(
-    (i) => i.validityScore !== undefined,
-  );
-  const greenCount = scoredMedicine.filter(
-    (i) => scoreTier(i.validityScore) === "green",
-  ).length;
-  const orangeCount = scoredMedicine.filter(
-    (i) => scoreTier(i.validityScore) === "orange",
-  ).length;
-  const redCount = scoredMedicine.filter(
-    (i) => scoreTier(i.validityScore) === "red",
-  ).length;
-  const worstTier: ValidityTier | null =
-    redCount > 0 ? "red" : orangeCount > 0 ? "orange" : greenCount > 0 ? "green" : null;
-
-  const hasBulk = bulkProgress !== null;
-  const hasContent = group !== null || hasBulk;
-
+  // Show the running phase, then hide it again while the check finishes in
+  // the background.
   useEffect(() => {
-    if (!hasBulk) setBulkCancelling(false);
-  }, [hasBulk]);
-
-  // Auto-hide window 3s after first content appears (while still running),
-  // then show again when tasks finish or encounter errors.
-  const wasEverDone = useRef(false);
-  const hasAutoHidden = useRef(false);
-  const lastGroupId = useRef<string | null>(null);
-
-  // Reset the auto-hide cycle on every new deeplink invocation so the
-  // "visible 3s → hide → reshow when results land" pattern fires per run.
-  useEffect(() => {
-    if (group?.id && group.id !== lastGroupId.current) {
-      lastGroupId.current = group.id;
-      wasEverDone.current = false;
-      hasAutoHidden.current = false;
-      sendAction({ type: "showPanel" });
-    }
-  }, [group?.id]);
-
-  useEffect(() => {
-    if (allDone && totalItems > 0) wasEverDone.current = true;
-  }, [allDone, totalItems]);
-
-  useEffect(() => {
-    // Don't auto-hide if tasks already finished
-    if (!hasContent || allDone || wasEverDone.current) return;
+    if (!phaseKey || status !== "running") return;
+    sendAction({ type: "showPanel" });
     const timer = setTimeout(() => {
-      hasAutoHidden.current = true;
       sendAction({ type: "hidePanel" });
-    }, 3000);
+    }, RUNNING_HIDE_MS);
     return () => clearTimeout(timer);
-  }, [hasContent, allDone]);
+  }, [phaseKey, status]);
 
-  // Show window again when tasks finish or encounter errors
+  // Bring the panel back for the results — this is what the user actually
+  // needs to see when the main window sits hidden in the tray.
   useEffect(() => {
-    if (allDone && totalItems > 0 && hasAutoHidden.current) {
-      hasAutoHidden.current = false;
-      sendAction({ type: "showPanel" });
-    }
-  }, [allDone, totalItems]);
+    if (!phaseKey || status !== "done") return;
+    sendAction({ type: "showPanel" });
+    if (!allClear) return;
+    const timer = setTimeout(() => {
+      sendAction({ type: "closePanel" });
+    }, ALL_CLEAR_CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [phaseKey, status, allClear]);
 
-  // Auto-resize window to fit content
+  // Auto-resize the window to fit the content.
   const contentRef = useRef<HTMLDivElement>(null);
   const resizeToFit = useCallback(() => {
     if (!contentRef.current) return;
-    const height = contentRef.current.scrollHeight;
-    taskPanelAPI?.resize(Math.ceil(height) + 2);
+    taskPanelAPI?.resize(Math.ceil(contentRef.current.scrollHeight) + 2);
   }, []);
-
   useEffect(() => {
     resizeToFit();
-  }, [state, resizeToFit]);
-
+  }, [notification, resizeToFit]);
   useEffect(() => {
     if (!contentRef.current) return;
     const observer = new ResizeObserver(() => resizeToFit());
@@ -219,285 +147,110 @@ export function TaskPanelWindow() {
     return () => observer.disconnect();
   }, [resizeToFit]);
 
-  if (!hasContent) {
-    return null;
-  }
+  if (!notification) return null;
 
-  // Subtitle shown under the main header
-  const subtitle: string | null = hasBulk
-    ? bulkCancelling
-      ? "Durduruluyor..."
-      : bulkProgress!.type === "verileriAl"
-        ? "Toplu sorgulama"
-        : "Toplu kontrol"
-    : allDone
-      ? hasError
-        ? `Tamamlandı — ${errorCount} hata`
-        : scoredMedicine.length > 0
-          ? worstTier === "green"
-            ? `${greenCount}/${scoredMedicine.length} Uygun`
-            : `${greenCount}/${scoredMedicine.length} uygun · ${orangeCount + redCount} sorunlu`
-          : "Tamamlandı"
-      : runningItem
-        ? runningItem.label
-        : "Hazırlanıyor...";
-
-  const progressText =
-    !hasBulk && totalItems > 1 && !allDone
-      ? `${doneItems}/${totalItems}`
-      : null;
-
-  // Main title: the recete number for a deeplink flow, bulk label otherwise
-  const title = hasBulk
-    ? bulkProgress!.type === "verileriAl"
-      ? "Toplu Sorgulama"
-      : "Toplu Kontrol"
-    : group?.receteNo
-      ? `Reçete ${group.receteNo}`
-      : group?.title ?? "İşlem";
-
-  // Header-level icon — reflects validity when done so the user sees status instantly
-  const headerIcon = (() => {
-    if ((hasBulk && !bulkCancelling) || (!allDone && !hasBulk)) {
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
-    }
-    if (hasBulk && bulkCancelling) {
-      return <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />;
-    }
-    if (hasError) {
-      return <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
-    }
-    if (worstTier === "red") {
-      return <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
-    }
-    if (worstTier === "orange") {
-      return (
-        <AlertTriangle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-      );
-    }
-    return <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />;
-  })();
+  const borderClass =
+    status === "running"
+      ? "border-brand bg-brand/10"
+      : worstTier === "red"
+        ? "border-red-500 bg-red-50 dark:bg-red-950/30"
+        : worstTier === "orange"
+          ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30"
+          : worstTier === "green"
+            ? "border-green-500 bg-green-50 dark:bg-green-950/30"
+            : "border-brand bg-brand/10";
 
   return (
     <div ref={contentRef} className="bg-transparent">
-      <div className="rounded-lg border-2 border-brand bg-brand/10 shadow-xl overflow-hidden">
-        {/* Compact header — always visible */}
-        <div
-          className="flex items-start gap-2 px-3 py-2 cursor-move select-none"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
-          <div className="pt-0.5">{headerIcon}</div>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold truncate">{title}</span>
-              {progressText && (
-                <span className="text-[10px] text-muted-foreground shrink-0">
-                  {progressText}
-                </span>
-              )}
+      <div
+        className={cn(
+          "rounded-lg border-2 px-3 py-2.5 shadow-xl select-none",
+          borderClass,
+        )}
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="flex items-start gap-2">
+          {status === "running" ? (
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+          ) : (
+            <div className="mt-0.5">
+              <TierIcon tier={worstTier} />
             </div>
-            {subtitle && (
-              <p
-                className={cn(
-                  "text-[10px] truncate mt-0.5",
-                  hasError
-                    ? "text-red-500"
-                    : allDone && worstTier === "red"
-                      ? "text-red-500 font-medium"
-                      : allDone && worstTier === "orange"
-                        ? "text-orange-600 font-medium"
-                        : allDone && worstTier === "green"
-                          ? "text-green-600 font-medium"
-                          : "text-muted-foreground",
-                )}
-              >
-                {subtitle}
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold">
+              {status === "running"
+                ? "KolayRapor Otomatik Kontrol Başladı"
+                : "KolayRapor Kontrol Sonucu"}
+            </p>
+            {notification.patientName && (
+              <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
+                {notification.patientName}
               </p>
             )}
           </div>
-
-          {/* Action buttons in header */}
-          <div
-            className="flex items-center gap-1 shrink-0"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            {/* Close — large hit area, always visible */}
+          {status === "done" && (
             <button
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               onClick={() => sendAction({ type: "closePanel" })}
-              title="Kapat"
+              className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 shrink-0 p-1"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
               aria-label="Kapat"
             >
-              <X className="h-5 w-5" />
+              <X className="h-3.5 w-3.5" />
             </button>
-          </div>
+          )}
         </div>
 
-        {/* Prominent result banner — visible whenever the work is finished */}
-        {allDone && (
+        {status === "done" && (
           <div
-            className={cn(
-              "border-t px-3 py-2.5",
-              hasError
-                ? "bg-red-50 dark:bg-red-950/30"
-                : worstTier === "green"
-                  ? "bg-green-50 dark:bg-green-950/30"
-                  : worstTier === "orange"
-                    ? "bg-orange-50 dark:bg-orange-950/30"
-                    : worstTier === "red"
-                      ? "bg-red-50 dark:bg-red-950/30"
-                      : "bg-muted/40",
-            )}
+            className="mt-2 space-y-1.5"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className={cn(
-                  "text-base font-bold uppercase tracking-wide",
-                  hasError
-                    ? "text-red-700 dark:text-red-400"
-                    : worstTier === "green"
-                      ? "text-green-700 dark:text-green-400"
-                      : worstTier === "orange"
-                        ? "text-orange-700 dark:text-orange-400"
-                        : worstTier === "red"
-                          ? "text-red-700 dark:text-red-400"
-                          : "text-muted-foreground",
-                )}
-              >
-                {hasError
-                  ? "Hata"
-                  : worstTier
-                    ? tierLabel(worstTier)
-                    : "Tamamlandı"}
-              </span>
-              {hasError && group ? (
-                <Button
-                  variant="destructive"
-                  className="h-9 px-4 text-xs font-bold uppercase tracking-wide"
-                  onClick={() =>
-                    sendAction({
-                      type: "retry",
-                      payload: { groupId: group.id, receteNo: group.receteNo },
-                    })
-                  }
-                >
-                  <RefreshCw className="h-4 w-4 mr-1.5" />
-                  Tekrar Dene
-                </Button>
-              ) : !hasError && group?.receteNo ? (
-                <Button
-                  className="h-9 px-4 text-xs font-bold uppercase tracking-wide"
-                  onClick={() =>
-                    sendAction({ type: "showResult", payload: group.receteNo })
-                  }
-                >
-                  <Eye className="h-4 w-4 mr-1.5" />
-                  Sonucu Göster
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        )}
-
-        {/* Bulk progress bar (always visible when active) */}
-        {hasBulk && (
-          <div className="px-3 pb-2">
-            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all duration-300",
-                  bulkCancelling ? "bg-orange-400" : "bg-brand",
-                )}
-                style={{
-                  width: `${(bulkProgress!.current / bulkProgress!.total) * 100}%`,
-                }}
-              />
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {bulkProgress!.currentReceteNo}
-            </p>
-            {!bulkCancelling ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-5 px-2 text-[10px] mt-1"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                onClick={() => {
-                  setBulkCancelling(true);
-                  sendAction({ type: "bulkCancel" });
-                }}
-              >
-                <StopCircle className="h-3 w-3 mr-1" />
-                Durdur
-              </Button>
+            {notification.message ? (
+              <p className="text-[11px]">{notification.message}</p>
             ) : (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-5 px-2 text-[10px] mt-1"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                onClick={() => sendAction({ type: "bulkForceStop" })}
-              >
-                <X className="h-3 w-3 mr-1" />
-                Zorla Durdur
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Always-visible task items for the single current group (cap at 3) */}
-        {group && items.length > 0 && (
-          <div className="border-t max-h-60 overflow-y-auto">
-            <div className="px-3 py-1.5 space-y-0.5">
-              {items.slice(0, 3).map((item) => {
-                const tier = scoreTier(item.validityScore);
-                const clickable = item.status === "done" && !!group.receteNo;
+              results.map((r) => {
+                const tier = scoreTier(r.validityScore);
                 return (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      "flex items-center gap-2 rounded px-2 py-1 text-xs",
-                      clickable && "cursor-pointer hover:bg-muted/50",
-                    )}
-                    onClick={() => {
-                      if (clickable) {
-                        sendAction({
-                          type: "showResult",
-                          payload: group.receteNo,
-                        });
-                      }
-                    }}
-                  >
-                    <ItemStatusIcon item={item} />
+                  <div key={r.barkod} className="flex items-center gap-1.5">
+                    <TierIcon tier={tier} />
+                    <span className="min-w-0 flex-1 truncate text-[11px]">
+                      {r.label}
+                    </span>
                     <span
                       className={cn(
-                        "flex-1 truncate",
-                        item.status === "pending" && "text-muted-foreground",
-                        item.status === "error" && "text-red-500",
-                        item.status === "running" && "font-medium",
+                        "shrink-0 text-[11px] font-semibold",
+                        tier === "green" && "text-green-700 dark:text-green-400",
+                        tier === "orange" &&
+                          "text-orange-700 dark:text-orange-400",
+                        tier === "red" && "text-red-700 dark:text-red-400",
+                        !tier && "text-muted-foreground",
                       )}
                     >
-                      {item.label}
+                      {r.failed || !tier
+                        ? "Kontrol edilemedi"
+                        : `%${Math.round(r.validityScore ?? 0)} ${tierLabel(tier)}`}
                     </span>
-                    {item.status === "done" && tier && (
-                      <ValidityBadge tier={tier} />
-                    )}
-                    {item.status === "error" && item.errorMessage && (
-                      <span className="text-[10px] text-red-500 truncate max-w-[50%]">
-                        {item.errorMessage}
-                      </span>
-                    )}
                   </div>
                 );
-              })}
-              {items.length > 3 && (
-                <div className="px-2 py-1 text-[10px] text-muted-foreground">
-                  + {items.length - 3} daha
-                </div>
-              )}
-            </div>
+              })
+            )}
+
+            {results.length > 0 && (
+              <Button
+                size="sm"
+                className="mt-1 h-7 w-full text-xs"
+                onClick={() => {
+                  sendAction({
+                    type: "showResult",
+                    payload: notification.receteNo,
+                  });
+                  sendAction({ type: "closePanel" });
+                }}
+              >
+                Detayları Gör
+              </Button>
+            )}
           </div>
         )}
       </div>

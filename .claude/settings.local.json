@@ -36,7 +36,9 @@
       "Read(//c/Users/kadir/AppData/Local/Temp/**)",
       "Bash(break)",
       "Bash(git -C /c/Users/kadir/kolayrapor status --short)",
-      "Bash(git -C /c/Users/kadir/kolayrapor diff --stat)"
+      "Bash(git -C /c/Users/kadir/kolayrapor diff --stat)",
+      "PowerShell(npx vite build --config vite.renderer.config.mts 2>&1)",
+      "Bash(reg query *)"
     ]
   }
 }

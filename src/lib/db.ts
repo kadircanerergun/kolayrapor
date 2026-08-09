@@ -4,6 +4,7 @@ import type {
   ReceteReportResponse,
   SyncedReport,
 } from "@/services/report-api";
+import { maskName } from "@/utils/mask-name";
 
 export interface CachedRecete extends Recete {
   cachedAt: number;
@@ -188,6 +189,11 @@ export async function syncReportsFromServer(
     const existing = await db.receteDetaylar.get(receteNo);
     if (existing && !existing.isPartial) continue;
 
+    // Cross-computer records carry only the masked patient name (first two
+    // letters, e.g. "AH*** SE***") and the prescription date the server has.
+    const nameSource = group.find((sr) => sr.hastaAd || sr.hastaSoyad);
+    const dateSource = group.find((sr) => sr.receteTarihi);
+
     const ilacMap = new Map<string, ReceteIlac>();
     if (existing?.ilaclar) {
       for (const ilac of existing.ilaclar) ilacMap.set(ilac.barkod, ilac);
@@ -208,12 +214,12 @@ export async function syncReportsFromServer(
 
     partialEntries.push({
       receteNo,
-      receteTarihi: existing?.receteTarihi ?? "",
+      receteTarihi: existing?.receteTarihi || dateSource?.receteTarihi || "",
       sonIslemTarihi: existing?.sonIslemTarihi ?? "",
       tesisKodu: existing?.tesisKodu ?? "",
       doktorBrans: existing?.doktorBrans ?? "",
-      ad: existing?.ad ?? "",
-      soyad: existing?.soyad ?? "",
+      ad: existing?.ad || maskName(nameSource?.hastaAd),
+      soyad: existing?.soyad || maskName(nameSource?.hastaSoyad),
       ilaclar: [...ilacMap.values()],
       cachedAt: existing?.cachedAt ?? Date.now(),
       isPartial: true,

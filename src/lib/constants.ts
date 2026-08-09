@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://api.kolayrapor.com.tr/api"
+export const API_BASE_URL = "https://8d40-2a02-5d7-cec5-4c00-8528-4891-e113-7f34.ngrok-free.app/api"
 //export const API_BASE_URL = "http://localhost:3000/api";
 
 /** Base URL for the marketing/landing site (used for embedded registration form, etc.) */

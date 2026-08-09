@@ -215,6 +215,10 @@
 }
 
 .product-description {
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
   p {
     margin-bottom: 0.5em;
   }

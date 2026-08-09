@@ -222,7 +222,7 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Server className="h-4 w-4" />
-          Sistem Durumu
+          Medula Bağlantı Durumu
         </CardTitle>
         {getStatusIcon()}
       </CardHeader>

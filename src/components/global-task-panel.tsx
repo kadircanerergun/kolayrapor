@@ -306,50 +306,51 @@ export function GlobalTaskPanel() {
       )}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-muted/50 rounded-t-lg">
-          <span className="flex items-center gap-2 min-w-0">
-            {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-            ) : hasBulk && bulkCancelling ? (
-              <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-            ) : allDone && !hasError ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
-            ) : allDone && hasError ? (
-              <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-            ) : null}
-            <span className="truncate">{headerText}</span>
-            {hasBulk && (
-              <span className="text-xs text-muted-foreground shrink-0">
-                ({bulkProgress.current}/{bulkProgress.total})
-              </span>
-            )}
-            {!hasBulk && !allDone && totalItems > 1 && (
-              <span className="text-xs text-muted-foreground shrink-0">
-                ({doneItems}/{totalItems})
-              </span>
-            )}
-          </span>
-          <div className="flex items-center gap-1 shrink-0 ml-2">
-            {isOpen ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            )}
-            {!hasBulk && allDone && (
-              <button
-                className="rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  dispatch(clearCompleted());
-                }}
-                title="Kapat"
-                aria-label="Kapat"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        </CollapsibleTrigger>
+        {/* The close button lives next to the trigger, not inside it —
+            CollapsibleTrigger renders a <button> and buttons can't nest. */}
+        <div className="flex w-full items-center justify-between rounded-t-lg px-3 py-2.5 text-sm font-medium hover:bg-muted/50">
+          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+            <span className="flex items-center gap-2 min-w-0">
+              {(hasBulk && !bulkCancelling) || (!allDone && !hasBulk) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+              ) : hasBulk && bulkCancelling ? (
+                <StopCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+              ) : allDone && !hasError ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+              ) : allDone && hasError ? (
+                <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+              ) : null}
+              <span className="truncate">{headerText}</span>
+              {hasBulk && (
+                <span className="text-xs text-muted-foreground shrink-0">
+                  ({bulkProgress.current}/{bulkProgress.total})
+                </span>
+              )}
+              {!hasBulk && !allDone && totalItems > 1 && (
+                <span className="text-xs text-muted-foreground shrink-0">
+                  ({doneItems}/{totalItems})
+                </span>
+              )}
+            </span>
+            <span className="ml-2 shrink-0">
+              {isOpen ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              )}
+            </span>
+          </CollapsibleTrigger>
+          {!hasBulk && allDone && (
+            <button
+              className="ml-1 shrink-0 rounded-md p-1.5 text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/30"
+              onClick={() => dispatch(clearCompleted())}
+              title="Kapat"
+              aria-label="Kapat"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+        </div>
 
         <CollapsibleContent>
           <div className="max-h-72 overflow-y-auto border-t">

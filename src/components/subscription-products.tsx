@@ -129,7 +129,7 @@ export function SubscriptionProducts() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {products.map((product) => {
         const selectedVariantId = selectedVariants[product.id];
         const selectedVariant = product.variants.find(

@@ -2,6 +2,7 @@ import { apiClient } from "@/lib/axios";
 import { API_BASE_URL } from "@/lib/constants";
 import { encryptJson, decryptJson } from "@/lib/crypto";
 import { Recete } from "@/types/recete";
+import { maskName } from "@/utils/mask-name";
 export interface GenerateReportRequest {
   barkod: string;
   recete: Recete;
@@ -33,6 +34,15 @@ export interface SyncedReport {
   reportEvolutionDetails: string;
   reportIssues: string[] | null;
   processedAt: string;
+  /**
+   * Patient name for cross-computer synced records. Sent to the server already
+   * masked (see generateReport); the client masks again on the way in so older
+   * records stored before masking never surface a full name.
+   */
+  hastaAd?: string | null;
+  hastaSoyad?: string | null;
+  /** Reçete tarihi — cross-computer kayıtların listede tarihli görünmesi için. */
+  receteTarihi?: string | null;
 }
 
 export interface ReportFeedbackResponse {
@@ -54,10 +64,24 @@ class ReportApiService {
     signal?: AbortSignal,
   ): Promise<ReportResult> {
     try {
+      // Hasta adı/soyadı sunucuya hiçbir zaman açık gitmez: ilk iki harf hariç
+      // maskelenir ("AHMET SELAMİ" → "AH*** SE***"). Uygulama içinde tam ad
+      // görünmeye devam eder; maskeleme yalnızca bu istek gövdesine uygulanır.
       const requestData: GenerateReportRequest = {
         barkod,
-        recete,
+        recete: {
+          ...recete,
+          ad: recete.ad ? maskName(recete.ad) : recete.ad,
+          soyad: recete.soyad ? maskName(recete.soyad) : recete.soyad,
+        },
       };
+
+      // Gövde şifrelenerek gittiği için ağ sekmesinden okunamıyor; şifrelemeden
+      // önce olduğu gibi logla.
+      console.log(
+        "[report/generate] body:",
+        JSON.stringify(requestData, null, 2),
+      );
 
       const encrypted = await encryptJson(requestData);
 

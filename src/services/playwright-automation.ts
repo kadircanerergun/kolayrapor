@@ -25,11 +25,13 @@ import {
   RaporDoktor,
   RaporEtkenMadde,
   RaporHasta,
+  RaporIlaveDeger,
   RaporTani,
   Recete,
   ReceteIlac,
   ReceteOzet,
   ReceteRapor,
+  ReceteTani,
 } from "@/types/recete";
 import { isEmpty } from "lodash";
 import { solveCaptcha } from "@/services/captcha-solver";
@@ -1053,6 +1055,8 @@ export class PlaywrightAutomationService {
     // İlaç listesini getIlacOzetFromDetailPage kullanarak çıkar
     const ilaclar = (await this.getIlacOzetFromDetailPage()) as ReceteIlac[];
 
+    const tanilar = await this.getReceteTanilariFromDetailPage();
+
     const recete: Recete = {
       receteNo: receteNo.trim(),
       receteTarihi,
@@ -1060,11 +1064,51 @@ export class PlaywrightAutomationService {
       tesisKodu,
       doktorBrans: doktorBrans.trim(),
       ilaclar,
+      tanilar,
       ad: ad.trim(),
       soyad: soyad.trim(),
     };
 
     return recete;
+  }
+
+  /**
+   * Reçete detay sayfasındaki ICD-10 tanı tablosu (`#f:tableEx1`). Rapor
+   * tanılarından (`#form1:tableExRaporTeshisList`) ayrıdır — bunlar reçetenin
+   * kendi tanıları. Değerler `<span>` değil `<input value="...">` içinde
+   * durduğu için textContent değil inputValue okunur.
+   */
+  async getReceteTanilariFromDetailPage(): Promise<ReceteTani[]> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const rows = await this.page
+      .locator("#f\\:tableEx1 tr.rowClass1, #f\\:tableEx1 tr.rowClass2")
+      .all();
+
+    const tanilar: ReceteTani[] = [];
+    for (const row of rows) {
+      const cells = await row.locator(":scope > td").all();
+      const kodInput = cells?.[0]?.locator("input").first();
+      const taniInput = cells?.[1]?.locator("input").first();
+      const icd10Kod = kodInput
+        ? await kodInput.inputValue().catch(() => "")
+        : "";
+      const taniAdi = taniInput
+        ? await taniInput.inputValue().catch(() => "")
+        : "";
+
+      // Medula yeni tanı girişi için boş satırlar da render ediyor; atla.
+      if (!icd10Kod.trim() && !taniAdi.trim()) continue;
+
+      tanilar.push({
+        icd10Kod: this.normalizeText(icd10Kod),
+        tani: this.normalizeText(taniAdi),
+      });
+    }
+
+    return tanilar;
   }
 
   async searchByDateRange(
@@ -1709,6 +1753,40 @@ export class PlaywrightAutomationService {
       }
     }
 
+    // "Rapor İlave Değer Bilgileri" — Kilo / Boy / Günlük Kalori Miktarı gibi
+    // ölçümler. Tablo yalnızca değer girilmiş raporlarda render edilir.
+    // Id sabit olsa da, bulunamazsa başlıktan tabloyu yakalayarak devam et.
+    let ilaveDegerRows = await page
+      .locator("#form1\\:tableEx5 tr.rowClass1, #form1\\:tableEx5 tr.rowClass2")
+      .all();
+    if (ilaveDegerRows.length === 0) {
+      ilaveDegerRows = await page
+        .locator('tr.headerRow:has-text("Rapor İlave Değer Bilgileri")')
+        .locator("xpath=ancestor::table[1]")
+        .locator(
+          "table.dataTableEx tr.rowClass1, table.dataTableEx tr.rowClass2",
+        )
+        .all();
+    }
+    const ilaveDegerler: RaporIlaveDeger[] = [];
+
+    for (const row of ilaveDegerRows) {
+      const cells = await row.locator(":scope > td").all();
+      const tur = await cells?.[0]?.textContent();
+      const deger = await cells?.[1]?.textContent();
+      const aciklama = await cells?.[2]?.textContent();
+      const eklenmeZamani = await cells?.[3]?.textContent();
+
+      if (tur && tur.trim()) {
+        ilaveDegerler.push({
+          tur: this.normalizeText(tur),
+          deger: this.normalizeText(deger ?? ""),
+          aciklama: this.normalizeText(aciklama ?? ""),
+          eklenmeZamani: this.normalizeText(eklenmeZamani ?? ""),
+        });
+      }
+    }
+
     const rapor: ReceteRapor = {
       raporNo: this.normalizeText(raporNo),
       raporTarihi: this.normalizeText(raporTarihi),
@@ -1723,6 +1801,7 @@ export class PlaywrightAutomationService {
       doktorlar: doktorlar,
       etkenMaddeler: etkenMaddeler,
       aciklamalar: aciklamalar,
+      ilaveDegerler: ilaveDegerler,
       hastaBilgileri,
     };
 
