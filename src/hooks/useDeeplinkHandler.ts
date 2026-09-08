@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from "react";
+import * as Sentry from "@sentry/electron/renderer";
 import { useAppDispatch } from "@/store";
 import {
   setDeeplinkNotification,
@@ -129,7 +130,17 @@ export function useDeeplinkHandler() {
             results,
           }),
         );
-      } catch {
+      } catch (error) {
+        // The KA-triggered run has no UI to fail into, so report it — this is
+        // the path where a broken automation would otherwise go unnoticed.
+        Sentry.captureException(
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            tags: { component: "deeplink", operation: "autoCheck" },
+            extra: { receteNo },
+            fingerprint: ["deeplink", "autoCheck"],
+          },
+        );
         // Prescription fetch failed — tell the user instead of going silent.
         dispatch(
           setDeeplinkNotification({

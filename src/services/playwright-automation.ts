@@ -15,7 +15,12 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 
 dayjs.extend(customParseFormat);
 import { createRequire } from "module";
+import { AsyncLocalStorage } from "async_hooks";
+import * as Sentry from "@sentry/electron/main";
 import {
+  EReceteBaslik,
+  EReceteBilgi,
+  EReceteIlac,
   EsdegerBilgi,
   IlacBilgi,
   IlacMesaj,
@@ -31,7 +36,9 @@ import {
   ReceteIlac,
   ReceteOzet,
   ReceteRapor,
+  ReceteSertifika,
   ReceteTani,
+  ReceteUyariKodu,
 } from "@/types/recete";
 import { isEmpty } from "lodash";
 import { solveCaptcha } from "@/services/captcha-solver";
@@ -44,6 +51,13 @@ interface NavigationResult {
   redirectedToLogin?: boolean;
   error?: string;
 }
+
+/** "Sorgula" sonrası sayfanın vardığı durum — bkz. waitForSearchOutcome(). */
+type SearchOutcome =
+  | { type: "detail" }
+  | { type: "message"; text: string }
+  | { type: "login" }
+  | { type: "timeout" };
 
 interface LoginResult {
   success: boolean;
@@ -375,17 +389,56 @@ export class PlaywrightAutomationService {
   private operationDepth = 0;
   private initializePromise: Promise<void> | null = null;
   private loginPromise: Promise<LoginResult> | null = null;
+  /** Serializes browser operations; see withOperation(). */
+  private lockQueue: Promise<void> = Promise.resolve();
+  private readonly lockContext = new AsyncLocalStorage<true>();
+  /** captureIssue()'nun aynı hatayı iki kez Sentry'ye göndermesini engeller. */
+  private readonly capturedErrors = new WeakSet<Error>();
 
   private static readonly KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+  /** "Sorgula" sonrası detay sayfası / uyarı / login için toplam bekleme. */
+  private static readonly SEARCH_OUTCOME_TIMEOUT_MS = 30000;
+  /** Login formunu ekrana getirmek için kaç kez navigasyon denenecek. */
+  private static readonly LOGIN_FORM_ATTEMPTS = 3;
+  /** Tek denemede login formunun render olması için beklenen süre. */
+  private static readonly LOGIN_FORM_TIMEOUT_MS = 15000;
+  /** Portal sol menüsünü ekrana getirmek için kaç kez denenecek. */
+  private static readonly PORTAL_MENU_ATTEMPTS = 3;
+  /** Tek denemede sol menünün render olması için beklenen süre. */
+  private static readonly PORTAL_MENU_TIMEOUT_MS = 20000;
 
   private get operationInProgress(): boolean {
     return this.operationDepth > 0;
   }
 
-  // Wraps any high-level browser operation: tracks depth so keep-alive can't
-  // collide mid-flight, and resets the keep-alive cadence on exit so the next
-  // tick is 2 min from the end of real activity rather than from launch.
+  // Wraps any high-level browser operation. Everything shares a single Page,
+  // so operations are serialized through a queue: a deeplink check firing
+  // while a bulk run is mid-flight used to navigate the page out from under
+  // it, surfacing as a 30s "waiting for #f:t13" timeout.
+  //
+  // Reentrancy matters — searchPrescription() calls navigateToSGKPortal(),
+  // which wraps itself too. AsyncLocalStorage tells us we already hold the
+  // lock so nested calls run inline instead of deadlocking on their caller.
   private async withOperation<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.lockContext.getStore()) {
+      return this.runTracked(fn);
+    }
+
+    const run = this.lockQueue.then(
+      () => this.lockContext.run(true, () => this.runTracked(fn)),
+      () => this.lockContext.run(true, () => this.runTracked(fn)),
+    );
+    // Keep the chain alive when an operation rejects, otherwise every later
+    // operation would inherit the rejection.
+    this.lockQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  /** Depth/keep-alive bookkeeping, shared by locked and nested runs. */
+  private async runTracked<T>(fn: () => Promise<T>): Promise<T> {
     this.operationDepth++;
     try {
       return await fn();
@@ -433,20 +486,44 @@ export class PlaywrightAutomationService {
   startKeepAlive(): void {
     this.stopKeepAlive();
     this.keepAliveTimer = setInterval(async () => {
-      if (!this.isReady() || this.operationInProgress) return;
+      if (!this.isReady()) return;
       try {
-        await this.withOperation(async () => {
-          console.log("[Playwright] Keep-alive: refreshing session...");
-          await this.page!.goto(URLS.MEDULA_HOME, { waitUntil: "load", timeout: 30000 });
-          await this.page!.waitForLoadState("networkidle").catch(() => {});
-          // If redirected to login, re-login automatically
-          const url = this.page!.url();
-          if (url.includes("/login") && this.hasCredentials()) {
-            console.log("[Playwright] Keep-alive: session expired, re-logging in...");
-            await this.performLogin(this.storedCredentials!);
-          }
-          console.log("[Playwright] Keep-alive: session refreshed");
+        // Medula's own pages hold the session open by pinging /sessionCheck
+        // every 4 min (204 while alive). Doing the same with a request instead
+        // of a navigation means keep-alive can never pull the page out from
+        // under a running search — the old goto() did exactly that.
+        const response = await this.page!.request.get(URLS.SESSION_CHECK, {
+          timeout: 15000,
+          failOnStatusCode: false,
         });
+        if (response.status() === 204) return;
+
+        console.log(
+          `[Playwright] Keep-alive: session check returned ${response.status()}, re-logging in...`,
+        );
+        if (!this.hasCredentials()) return;
+
+        // Re-login navigates, so it must queue behind any real work.
+        try {
+          await this.withOperation(async () => {
+            await this.page!.goto(URLS.MEDULA_HOME, {
+              waitUntil: "load",
+              timeout: 30000,
+            });
+            if (this.page!.url().includes("/login")) {
+              await this.performLogin(this.storedCredentials!);
+            }
+            console.log("[Playwright] Keep-alive: session restored");
+          });
+        } catch (err) {
+          // Ping hatası ağ dalgalanması olabilir ve gürültü yapar; ama oturum
+          // yenilenemiyorsa sonraki tüm işlemler patlar — bunu bilmek gerek.
+          this.captureIssue(err, {
+            operation: "keepAlive",
+            outcome: "relogin-failed",
+          });
+          throw err;
+        }
       } catch (err) {
         console.warn("[Playwright] Keep-alive failed:", err);
       }
@@ -459,6 +536,66 @@ export class PlaywrightAutomationService {
       clearInterval(this.keepAliveTimer);
       this.keepAliveTimer = null;
       console.log("[Playwright] Keep-alive stopped");
+    }
+  }
+
+  /**
+   * Otomasyon hatalarını bağlamıyla birlikte Sentry'ye gönderir. Bu hataların
+   * teşhisi "hangi sayfada takıldık"a bağlı olduğu için URL ve portal mesajı
+   * da eklenir. Hasta adı gibi kişisel veri gönderilmez.
+   */
+  private captureIssue(
+    error: unknown,
+    context: {
+      operation: string;
+      outcome?: string;
+      receteNo?: string;
+      /** Portalın o an ekranda gösterdiği uyarı metni. */
+      pageMessage?: string;
+      /** İşleme özgü ek bağlam (dönem, tarih aralığı vb.). */
+      detail?: string;
+    },
+  ): void {
+    try {
+      // Aynı hata iç içe katmanlarda tekrar yakalanabiliyor (ör. ensureLoginForm
+      // → performLogin). İlk yakalayan en zengin bağlama sahip olduğu için
+      // sonrakiler sessizce atlanıyor; aksi halde Sentry'de çift issue açılıyor.
+      if (error instanceof Error) {
+        if (this.capturedErrors.has(error)) return;
+        this.capturedErrors.add(error);
+      }
+
+      // page.url() senkron ve güvenli; title() gibi çağrılar meşgul sayfada
+      // asılabileceği için bilinçli olarak kullanılmıyor.
+      let currentUrl: string | undefined;
+      try {
+        currentUrl = this.page?.isClosed() ? undefined : this.page?.url();
+      } catch {
+        currentUrl = undefined;
+      }
+
+      const outcome = context.outcome ?? "exception";
+      Sentry.captureException(
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          tags: {
+            component: "playwright",
+            operation: context.operation,
+            outcome,
+          },
+          extra: {
+            receteNo: context.receteNo,
+            currentUrl,
+            pageMessage: context.pageMessage,
+            detail: context.detail,
+          },
+          // Aynı türdeki hatalar tek issue altında toplansın; aksi halde her
+          // reçete numarası ayrı bir issue açar.
+          fingerprint: ["playwright", context.operation, outcome],
+        },
+      );
+    } catch (err) {
+      console.warn("[Playwright] Sentry capture failed:", err);
     }
   }
 
@@ -595,6 +732,17 @@ export class PlaywrightAutomationService {
         currentUrl.includes("/login") && !url.includes("/login");
       // Note: Auto-login will be handled by the caller (renderer) since it has access to credentials
       if (redirectedToLogin) {
+        // storedCredentials null iken performLogin'e girmek _doLogin içinde
+        // "Cannot read properties of null" TypeError'ına dönüşüyordu; anlamlı
+        // bir hata döndürmek teşhis için de UI için de daha iyi.
+        if (!this.hasCredentials()) {
+          return {
+            success: false,
+            currentUrl,
+            redirectedToLogin: true,
+            error: "Medula oturumu düştü ve kayıtlı kimlik bilgisi yok.",
+          };
+        }
         const result = await this.performLogin(this.storedCredentials!);
         if (result.success) {
           return this.navigateTo(url);
@@ -622,13 +770,130 @@ export class PlaywrightAutomationService {
       console.log("[Playwright] Login already in progress, awaiting existing call...");
       return this.loginPromise;
     }
-    this.loginPromise = this._doLogin(credentials).finally(() => {
-      this.loginPromise = null;
-    });
+    // Login drives the same page as everything else, so it goes through the
+    // operation lock too. When an already-running operation triggers it
+    // (navigateTo → /login redirect), withOperation detects the nesting and
+    // runs it inline instead of queueing behind itself.
+    this.loginPromise = this.withOperation(() => this._doLogin(credentials))
+      .catch((err) => {
+        // Yanlış kullanıcı/parola, yanlış IP ve "5 denemede giremedi" zaten
+        // UI'da anlamlı şekilde gösteriliyor. Geri kalanı (selector timeout,
+        // navigasyon hatası) sessizce kaybolmasın — login patlayınca sonraki
+        // her işlem de patlıyor, teşhis için sayfa bağlamı şart.
+        if (
+          !(err instanceof InvalidLoginException) &&
+          !(err instanceof WrongIpException) &&
+          !(err instanceof UnsuccessfulLoginException)
+        ) {
+          this.captureIssue(err, { operation: "login", outcome: "failed" });
+        }
+        throw err;
+      })
+      .finally(() => {
+        this.loginPromise = null;
+      });
     return this.loginPromise;
   }
 
-  private async _doLogin(credentials: LoginCredentials): Promise<LoginResult> {
+  /**
+   * Login formunun ekranda olduğunu garanti eder.
+   *
+   * _doLogin() sayfanın zaten login formunda olduğunu varsayamaz: initialize()
+   * sonrası sayfa `about:blank`, SGK ara sıra bomboş bir sayfa döndürüyor,
+   * çağıran taraf (autoLogin / playwright:login IPC) hiç navigasyon yapmamış
+   * olabiliyor ya da oturum hâlâ açık olabiliyor. Bu durumların hepsi eskiden
+   * `waitForSelector('input[name*="text1"]')` üzerinde TimeoutError'a dönüyordu.
+   *
+   * @param forceReload Ekrandaki form kabul edilmesin, mutlaka yeniden
+   *   yüklensin. Captcha / "hâlâ login sayfasındayız" retry'larında şart:
+   *   eldeki form bayat captcha ve tükenmiş JSF view state taşıyor.
+   * @returns "form" — login formu ekranda; "logged-in" — oturum zaten açık.
+   */
+  private async ensureLoginForm(
+    forceReload = false,
+  ): Promise<"form" | "logged-in"> {
+    if (!this.page) {
+      throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
+    }
+
+    const hasForm = async () =>
+      (await this.page!.$('input[name*="text1"]').catch(() => null)) !== null;
+
+    if (!forceReload && (await hasForm())) return "form";
+
+    let lastFailure = "";
+    for (
+      let attempt = 1;
+      attempt <= PlaywrightAutomationService.LOGIN_FORM_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        await this.page.goto(URLS.MEDULA_HOME, {
+          waitUntil: "load",
+          timeout: 30000,
+        });
+      } catch (err) {
+        lastFailure = `navigasyon hatası: ${
+          err instanceof Error ? err.message : String(err)
+        }`;
+        console.warn(
+          `[Playwright] Login form navigation attempt ${attempt} failed:`,
+          err,
+        );
+        await this.page.waitForTimeout(2000);
+        continue;
+      }
+
+      // Form JSF ile render ediliyor; "load" bazen erken tetikleniyor.
+      const appeared = await this.page
+        .waitForSelector('input[name*="text1"]', {
+          timeout: PlaywrightAutomationService.LOGIN_FORM_TIMEOUT_MS,
+        })
+        .then(() => true)
+        .catch(() => false);
+      if (appeared) return "form";
+
+      // Form yoksa iki ihtimal var: oturum zaten açık (giriş yapacak bir şey
+      // yok), ya da SGK boş/arıza sayfası döndürdü — ikincisinde
+      // navigateToSGKPortal ile aynı kurtarmayı uygulayıp tekrar deniyoruz.
+      const url = this.page.url();
+      const blank = await this.isPageBlank();
+      if (!url.includes("login") && !blank) {
+        console.log(
+          "[Playwright] Session already active, login form not needed",
+        );
+        return "logged-in";
+      }
+
+      lastFailure = blank
+        ? "SGK boş sayfa döndürdü"
+        : `login sayfası formsuz geldi (${url})`;
+      console.warn(
+        `[Playwright] Login form not ready (attempt ${attempt}): ${lastFailure}`,
+      );
+      await this.resetBrowserState();
+      await this.page.waitForTimeout(2000);
+    }
+
+    const error = new Error(
+      "Medula giriş sayfası yüklenemedi. Lütfen tekrar deneyin.",
+    );
+    this.captureIssue(error, {
+      operation: "login",
+      outcome: "login-form-not-loaded",
+      pageMessage: await this.readPageMessage(),
+      detail: `${PlaywrightAutomationService.LOGIN_FORM_ATTEMPTS} denemede form gelmedi — son durum: ${lastFailure}`,
+    });
+    throw error;
+  }
+
+  /**
+   * @param forceReload Retry'lardan gelirken true — bkz. ensureLoginForm().
+   */
+  private async _doLogin(
+    credentials: LoginCredentials,
+    forceReload = false,
+  ): Promise<LoginResult> {
     if (!this.page) {
       throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
     }
@@ -636,12 +901,19 @@ export class PlaywrightAutomationService {
     // Store credentials for future use
     this.setCredentials(credentials);
 
-    // Wait for SGK login form
-    await this.page.waitForSelector('input[name*="text1"]', {
-      timeout: 10000,
-    });
+    // Formun ekranda olduğunu varsaymak yerine garanti altına alıyoruz.
+    if ((await this.ensureLoginForm(forceReload)) === "logged-in") {
+      this.loginCounter = 0;
+      this.startKeepAlive();
+      return {
+        success: true,
+        currentUrl: this.page.url(),
+        redirectedToLogin: false,
+      };
+    }
+
     await this.page.waitForSelector('input[name*="secret1"]', {
-      timeout: 10000,
+      timeout: PlaywrightAutomationService.LOGIN_FORM_TIMEOUT_MS,
     });
 
     // Fill username - specific SGK selector
@@ -671,10 +943,11 @@ export class PlaywrightAutomationService {
         this.loginCounter = 0;
         throw new UnsuccessfulLoginException();
       }
+      // Navigasyonu _doLogin içindeki ensureLoginForm() yapıyor; buradaki
+      // goto formun geleceğini varsaydığı için boş sayfa dönen denemelerde
+      // 10sn'lik selector timeout'una dönüşüyordu.
       await this.page.context().clearCookies();
-      await this.page.goto(URLS.MEDULA_HOME);
-      await this.page.waitForLoadState("load");
-      return await this._doLogin(credentials);
+      return await this._doLogin(credentials, true);
     }
 
     // Fill captcha solution
@@ -727,10 +1000,10 @@ export class PlaywrightAutomationService {
           this.loginCounter = 0;
           throw new UnsuccessfulLoginException();
         }
+        // Navigasyonu ensureLoginForm() üstleniyor — bkz. yukarıdaki captcha
+        // retry'ı.
         await this.page.context().clearCookies();
-        await this.page.goto(URLS.MEDULA_HOME);
-        await this.page.waitForLoadState("load");
-        return await this._doLogin(credentials);
+        return await this._doLogin(credentials, true);
       }
       // Any other warning (e.g. "Yeniden Giriş Yapınız." session-expiry) is NOT
       // a credential error — fall through to the re-login retry below.
@@ -749,8 +1022,7 @@ export class PlaywrightAutomationService {
         throw new UnsuccessfulLoginException();
       }
       await this.page.context().clearCookies();
-      await this.page.goto(URLS.MEDULA_HOME);
-      return await this._doLogin(credentials);
+      return await this._doLogin(credentials, true);
     }
     this.loginCounter = 0;
     this.startKeepAlive();
@@ -810,7 +1082,7 @@ export class PlaywrightAutomationService {
         console.log("Debug mode: Captcha detected");
       }
 
-      // Solve local-first (bundled EasyOCR solver), falling back to the remote API.
+      // Yalnızca yerel (bundled EasyOCR) çözücü — uzak API fallback'i yok.
       const outcome = await solveCaptcha(base64Image);
 
       if (!outcome.success || !outcome.code) {
@@ -884,6 +1156,152 @@ export class PlaywrightAutomationService {
   }
 
   /**
+   * Portal sayfasının hangi hâlde olduğunu belirler: sol menü geldi mi, oturum
+   * düşüp login formuna mı döndük, portal bir uyarı mı bastı. waitForSearchOutcome()
+   * ile aynı mantık — tek `evaluate` ile hepsini yoklayıp hangisi önce gelirse
+   * ona göre dallanıyoruz.
+   */
+  private async waitForPortalOutcome(
+    timeoutMs: number,
+  ): Promise<
+    | { type: "menu" }
+    | { type: "login" }
+    | { type: "message"; text: string }
+    | { type: "blank" }
+    | { type: "timeout" }
+  > {
+    const deadline = Date.now() + timeoutMs;
+    let lastBlank = false;
+
+    while (Date.now() < deadline) {
+      const state = await this.page!.evaluate(() => {
+        const clean = (el: Element | null) =>
+          (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+        // getElementById iki nokta üst üsteyi CSS kaçışı olmadan kabul eder.
+        const menu = document.getElementById("form1:menu");
+        if (menu && menu.getClientRects().length > 0) {
+          return { kind: "menu" as const, text: "" };
+        }
+        if (document.querySelector('input[type="password"]')) {
+          return { kind: "login" as const, text: "" };
+        }
+        const message =
+          clean(document.querySelector("td.message span.outputText")) ||
+          clean(document.querySelector("table#box1"));
+        if (message) return { kind: "message" as const, text: message };
+        const body = document.body;
+        const empty =
+          !body ||
+          ((body.innerText ?? "").trim().length === 0 &&
+            body.children.length === 0);
+        return { kind: "pending" as const, text: "", empty };
+        // Navigasyon sırasında context yok olabilir → yut, tekrar bak.
+      }).catch(() => null);
+
+      if (state?.kind === "menu") return { type: "menu" };
+      if (state?.kind === "login") return { type: "login" };
+      if (state?.kind === "message") {
+        return { type: "message", text: state.text };
+      }
+      // Boş gövde navigasyon ortasında da görülebiliyor; erken karar vermek
+      // yerine son duruma bakıp süre dolduğunda raporluyoruz.
+      lastBlank = state?.empty ?? false;
+
+      await this.page!.waitForTimeout(250);
+    }
+
+    return lastBlank ? { type: "blank" } : { type: "timeout" };
+  }
+
+  /**
+   * Portalın sol menüsünün (`#form1:menu`) ekranda olduğunu garanti eder.
+   *
+   * navigateToSGKPortal() yalnızca "goto patlamadı" garantisi veriyor: oturum
+   * düşmüşse, SGK boş sayfa döndürmüşse ya da portal bir uyarı sayfası bastıysa
+   * da `success: true` dönüyor. Çağıranlar hemen ardından menüyü beklediği için
+   * bunların hepsi 30 saniyelik `#form1:menu` timeout'una dönüşüyor, asıl sebep
+   * (oturum düştü / portal mesajı) kayboluyordu.
+   */
+  private async ensurePortalMenu(operation: string): Promise<void> {
+    if (!this.page) {
+      throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
+    }
+
+    let lastFailure = "";
+    let lastMessage = "";
+
+    for (
+      let attempt = 1;
+      attempt <= PlaywrightAutomationService.PORTAL_MENU_ATTEMPTS;
+      attempt++
+    ) {
+      const outcome = await this.waitForPortalOutcome(
+        PlaywrightAutomationService.PORTAL_MENU_TIMEOUT_MS,
+      );
+
+      if (outcome.type === "menu") return;
+
+      // Oturum düştü: login formu ya da "Yeniden Giriş Yapınız." ara sayfası.
+      const sessionExpired =
+        outcome.type === "login" ||
+        (outcome.type === "message" &&
+          /yeniden giriş|oturum/i.test(outcome.text));
+
+      if (sessionExpired) {
+        if (!this.hasCredentials()) {
+          lastFailure = "oturum düştü, kayıtlı kimlik bilgisi yok";
+          break;
+        }
+        console.warn(
+          `[Playwright] ${operation}: session lost before menu, re-logging in...`,
+        );
+        const login = await this.performLogin(this.storedCredentials!);
+        if (!login.success) {
+          lastFailure = `yeniden giriş başarısız: ${login.error ?? "bilinmiyor"}`;
+          break;
+        }
+        await this.navigateTo(URLS.MEDULA_HOME);
+        continue;
+      }
+
+      if (outcome.type === "message") {
+        // Portalın kendi uyarısı — 30sn selector timeout'u yerine metni ver.
+        lastMessage = outcome.text;
+        lastFailure = `portal mesajı: ${outcome.text}`;
+        break;
+      }
+
+      // Boş sayfa / menü hiç gelmedi: navigateToSGKPortal ile aynı kurtarma.
+      lastFailure =
+        outcome.type === "blank"
+          ? "SGK boş sayfa döndürdü"
+          : "menü verilen sürede render olmadı";
+      console.warn(
+        `[Playwright] ${operation}: portal menu not ready (attempt ${attempt}): ${lastFailure}`,
+      );
+      // State temizliği oturumu da düşürüyor; ancak yeniden giriş yapabilecek
+      // durumdaysak anlamlı.
+      if (this.hasCredentials()) {
+        await this.resetBrowserState();
+      }
+      await this.navigateTo(URLS.MEDULA_HOME);
+    }
+
+    const error = new Error(
+      lastMessage
+        ? `Medula: ${lastMessage}`
+        : "Medula portalı açılamadı. Lütfen tekrar deneyin.",
+    );
+    this.captureIssue(error, {
+      operation,
+      outcome: "portal-menu-not-loaded",
+      pageMessage: lastMessage || (await this.readPageMessage()),
+      detail: `${PlaywrightAutomationService.PORTAL_MENU_ATTEMPTS} denemede sol menü gelmedi — son durum: ${lastFailure}`,
+    });
+    throw error;
+  }
+
+  /**
    * Navigate to the prescription search page, fill the recipe number, and click search.
    * Does NOT parse the result — just visually navigates the browser.
    */
@@ -894,7 +1312,7 @@ export class PlaywrightAutomationService {
           throw new Error("System is not ready.");
         }
         await this.navigateToSGKPortal();
-        await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+        await this.ensurePortalMenu("navigateToPrescription");
         const menu = this.page
           .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
           .nth(5);
@@ -924,6 +1342,10 @@ export class PlaywrightAutomationService {
           currentUrl: this.page.url(),
         };
       } catch (error: any) {
+        this.captureIssue(error, {
+          operation: "navigateToPrescription",
+          receteNo: prescriptionNumber,
+        });
         return {
           success: false,
           error:
@@ -935,6 +1357,7 @@ export class PlaywrightAutomationService {
 
   async searchPrescription(
     prescriptionNumber: string,
+    retryOnSessionLoss = true,
   ): Promise<NavigationResult & { prescriptionData?: Recete }> {
     return this.withOperation(async () => {
       try {
@@ -942,7 +1365,7 @@ export class PlaywrightAutomationService {
           throw new Error("System is not ready.");
         }
         await this.navigateToSGKPortal();
-        await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+        await this.ensurePortalMenu("searchPrescription");
         const menu = this.page
           .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
           .nth(5);
@@ -965,25 +1388,92 @@ export class PlaywrightAutomationService {
           throw new Error("Could not find search button");
         }
 
-        await searchButton.click();
-        await this.page.waitForLoadState("load");
+        // Any message already on the search form (rare, but a stale one would
+        // otherwise be read as this search's outcome).
+        const previousMessage = await this.readPageMessage();
 
-        // Check for a portal warning (e.g. "... reçete numarasına ait reçete bulunamadı.")
-        const warningSpan = this.page.locator("td.message > span.outputText");
-        const warningText = await warningSpan
-          .textContent({ timeout: 500 })
-          .catch(() => "");
-        if (warningText && warningText.trim().length > 0) {
+        await searchButton.click();
+
+        // Don't blind-wait for the detail page: watch for the detail page, a
+        // portal message ("... reçete bulunamadı") and the login form at the
+        // same time, so a lost session or a warning doesn't turn into a silent
+        // 30s "waiting for #f:t13" timeout.
+        const outcome = await this.waitForSearchOutcome(previousMessage);
+
+        if (outcome.type === "login") {
+          if (!retryOnSessionLoss || !this.hasCredentials()) {
+            this.captureIssue(
+              new Error("Prescription search landed on the login page"),
+              {
+                operation: "searchPrescription",
+                outcome: "session-lost",
+                receteNo: prescriptionNumber,
+              },
+            );
+            return {
+              success: false,
+              currentUrl: this.page.url(),
+              error: "Medula oturumu düştü. Lütfen tekrar deneyin.",
+            };
+          }
+          console.warn(
+            "[Playwright] Session lost during prescription search, re-logging in...",
+          );
+          const login = await this.performLogin(this.storedCredentials!);
+          if (!login.success) {
+            this.captureIssue(
+              new Error(
+                `Re-login after session loss failed: ${login.error ?? "unknown"}`,
+              ),
+              {
+                operation: "searchPrescription",
+                outcome: "relogin-failed",
+                receteNo: prescriptionNumber,
+              },
+            );
+            return {
+              success: false,
+              currentUrl: this.page.url(),
+              error: login.error ?? "Medula oturumu yenilenemedi.",
+            };
+          }
+          return this.searchPrescription(prescriptionNumber, false);
+        }
+
+        if (outcome.type === "message") {
           return {
             success: false,
             currentUrl: this.page.url(),
-            error: warningText.trim(),
+            error: outcome.text,
+          };
+        }
+
+        if (outcome.type === "timeout") {
+          this.captureIssue(
+            new Error("Prescription detail page did not open after Sorgula"),
+            {
+              operation: "searchPrescription",
+              outcome: "timeout",
+              receteNo: prescriptionNumber,
+              pageMessage: await this.readPageMessage(),
+            },
+          );
+          return {
+            success: false,
+            currentUrl: this.page.url(),
+            error: `Reçete detay sayfası açılmadı (${this.page.url()}). Medula yanıt vermiyor olabilir, lütfen tekrar deneyin.`,
           };
         }
 
         // Parse recete from current page
         const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
         await this.ilaclaraRaporEkle(recete);
+        // e-Reçete sayfası ve uyarı kodları dialogu en sona bırakıldı: ikisi de
+        // detay sayfasından ayrılıp geri döndüğü için burada bir aksilik
+        // çıkarsa reçetenin geri kalanı (rapor, ilaç bilgisi) zaten toplanmış
+        // olur ve kontrol yine de yapılabilir.
+        recete.eRecete = await this.getEReceteBilgiFromDetailPage();
+        recete.receteUyariKodlari = await this.getReceteUyariKodlari();
         return {
           success: true,
           currentUrl: this.page.url(),
@@ -999,6 +1489,10 @@ export class PlaywrightAutomationService {
             // fall through to error return below
           }
         }
+        this.captureIssue(error, {
+          operation: "searchPrescription",
+          receteNo: prescriptionNumber,
+        });
         return {
           success: false,
           error:
@@ -1006,6 +1500,194 @@ export class PlaywrightAutomationService {
         };
       }
     });
+  }
+
+  /**
+   * "Uyarı Kodu (Yeni)" dialogunu açıp reçeteye eklenmiş uyarı kodlarını
+   * okur, sonra Vazgeç ile kapatır. İki POST'luk bir tur olduğu için akışın
+   * en sonunda çalıştırılır: burada bir aksilik olursa reçetenin geri kalanı
+   * (rapor, ilaç bilgisi) çoktan toplanmış olur.
+   *
+   * `[]` → dialog açıldı, kod yok. `undefined` → dialog açılamadı/okunamadı.
+   */
+  async getReceteUyariKodlari(): Promise<ReceteUyariKodu[] | undefined> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const button = this.page.locator("input#f\\:buttonReceteTeshis");
+    if ((await button.count()) === 0) return undefined;
+
+    let kodlar: ReceteUyariKodu[] | undefined;
+    try {
+      await button.first().click();
+      // Dialog sayfada gizli durmuyor, POST sonrası sunucudan geliyor.
+      await this.page.waitForSelector("#f\\:dialogUyari", {
+        state: "visible",
+        timeout: 15000,
+      });
+
+      kodlar = await this.page.evaluate(() => {
+        const clean = (s: string | null | undefined) =>
+          (s ?? "").replace(/\s+/g, " ").trim();
+
+        const table = document.getElementById("f:tableExUyariSecim");
+        // Kod yoksa Medula tabloyu hiç basmıyor, yerine kırmızı bir mesaj
+        // gösteriyor ("İlaçlarla uyumlu uyarı kodu bulunamamıştır.").
+        if (!table) return [];
+
+        return Array.from(table.querySelectorAll(":scope > tbody > tr"))
+          .map((row) => {
+            const ilacAdi = clean(row.querySelector("td")?.textContent);
+            // Satırda iki select var: menu100Uyari = eklenebilecek kodlar,
+            // menu101Uyari = eklenmiş olan. Bizi ikincisinin ekranda görünen
+            // (seçili) değeri ilgilendiriyor.
+            const selected = row.querySelector(
+              'select[id$=":menu101Uyari"]',
+            ) as HTMLSelectElement | null;
+            const option =
+              selected?.selectedOptions?.[0] ??
+              (selected ? selected.options[selected.selectedIndex] : null);
+            return { ilacAdi, secilenUyariKodu: clean(option?.textContent) };
+          })
+          .filter((r) => r.ilacAdi || r.secilenUyariKodu);
+      });
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "receteUyariKodlari",
+        outcome: "dialog-failed",
+      });
+      kodlar = undefined;
+    } finally {
+      await this.closeUyariDialog();
+    }
+
+    return kodlar;
+  }
+
+  /**
+   * Uyarı kodu dialogunu kapatır. DİKKAT: "Kaydet" butonunun id'si
+   * `f:buttonReceteTeshisPanelKapatUyari` — içinde "Kapat" geçiyor. Yanlışlıkla
+   * ona basmak canlı reçeteyi değiştirir, bu yüzden yalnızca Vazgeç'in tam
+   * id'si kullanılıyor; etiket/kısmi eşleşme ile seçici yazılmamalı.
+   */
+  private async closeUyariDialog(): Promise<void> {
+    if (!this.page) return;
+    try {
+      const cancel = this.page.locator(
+        "input#f\\:buttonReceteTeshisPanelVazgecUyari",
+      );
+      if ((await cancel.count()) === 0) return;
+      await cancel.first().click();
+      // Detay sayfasına döndüğümüzü doğrula.
+      await this.page.waitForSelector("#f\\:t13", {
+        state: "attached",
+        timeout: 15000,
+      });
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "receteUyariKodlari",
+        outcome: "cancel-failed",
+      });
+    }
+  }
+
+  /**
+   * Reçete detay sayfasındaki "Sertifika" seçimi (`select#f:m7`). Seçili
+   * option'ın hem değeri hem etiketi alınır ("109" / "Aile Hekimliği");
+   * sertifika yoksa Medula "Yok" (kod "0") gösterir ve o da olduğu gibi
+   * gönderilir — bilgi eksiltmek yerine backend karar versin.
+   */
+  async getSertifikaFromDetailPage(): Promise<ReceteSertifika | undefined> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const sertifika = await this.page
+      .evaluate(() => {
+        const select = document.getElementById(
+          "f:m7",
+        ) as HTMLSelectElement | null;
+        if (!select) return null;
+        const option =
+          select.selectedOptions?.[0] ?? select.options[select.selectedIndex];
+        return {
+          kod: select.value ?? "",
+          ad: (option?.textContent ?? "").replace(/\s+/g, " ").trim(),
+        };
+      })
+      .catch(() => null);
+
+    if (!sertifika || (!sertifika.kod && !sertifika.ad)) return undefined;
+    return sertifika;
+  }
+
+  /** Portalın uyarı/hata kutularındaki metin (yoksa boş string). */
+  private async readPageMessage(): Promise<string> {
+    if (!this.page) return "";
+    return this.page
+      .evaluate(() => {
+        const clean = (el: Element | null) =>
+          (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+        return (
+          clean(document.querySelector("td.message span.outputText")) ||
+          clean(document.querySelector("table#box1"))
+        );
+      })
+      .catch(() => "");
+  }
+
+  /**
+   * "Sorgula" tıklandıktan sonra sayfanın hangi hâle geldiğini belirler:
+   * reçete detayı mı açıldı, portal bir uyarı mı bastı, yoksa oturum düşüp
+   * login formuna mı döndük. Tek bir `evaluate` ile üçünü birden yokladığı
+   * için hangisi önce gelirse ona göre dallanabiliyoruz.
+   */
+  private async waitForSearchOutcome(
+    previousMessage = "",
+    timeoutMs = PlaywrightAutomationService.SEARCH_OUTCOME_TIMEOUT_MS,
+  ): Promise<SearchOutcome> {
+    const deadline = Date.now() + timeoutMs;
+    let lastMessage = "";
+
+    while (Date.now() < deadline) {
+      const state = await this.page!.evaluate(() => {
+        const clean = (el: Element | null) =>
+          (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+        // `f:t13` (Reçete No) yalnızca reçete detay sayfasında var.
+        if (document.getElementById("f:t13")) {
+          return { kind: "detail" as const, text: "" };
+        }
+        // Detay sayfasında parola alanı yok; varsa login formundayız.
+        if (document.querySelector('input[type="password"]')) {
+          return { kind: "login" as const, text: "" };
+        }
+        const message =
+          clean(document.querySelector("td.message span.outputText")) ||
+          clean(document.querySelector("table#box1"));
+        return message
+          ? { kind: "message" as const, text: message }
+          : { kind: "pending" as const, text: "" };
+        // Navigasyon sırasında context yok olabilir → catch ile yut, tekrar bak.
+      }).catch(() => null);
+
+      if (state?.kind === "detail") return { type: "detail" };
+      if (state?.kind === "login") return { type: "login" };
+      if (state?.kind === "message") {
+        lastMessage = state.text;
+        if (state.text !== previousMessage) {
+          return { type: "message", text: state.text };
+        }
+      }
+
+      await this.page!.waitForTimeout(250);
+    }
+
+    // Süre dolduysa ama ekranda (tıklamadan önce de duran) bir mesaj varsa,
+    // "sayfa açılmadı" demek yerine mesajı bildirmek daha faydalı.
+    return lastMessage
+      ? { type: "message", text: lastMessage }
+      : { type: "timeout" };
   }
 
   async ilaclaraRaporEkle(recete: Recete): Promise<void> {
@@ -1040,7 +1722,9 @@ export class PlaywrightAutomationService {
     const hastaSoyadElement = this.page.locator("#f\\:t16");
     const tesisKoduElement = this.page.locator("#f\\:t33");
     const receteTarihiElement = this.page.locator("#f\\:t29");
-    const sonIslemTarihiElement = this.page.locator("#f\\:t31");
+    // "İlaç Alım Tarihi" — geriye dönük uyumluluk için sonIslemTarihi alanına
+    // da yazılmaya devam ediyor (tablo/45 gün kontrolü onu kullanıyor).
+    const ilacAlimTarihiElement = this.page.locator("#f\\:t31");
     const doktorBransElement = this.page.locator("#f\\:t45");
 
     const receteNo =
@@ -1049,22 +1733,25 @@ export class PlaywrightAutomationService {
     const soyad = (await hastaSoyadElement.textContent().catch(() => "")) || "";
     const tesisKodu = (await tesisKoduElement.inputValue()) || "";
     const receteTarihi = (await receteTarihiElement.inputValue()) || "";
-    const sonIslemTarihi = (await sonIslemTarihiElement.inputValue()) || "";
+    const ilacAlimTarihi = (await ilacAlimTarihiElement.inputValue()) || "";
     const doktorBrans = (await doktorBransElement.textContent()) || "";
 
     // İlaç listesini getIlacOzetFromDetailPage kullanarak çıkar
     const ilaclar = (await this.getIlacOzetFromDetailPage()) as ReceteIlac[];
 
     const tanilar = await this.getReceteTanilariFromDetailPage();
+    const sertifika = await this.getSertifikaFromDetailPage();
 
     const recete: Recete = {
       receteNo: receteNo.trim(),
       receteTarihi,
-      sonIslemTarihi,
+      sonIslemTarihi: ilacAlimTarihi,
+      ilacAlimTarihi,
       tesisKodu,
       doktorBrans: doktorBrans.trim(),
       ilaclar,
       tanilar,
+      sertifika,
       ad: ad.trim(),
       soyad: soyad.trim(),
     };
@@ -1109,6 +1796,318 @@ export class PlaywrightAutomationService {
     }
 
     return tanilar;
+  }
+
+  /**
+   * Bazı reçetelerin detay sayfasında "E-Reçete Görüntüle"
+   * (`input#f:buttonEreceteGoruntule`) butonu bulunur; buton ayrı bir sayfaya
+   * (EreceteGorme.jsp) götürür. Orada reçetenin "E-Reçete Bilgileri" başlık
+   * bloğu, "İlaç Bilgileri" listesi ve "Onay / Açıklama / Tanı Listesi"
+   * tabloları durur; hepsi okunduktan sonra sayfanın kendi "Geri Dön"
+   * butonuyla detay sayfasına dönülür.
+   *
+   * `undefined` → buton yok ya da sayfa açılamadı. Listelerin boş dizi olması
+   * → sayfa açıldı ama o tabloda satır yok (Onay Listesi çoğunlukla boştur).
+   */
+  async getEReceteBilgiFromDetailPage(): Promise<EReceteBilgi | undefined> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const button = this.page.locator("input#f\\:buttonEreceteGoruntule");
+    if ((await button.count()) === 0) return undefined;
+
+    let bilgi: EReceteBilgi | undefined;
+    try {
+      await button.first().click();
+      // e-Reçete sayfası POST sonrası sunucudan geliyor. Detay sayfasındaki
+      // buton `f:` , e-Reçete sayfasındakiler `form1:` prefix'li olduğu için
+      // `form1:buttonGeriDon` yeni sayfaya geçtiğimizin güvenli işareti.
+      await this.page.waitForSelector("input#form1\\:buttonGeriDon", {
+        state: "visible",
+        timeout: 15000,
+      });
+
+      bilgi = await this.page.evaluate(() => {
+        const clean = (s: string | null | undefined) =>
+          (s ?? "").replace(/ /g, " ").replace(/\s+/g, " ").trim();
+
+        // Etiketler Türkçe; eşleştirme sadeleştirilmiş hâl üzerinden yapılıyor.
+        const fold = (s: string | null | undefined) => {
+          const harfler: Record<string, string> = {
+            "ç": "c",
+            "ğ": "g",
+            "ı": "i",
+            "î": "i",
+            "ö": "o",
+            "ş": "s",
+            "ü": "u",
+            "â": "a",
+            "û": "u",
+          };
+          return clean(s)
+            .toLocaleLowerCase("tr")
+            .replace(/[çğıîöşüâû]/g, (c) => harfler[c] ?? c);
+        };
+
+        /**
+         * Hücre metni. İçinde `panelBox` gibi bir iç tablo varsa hücreleri
+         * boşlukla ayırır; düz textContent "ASLI GİZEM" ile "DURKAYA"yı
+         * bitişik döndürüyor.
+         */
+        const cellText = (el: Element | null | undefined): string => {
+          if (!el) return "";
+          const inner = el.querySelector("table");
+          if (!inner) return clean(el.textContent);
+          return clean(
+            Array.from(inner.querySelectorAll("td"))
+              .map((td) => clean(td.textContent))
+              .filter(Boolean)
+              .join(" "),
+          );
+        };
+
+        /** `headerRow` başlığına göre blok tablosunu bulur. */
+        const tableByHeader = (header: string) =>
+          Array.from(document.querySelectorAll("table.borderTable")).find(
+            (t) =>
+              fold(
+                t.querySelector(":scope > tbody > tr.headerRow > td")
+                  ?.textContent,
+              ) === header,
+          ) ?? null;
+
+        /**
+         * Alt listeler (`table.dataTableEx`) caption metnine göre bulunur:
+         * id'ler (form1:tableEx1/2/3) hangi listenin hangisi olduğunu garanti
+         * etmiyor.
+         */
+        const rowsOf = (caption: string): string[][] => {
+          const table = Array.from(
+            document.querySelectorAll("table.dataTableEx"),
+          ).find((t) =>
+            fold(t.querySelector("caption")?.textContent).includes(caption),
+          );
+          if (!table) return [];
+          return Array.from(table.querySelectorAll(":scope > tbody > tr"))
+            .map((row) =>
+              Array.from(row.querySelectorAll(":scope > td")).map((cell) =>
+                clean(cell.textContent),
+              ),
+            )
+            .filter((cells) => cells.some((cell) => cell));
+        };
+
+        // ---- "E-Reçete Bilgileri" başlık bloğu ----
+        // `diger` dışarıda: o alan serbest metin haritası, etiket eşlemesi
+        // yalnızca string alanlara yazıyor.
+        const BASLIK_ETIKETLERI: Record<
+          string,
+          Exclude<keyof EReceteBaslik, "diger">
+        > = {
+          "e-recete no": "eReceteNo",
+          "takip no": "takipNo",
+          "tesis kodu": "tesisKodu",
+          "recete turu": "receteTuru",
+          "recete tarihi": "receteTarihi",
+          "recete alt turu": "receteAltTuru",
+          "provizyon tipi": "provizyonTipi",
+          "seri no": "seriNo",
+          "protokol no": "protokolNo",
+          "doktor brans": "doktorBrans",
+          "doktor sertifika": "doktorSertifika",
+        };
+        /**
+         * Kimlik bilgileri toplanmıyor: hasta T.C. kimlik numarası, hekimin
+         * diploma tescil numarası ve hekimin adı/soyadı. Bunlar `diger`e de
+         * düşmesin diye açıkça eleniyor — analiz için gereken doktor bilgisi
+         * branş ve sertifika, kimlik değil.
+         */
+        const ATLANAN_ETIKETLER = [
+          "t.c.kimlik no",
+          "doktor dip.tesc.no",
+          "doktor adi/soyadi",
+        ];
+        const baslik: EReceteBaslik = {
+          eReceteNo: "",
+          takipNo: "",
+          tesisKodu: "",
+          receteTuru: "",
+          receteTarihi: "",
+          receteAltTuru: "",
+          provizyonTipi: "",
+          seriNo: "",
+          protokolNo: "",
+          doktorBrans: "",
+          doktorSertifika: "",
+        };
+        const diger: Record<string, string> = {};
+        const mesajlar: string[] = [];
+
+        const baslikTable = tableByHeader("e-recete bilgileri");
+        const baslikRows = baslikTable
+          ? Array.from(baslikTable.querySelectorAll(":scope > tbody > tr"))
+          : [];
+        for (const row of baslikRows) {
+          if (row.classList.contains("headerRow")) continue;
+          // Onay/Açıklama/Tanı tabloları da bu bloğun satırlarında duruyor;
+          // onlar rowsOf() ile ayrıca okunuyor.
+          if (row.querySelector("table.dataTableEx")) continue;
+
+          const cells = Array.from(row.querySelectorAll(":scope > td"));
+          // Etiket/değer satırları "Etiket | : | Değer" biçiminde; iki nokta
+          // hücresi çapa alınıp solundaki etiket sağındaki değerle eşleniyor.
+          let ciftBulundu = false;
+          for (let i = 0; i < cells.length; i++) {
+            if (clean(cells[i].textContent) !== ":") continue;
+            const etiket = clean(cells[i - 1]?.textContent);
+            if (!etiket) continue;
+            ciftBulundu = true;
+            const sadeEtiket = fold(etiket);
+            // Değeri hiç okumuyoruz — kimlik alanları belleğe de girmesin.
+            if (ATLANAN_ETIKETLER.includes(sadeEtiket)) continue;
+            const deger = cellText(cells[i + 1]);
+            const alan = BASLIK_ETIKETLERI[sadeEtiket];
+            if (alan) baslik[alan] = deger;
+            else diger[etiket] = deger;
+          }
+          if (ciftBulundu) continue;
+
+          // Çift içermeyen satırlar serbest metin ("Reçete elektronik olarak
+          // imzalanmıştır." ya da kırmızı uyarı satırı).
+          const metin = clean(row.textContent);
+          if (metin) mesajlar.push(metin);
+        }
+        if (Object.keys(diger).length) baslik.diger = diger;
+
+        // ---- "İlaç Bilgileri" bloğu ----
+        const ILAC_ETIKETLERI: Record<
+          string,
+          "ad" | "adet" | "kullanim" | "kullanimSekli"
+        > = {
+          adi: "ad",
+          adet: "adet",
+          kullanim: "kullanim",
+          "kullanim sekli": "kullanimSekli",
+        };
+        const ilaclar: EReceteIlac[] = [];
+        const ilacTable = tableByHeader("ilac bilgileri");
+        const ilacRows = ilacTable
+          ? Array.from(ilacTable.querySelectorAll(":scope > tbody > tr"))
+          : [];
+        let aktifIlac: EReceteIlac | null = null;
+
+        for (const row of ilacRows) {
+          if (row.classList.contains("headerRow")) continue;
+          const cells = Array.from(row.querySelectorAll(":scope > td"));
+          if (!cells.length) continue;
+
+          // İlaçları ayıran <hr> satırı.
+          if (cells.length === 1 && cells[0].querySelector("hr")) {
+            aktifIlac = null;
+            continue;
+          }
+
+          // İlacın altındaki açıklama tablosu ("Teşhis/Tanı - …").
+          const icTablo =
+            cells.length === 1 ? cells[0].querySelector("table") : null;
+          if (icTablo) {
+            if (!aktifIlac) continue;
+            for (const td of Array.from(icTablo.querySelectorAll("td"))) {
+              const metin = clean(td.textContent);
+              if (metin) aktifIlac.aciklamalar.push(metin);
+            }
+            continue;
+          }
+
+          // "Adı : X  Adet : Y  Kullanım : Z  Kullanım Şekli : W" satırı;
+          // hücreler etiket/değer ikilileri hâlinde geliyor.
+          const alanlar: Record<string, string> = {};
+          const ekAlanlar: Record<string, string> = {};
+          for (let i = 0; i + 1 < cells.length; i += 2) {
+            const etiket = clean(cells[i].textContent).replace(/\s*:\s*$/, "");
+            if (!etiket) continue;
+            const deger = cellText(cells[i + 1]);
+            const alan = ILAC_ETIKETLERI[fold(etiket)];
+            if (alan) alanlar[alan] = deger;
+            else ekAlanlar[etiket] = deger;
+          }
+          if (!Object.keys(alanlar).length && !Object.keys(ekAlanlar).length) {
+            continue;
+          }
+
+          // "TANSIFA 32 MG/10 MG TABLET (28 TABLET) (ARB+KKB) (8699262010258)"
+          // → ad + barkod. Açgözlü eşleşme son parantezi yakalar.
+          const adHam = alanlar.ad ?? "";
+          const eslesme = adHam.match(/^(.*)\((\d{6,})\)\s*$/);
+          aktifIlac = {
+            ad: clean(eslesme ? eslesme[1] : adHam),
+            barkod: eslesme ? eslesme[2] : "",
+            adet: alanlar.adet ?? "",
+            kullanim: alanlar.kullanim ?? "",
+            kullanimSekli: alanlar.kullanimSekli ?? "",
+            aciklamalar: [],
+          };
+          if (Object.keys(ekAlanlar).length) aktifIlac.ekAlanlar = ekAlanlar;
+          ilaclar.push(aktifIlac);
+        }
+
+        return {
+          baslik,
+          mesajlar,
+          ilaclar,
+          onaylar: rowsOf("onay listesi").map(
+            ([onayTuru = "", onayYapanDoktor = ""]) => ({
+              onayTuru,
+              onayYapanDoktor,
+            }),
+          ),
+          aciklamalar: rowsOf("aciklama listesi").map(
+            ([aciklamaTuru = "", aciklama = ""]) => ({
+              aciklamaTuru,
+              aciklama,
+            }),
+          ),
+          tanilar: rowsOf("tani listesi").map(([icd10Kod = "", tani = ""]) => ({
+            icd10Kod,
+            tani,
+          })),
+        };
+      });
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "ereceteGoruntule",
+        outcome: "page-failed",
+      });
+      bilgi = undefined;
+    } finally {
+      await this.returnFromERecetePage();
+    }
+
+    return bilgi;
+  }
+
+  /**
+   * e-Reçete sayfasındaki "Geri Dön" (`input#form1:buttonGeriDon`) ile reçete
+   * detay sayfasına döner. Detay sayfasının açıldığı `#f:t13` (Reçete No) ile
+   * doğrulanır — akışın devamı (uyarı kodları vb.) o sayfayı bekliyor.
+   */
+  private async returnFromERecetePage(): Promise<void> {
+    if (!this.page) return;
+    try {
+      const back = this.page.locator("input#form1\\:buttonGeriDon");
+      if ((await back.count()) === 0) return;
+      await back.first().click();
+      await this.page.waitForSelector("#f\\:t13", {
+        state: "attached",
+        timeout: 15000,
+      });
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "ereceteGoruntule",
+        outcome: "geri-don-failed",
+      });
+    }
   }
 
   async searchByDateRange(
@@ -1163,13 +2162,20 @@ export class PlaywrightAutomationService {
         console.warn("[Playwright] Context/page lost, retrying period query...");
         return await this.getRecipesByPeriod(period, faturaTuru, true);
       }
+      this.captureIssue(err, {
+        operation: "getRecipesByPeriod",
+        detail: `period=${period}, faturaTuru=${faturaTuru}`,
+      });
       throw err;
     }
   }
 
   private async _getRecipesByPeriodInner(period: string, faturaTuru: FaturaTuru = "1"): Promise<ReceteOzet[]> {
+    if (!this.page) {
+      throw new PlaywrightException(PlaywrightErrorCode.NOT_INITIALIZED);
+    }
     await this.navigateToSGKPortal();
-    await this.page.waitForSelector(ELEMENT_SELECTORS.SOL_MENU_SELECTOR);
+    await this.ensurePortalMenu("getRecipesByPeriod");
     const menu = this.page
       .locator(`${ELEMENT_SELECTORS.SOL_MENU_SELECTOR} tr`)
       .nth(3);
@@ -1541,6 +2547,27 @@ export class PlaywrightAutomationService {
     // Raporlu maksimum kullanım dozu (form1:box9 text content)
     const raporluMaksKullanimDoz = await getTextContent("#form1\\:box9");
 
+    /**
+     * Doz kutuları ("1 Günde 1 x 1.0") her parçayı ayrı bir <span>'de tutuyor
+     * ve JSF hücreleri arasında boşluk düğümü yok — düz textContent
+     * "1Günde1x1.0" veriyor. Bu yüzden span'ler tek tek okunup boşlukla
+     * birleştiriliyor.
+     */
+    const getDozText = async (selector: string): Promise<string> => {
+      try {
+        const parts = await page.locator(`${selector} span`).allTextContents();
+        return parts
+          .map((p) => this.normalizeText(p))
+          .filter(Boolean)
+          .join(" ");
+      } catch {
+        return "";
+      }
+    };
+
+    const ayaktanMaksKullanimDoz = await getDozText("#form1\\:box2");
+    const yatanMaksKullanimDoz = await getDozText("#form1\\:box10");
+
     // SUT bilgilerini çıkar
     // const sutElements = await page
     //   .locator("#form1\\:tableEx1 > tr.rowClass1")
@@ -1629,6 +2656,8 @@ export class PlaywrightAutomationService {
       cinsiyeti: this.normalizeText(cinsiyeti),
       etkinMadde: this.normalizeText(etkinMadde),
       raporluMaksKullanimDoz: this.normalizeText(raporluMaksKullanimDoz) || undefined,
+      ayaktanMaksKullanimDoz: ayaktanMaksKullanimDoz || undefined,
+      yatanMaksKullanimDoz: yatanMaksKullanimDoz || undefined,
       sutBilgi: sutBilgileri[0] || undefined,
       ozelDurumlar: ozelDurumlar.length > 0 ? ozelDurumlar : undefined,
       esdegerBilgi: esdegerBilgileri,
