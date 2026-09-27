@@ -4,18 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Recete } from "@/types/recete";
 import { Button } from "@/components/ui/button";
 import {
-  ChevronDown,
   Database,
   FlaskConical,
   Loader2,
   CalendarSearch,
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PrescriptionMedicinesModal } from "@/components/prescription-medicines-modal";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { useModal } from "@/hooks/useModal";
@@ -34,6 +33,7 @@ import {
 import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
 import { cacheAnalysis } from "@/lib/db";
 import { bulkCancel } from "@/lib/bulk-cancel";
+import { toUserFriendlyError } from "@/utils/error-messages";
 import { analizCompleted, setAnalyzingRecete } from "@/store/slices/receteSlice";
 import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import { PharmacyRequired } from "@/components/pharmacy-required";
@@ -86,7 +86,15 @@ function SearchReport() {
     if (searchPrescriptionDetail.fulfilled.match(result)) {
       openDetailModal(result.payload as Recete, receteNo);
     } else {
-      toast.error("Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.", { duration: Infinity });
+      // Eksik veri hatası hangi alanların okunamadığını söylüyor; genel mesaj
+      // yerine onu göster.
+      toast.error(
+        toUserFriendlyError(
+          result.error?.message,
+          "Reçete sorgulanırken bir hata oluştu. Lütfen tekrar deneyin.",
+        ),
+        { duration: Infinity },
+      );
     }
   };
 
@@ -95,11 +103,16 @@ function SearchReport() {
     if (cached) openDetailModal(cached, receteNo);
   };
 
+  /**
+   * Tek reçeteyi kontrol eder. Dönen değer reçete verilerinin toplanıp
+   * toplanamadığını söyler: `false` ise reçete eksik veri yüzünden kontrol
+   * edilemedi ve toplu akışta tekrar denenecek.
+   */
   const handleAnalizEt = async (
     receteNo: string,
-    _force: boolean,
+    force: boolean,
     signal?: AbortSignal,
-  ) => {
+  ): Promise<boolean> => {
     const groupId = `analyze-${receteNo}`;
     dispatch(setAnalyzingRecete(receteNo));
 
@@ -111,16 +124,19 @@ function SearchReport() {
     }));
 
     try {
-      // 1. Fetch prescription detail
-      const recete = await dispatch(searchPrescriptionDetail({ receteNo })).unwrap();
+      // 1. Fetch prescription detail — "Tekrar Kontrol" (force) always re-reads
+      // the prescription from Medula instead of using the cached detail.
+      const recete = await dispatch(
+        searchPrescriptionDetail({ receteNo, force }),
+      ).unwrap();
       dispatch(updateTask({ groupId, taskId: "fetch", status: "done" }));
 
-      if (signal?.aborted || bulkCancel.isCancelled()) return;
+      if (signal?.aborted || bulkCancel.isCancelled()) return true;
 
       const raporluIlaclar = (recete?.ilaclar ?? []).filter((m: any) => m.raporluMu);
       if (raporluIlaclar.length === 0) {
         if (!isBulkRef.current) toast.info("Bu reçetede raporlu ilaç bulunamadı.");
-        return;
+        return true;
       }
 
       // 2. Add per-medicine tasks
@@ -133,6 +149,7 @@ function SearchReport() {
           ...raporluIlaclar.map((m: any, idx: number) => ({
             id: m.barkod,
             label: m.ad || m.barkod,
+            kind: "medicine" as const,
             status: (idx === 0 ? "running" : "pending") as "running" | "pending",
           })),
         ],
@@ -158,9 +175,11 @@ function SearchReport() {
           dispatch(updateTask({ groupId, taskId: ilac.barkod, status: "error", errorMessage: "Analiz başarısız" }));
         }
       }
+      return true;
     } catch (err: any) {
       dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "Reçete verileri alınamadı" }));
       if (!isBulkRef.current) toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      return false;
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -201,22 +220,53 @@ function SearchReport() {
     );
   };
 
+  /**
+   * Verilen reçetelerin verilerini sırayla alır ve ALINAMAYANLARI döner.
+   * İkinci turda `force` ile çağrılır: önbelleği atlayıp Medula'dan yeniden
+   * okur, çünkü ilk turdaki başarısızlık genelde geçici bir okuma hatasıdır.
+   */
+  const bulkVerileriAlPass = async (
+    receteNos: string[],
+    force = false,
+  ): Promise<string[]> => {
+    const basarisiz: string[] = [];
+    for (let i = 0; i < receteNos.length; i++) {
+      if (bulkCancel.isCancelled()) break;
+      dispatch(
+        setBulkProgress({
+          type: "verileriAl",
+          current: i + 1,
+          total: receteNos.length,
+          currentReceteNo: receteNos[i],
+        }),
+      );
+      const result = await dispatch(
+        searchPrescriptionDetail({ receteNo: receteNos[i], force }),
+      );
+      if (!searchPrescriptionDetail.fulfilled.match(result)) {
+        basarisiz.push(receteNos[i]);
+      }
+      if (bulkCancel.isCancelled()) break;
+    }
+    return basarisiz;
+  };
+
   const handleBulkVerileriAl = async () => {
     bulkCancel.start();
     const selected = getSelectedInTableOrder();
     try {
-      for (let i = 0; i < selected.length; i++) {
-        if (bulkCancel.isCancelled()) break;
-        dispatch(
-          setBulkProgress({
-            type: "verileriAl",
-            current: i + 1,
-            total: selected.length,
-            currentReceteNo: selected[i],
-          }),
+      // Eksik veri yüzünden alınamayanlar toplanıp turun sonunda bir kez daha
+      // denenir; hâlâ alınamayanlar kullanıcıya liste hâlinde bildirilir —
+      // sessizce eksik kalmasınlar.
+      const basarisiz = await bulkVerileriAlPass(selected);
+      const kalan = bulkCancel.isCancelled()
+        ? basarisiz
+        : await bulkVerileriAlPass(basarisiz, true);
+      if (kalan.length > 0 && !bulkCancel.isCancelled()) {
+        toast.error(
+          `${kalan.length} reçetenin verileri eksiksiz alınamadı: ${kalan.join(", ")}. Lütfen bu reçeteleri tekrar sorgulayın.`,
+          { duration: Infinity },
         );
-        await dispatch(searchPrescriptionDetail({ receteNo: selected[i] }));
-        if (bulkCancel.isCancelled()) break;
       }
     } finally {
       bulkCancel.reset();
@@ -224,23 +274,47 @@ function SearchReport() {
     }
   };
 
+  /** Verilen reçeteleri sırayla kontrol eder ve verisi alınamayanları döner. */
+  const bulkAnalizPass = async (
+    receteNos: string[],
+    signal: AbortSignal,
+    force: boolean,
+  ): Promise<string[]> => {
+    const basarisiz: string[] = [];
+    for (let i = 0; i < receteNos.length; i++) {
+      if (bulkCancel.isCancelled()) break;
+      dispatch(
+        setBulkProgress({
+          type: "analizEt",
+          current: i + 1,
+          total: receteNos.length,
+          currentReceteNo: receteNos[i],
+        }),
+      );
+      const tamam = await handleAnalizEt(receteNos[i], force, signal);
+      if (!tamam) basarisiz.push(receteNos[i]);
+      if (bulkCancel.isCancelled()) break;
+    }
+    return basarisiz;
+  };
+
   const handleBulkAnalizEt = async () => {
     isBulkRef.current = true;
     const signal = bulkCancel.start();
     const selected = getSelectedInTableOrder();
     try {
-      for (let i = 0; i < selected.length; i++) {
-        if (bulkCancel.isCancelled()) break;
-        dispatch(
-          setBulkProgress({
-            type: "analizEt",
-            current: i + 1,
-            total: selected.length,
-            currentReceteNo: selected[i],
-          }),
+      // İlk tur önbellekteki detayları kullanır (force = false) ki büyük bir
+      // seçim her reçeteyi yeniden kazımasın. Verisi alınamayanlar turun
+      // sonunda force ile bir kez daha denenir, kalanlar listelenir.
+      const basarisiz = await bulkAnalizPass(selected, signal, false);
+      const kalan = bulkCancel.isCancelled()
+        ? basarisiz
+        : await bulkAnalizPass(basarisiz, signal, true);
+      if (kalan.length > 0 && !bulkCancel.isCancelled()) {
+        toast.error(
+          `${kalan.length} reçete eksik veri yüzünden kontrol edilemedi: ${kalan.join(", ")}. Lütfen bu reçeteleri tekrar deneyin.`,
+          { duration: Infinity },
         );
-        await handleAnalizEt(selected[i], true, signal);
-        if (bulkCancel.isCancelled()) break;
       }
     } finally {
       bulkCancel.reset();
@@ -301,30 +375,44 @@ function SearchReport() {
                   Bulunan Reçeteler ({receteler.length})
                 </h2>
                 {selectedRecetes.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" disabled={!!bulkProgress}>
-                        Toplu İşlem ({selectedRecetes.length})
-                        <ChevronDown className="ml-1 h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-72">
-                      <DropdownMenuItem onClick={handleBulkVerileriAl}>
-                        <Database className="h-4 w-4 text-blue-500 shrink-0" />
-                        <div>
-                          <p className="font-medium">Sorgula</p>
-                          <p className="text-xs text-muted-foreground">Reçeteleri ve İlaç Raporlarını okur, kredi harcamaz</p>
-                        </div>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleBulkAnalizEt}>
-                        <FlaskConical className="h-4 w-4 text-primary shrink-0" />
-                        <div>
-                          <p className="font-medium">Kontrol Et</p>
-                          <p className="text-xs text-muted-foreground">Yapay Zeka ile SUT uygunluğunu kontrol eder</p>
-                        </div>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <TooltipProvider>
+                    <div className="flex items-center gap-2">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            disabled={!!bulkProgress}
+                            onClick={handleBulkVerileriAl}
+                          >
+                            <Database className="h-4 w-4 shrink-0 text-blue-500" />
+                            Sorgula ({selectedRecetes.length})
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="max-w-[220px] text-xs">
+                            Reçeteleri ve İlaç Raporlarını okur, kredi harcamaz
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            className="bg-brand text-brand-foreground hover:bg-brand/90"
+                            disabled={!!bulkProgress}
+                            onClick={handleBulkAnalizEt}
+                          >
+                            <FlaskConical className="h-4 w-4 shrink-0" />
+                            Kontrol Et ({selectedRecetes.length})
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="max-w-[220px] text-xs">
+                            Yapay Zeka ile SUT uygunluğunu kontrol eder
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </TooltipProvider>
                 )}
               </div>
 
@@ -343,6 +431,7 @@ function SearchReport() {
                 onSelectAll={handleSelectAll}
                 showHasta
                 showFilters
+                showQuickSearch
                 compact
                 onSorgula={handleSorgula}
                 onAnalizEt={handleAnalizEt}

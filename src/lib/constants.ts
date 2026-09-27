@@ -1,4 +1,4 @@
-export const API_BASE_URL = "https://8d40-2a02-5d7-cec5-4c00-8528-4891-e113-7f34.ngrok-free.app/api"
+export const API_BASE_URL = "https://api.kolayrapor.com.tr/api"
 //export const API_BASE_URL = "http://localhost:3000/api";
 
 /** Base URL for the marketing/landing site (used for embedded registration form, etc.) */
@@ -16,6 +16,11 @@ export const SYNC_INTERVAL_MS = 10 * 60 * 1000;
  *  during or just before the previous sync window. */
 export const SYNC_OVERLAP_MS = 6 * 60 * 60 * 1000;
 
+/** How often to re-check registration while the pharmacy still looks pending.
+ *  Registering through the KolayAsistan form usually activates the account
+ *  right away, so this mostly runs for a tick or two before the app catches up. */
+export const PENDING_RECHECK_INTERVAL_MS = 15 * 1000;
+
 /**
  * Local captcha solver (offline EasyOCR binary) download config.
  *
@@ -26,23 +31,6 @@ export const SYNC_OVERLAP_MS = 6 * 60 * 60 * 1000;
  * Bump CAPTCHA_SOLVER_VERSION whenever a new binary is published — clients keyed
  * off a different version directory will re-download on next launch.
  */
-/**
- * Server-driven feature flag key (from `GET /my-pharmacy/feature-flags`) that
- * controls the local offline captcha solver per-pharmacy. When the flag is off
- * (or unreachable) the app skips the solver entirely and uses the remote API.
- */
-export const FEATURE_FLAG_LOCAL_CAPTCHA_SOLVER = "local_captcha_solver";
-
-/**
- * Build-time override for the local captcha solver, independent of the server
- * flag. Use it to force-enable the solver in dev/testing without touching the
- * server: set VITE_CAPTCHA_SOLVER_ENABLED=true. Defaults to false, so in
- * production the server flag above is the source of truth.
- */
-export const CAPTCHA_SOLVER_FORCE_ENABLED =
-  ((import.meta.env.VITE_CAPTCHA_SOLVER_ENABLED as string | undefined) ?? "false")
-    .toLowerCase() === "true";
-
 export const CAPTCHA_SOLVER_VERSION = "1.0.0";
 
 /** CDN URL of the win64 captcha-solver zip (Cloudflare R2 `files` bucket, served

@@ -108,9 +108,10 @@ contextBridge.exposeInMainWorld('taskPanelAPI', {
   sendAction: (action: any) => {
     ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_ACTION, action);
   },
-  // Panel window requests resize
-  resize: (height: number) => {
-    ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_RESIZE, height);
+  // Panel window requests resize. A bare number is height-only; the compact
+  // running pill and the full result panel also pass their width.
+  resize: (size: number | { width?: number; height: number }) => {
+    ipcRenderer.send(IPC_CHANNELS.TASK_PANEL_RESIZE, size);
   },
   // Main window listens for actions from the panel
   onAction: (callback: (action: any) => void) => {

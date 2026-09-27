@@ -1,10 +1,11 @@
 import Dexie, { type EntityTable, type Table } from "dexie";
+import { RECETE_VERI_SURUMU } from "@/types/recete";
 import type { Recete, ReceteIlac } from "@/types/recete";
 import type {
   ReceteReportResponse,
   SyncedReport,
 } from "@/services/report-api";
-import { maskName } from "@/utils/mask-name";
+import { maskSurname } from "@/utils/mask-name";
 
 export interface CachedRecete extends Recete {
   cachedAt: number;
@@ -13,10 +14,11 @@ export interface CachedRecete extends Recete {
   isPartial?: boolean;
 }
 
-interface CachedAnaliz {
+export interface CachedAnaliz {
   receteNo: string;
   barkod: string;
   result: ReceteReportResponse;
+  /** Kontrolün yapıldığı an; sunucudan senkronlanan kayıtlarda `processedAt`. */
   cachedAt: number;
 }
 
@@ -43,12 +45,35 @@ export async function getCachedDetails(
   const map: Record<string, Recete> = {};
   for (const row of rows) {
     const { cachedAt: _, ...recete } = row;
+    // Kısmi kayıt sunucudan senkronlanan rapordan üretilmiş bir yer
+    // tutucudur: doz, periyot, adet boş; rapor ve ilaç bilgisi hiç yok.
+    // Detay olarak döndürülürse analiz Medula'ya hiç gitmeden bu boş veriyle
+    // yapılır ve sunucu haklı olarak "doz bilgisi bulunamadı" der. Yer tutucu
+    // yalnızca listede satır göstermek içindir — bkz. syncReportsFromServer().
+    if (recete.isPartial) continue;
+    // Eski sürümle toplanan kayıtlar eksik alan içerebilir (okunamayan alanlar
+    // sessizce boş string yazılıyordu) — bayat sayılıp Medula'dan yeniden
+    // çekilsinler diye önbellekten dönülmüyor.
+    if (recete.veriSurumu !== RECETE_VERI_SURUMU) continue;
     map[row.receteNo] = recete;
   }
   return map;
 }
 
+/**
+ * Reçete detayını önbelleğe yazar. Eksik toplanmış reçete YAZILMAZ: aksi
+ * halde eksik veri önbellekte kalıcı olur ve sonraki kontroller de eksik
+ * veriyle yapılırdı.
+ */
 export async function cacheDetail(recete: Recete): Promise<void> {
+  if (recete.eksikVeriler?.length) {
+    console.warn(
+      `[db] ${recete.receteNo} eksik toplandı (${recete.eksikVeriler
+        .map((g) => g.alan)
+        .join(", ")}), önbelleğe yazılmadı.`,
+    );
+    return;
+  }
   await db.receteDetaylar.put({ ...recete, cachedAt: Date.now() });
 }
 
@@ -110,6 +135,11 @@ export async function getLatestAnalysisTimestamps(): Promise<Record<string, numb
     }
   }
   return map;
+}
+
+/** Tüm analiz kayıtları, ham haliyle — tarih bazlı istatistikler için. */
+export async function getAllCachedAnalysisRows(): Promise<CachedAnaliz[]> {
+  return db.analizSonuclari.toArray();
 }
 
 export async function getAllCachedAnalysis(): Promise<Record<string, Record<string, ReceteReportResponse>>> {
@@ -189,8 +219,8 @@ export async function syncReportsFromServer(
     const existing = await db.receteDetaylar.get(receteNo);
     if (existing && !existing.isPartial) continue;
 
-    // Cross-computer records carry only the masked patient name (first two
-    // letters, e.g. "AH*** SE***") and the prescription date the server has.
+    // Cross-computer records carry the patient's first name plus a masked
+    // surname (e.g. "Ahmet S*****") and the prescription date the server has.
     const nameSource = group.find((sr) => sr.hastaAd || sr.hastaSoyad);
     const dateSource = group.find((sr) => sr.receteTarihi);
 
@@ -218,8 +248,8 @@ export async function syncReportsFromServer(
       sonIslemTarihi: existing?.sonIslemTarihi ?? "",
       tesisKodu: existing?.tesisKodu ?? "",
       doktorBrans: existing?.doktorBrans ?? "",
-      ad: existing?.ad || maskName(nameSource?.hastaAd),
-      soyad: existing?.soyad || maskName(nameSource?.hastaSoyad),
+      ad: existing?.ad || nameSource?.hastaAd || "",
+      soyad: existing?.soyad || maskSurname(nameSource?.hastaSoyad),
       ilaclar: [...ilacMap.values()],
       cachedAt: existing?.cachedAt ?? Date.now(),
       isPartial: true,

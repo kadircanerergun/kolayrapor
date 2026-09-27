@@ -17,6 +17,7 @@ import { Route as OdemeRouteImport } from './routes/odeme'
 import { Route as KayitRouteImport } from './routes/kayit'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as GezintiRouteImport } from './routes/gezinti'
+import { Route as DuyurularRouteImport } from './routes/duyurular'
 import { Route as AyarlarRouteImport } from './routes/ayarlar'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -60,6 +61,11 @@ const GezintiRoute = GezintiRouteImport.update({
   path: '/gezinti',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DuyurularRoute = DuyurularRouteImport.update({
+  id: '/duyurular',
+  path: '/duyurular',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AyarlarRoute = AyarlarRouteImport.update({
   id: '/ayarlar',
   path: '/ayarlar',
@@ -74,6 +80,7 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/duyurular': typeof DuyurularRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/kayit': typeof KayitRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/duyurular': typeof DuyurularRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/kayit': typeof KayitRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ayarlar': typeof AyarlarRoute
+  '/duyurular': typeof DuyurularRoute
   '/gezinti': typeof GezintiRoute
   '/home': typeof HomeRoute
   '/kayit': typeof KayitRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ayarlar'
+    | '/duyurular'
     | '/gezinti'
     | '/home'
     | '/kayit'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ayarlar'
+    | '/duyurular'
     | '/gezinti'
     | '/home'
     | '/kayit'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/ayarlar'
+    | '/duyurular'
     | '/gezinti'
     | '/home'
     | '/kayit'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AyarlarRoute: typeof AyarlarRoute
+  DuyurularRoute: typeof DuyurularRoute
   GezintiRoute: typeof GezintiRoute
   HomeRoute: typeof HomeRoute
   KayitRoute: typeof KayitRoute
@@ -218,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GezintiRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/duyurular': {
+      id: '/duyurular'
+      path: '/duyurular'
+      fullPath: '/duyurular'
+      preLoaderRoute: typeof DuyurularRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ayarlar': {
       id: '/ayarlar'
       path: '/ayarlar'
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AyarlarRoute: AyarlarRoute,
+  DuyurularRoute: DuyurularRoute,
   GezintiRoute: GezintiRoute,
   HomeRoute: HomeRoute,
   KayitRoute: KayitRoute,

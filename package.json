@@ -1,7 +1,7 @@
 {
   "name": "KolayRapor",
   "productName": "KolayRapor",
-  "version": "1.1.1",
+  "version": "1.2.1",
   "description": "KolayRapor - Eczane Yönetim Sistemi",
   "main": ".vite/build/main.js",
   "private": true,
@@ -19,7 +19,8 @@
     "test:watch": "vitest watch",
     "test:unit": "vitest",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test"
+    "test:all": "vitest run && playwright test",
+    "preview:panel": "electron scripts/preview-panel.js"
   },
   "author": "KolayRapor",
   "license": "MIT",
@@ -113,7 +114,9 @@
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.71.2",
     "react-i18next": "^16.4.1",
+    "react-markdown": "^10.1.0",
     "react-redux": "^9.2.0",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",

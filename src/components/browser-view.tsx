@@ -247,7 +247,7 @@ function buildInjectReportIconsJS(
       const score = Math.round(analyzed.validityScore);
       const color = score >= 80 ? '#22c55e' : score >= 60 ? '#f97316' : '#ef4444';
       const label = score >= 80 ? 'Uygun' : score >= 60 ? 'Şüpheli' : 'Uygun Değil';
-      btn.textContent = score + '% ' + label;
+      btn.textContent = label;
       btn.style.cssText = 'padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;border:none;color:white;margin-left:6px;vertical-align:middle;background:' + color + ';';
     } else {
       btn.textContent = 'Kontrol Et';
@@ -723,6 +723,7 @@ export function BrowserView() {
           ...raporluIlaclar.map((m: any, idx: number) => ({
             id: m.barkod,
             label: m.ad || m.barkod,
+            kind: "medicine" as const,
             status: (idx === 0 ? "running" : "pending") as "running" | "pending",
           })),
         ],
@@ -774,7 +775,7 @@ export function BrowserView() {
       receteNo: currentReceteNo,
       items: [
         { id: "fetch", label: "Reçete detayları alınıyor", status: "running" },
-        { id: barkod, label: `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor`, status: "pending" },
+        { id: barkod, label: `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor`, kind: "medicine", status: "pending" },
       ],
     }));
 
@@ -844,7 +845,9 @@ export function BrowserView() {
       receteNo: currentReceteNo,
       items: [
         { id: "fetch", label: "Reçete verileri toplanıyor", status: "running" },
-        { id: "analyze", label: barkod ? `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor` : "İlaçlar analiz ediliyor", status: "pending" },
+        // Tek ilaç yeniden kontrol ediliyorsa bu adım aslında o ilacın
+        // kendisi; hepsi birden kontrol ediliyorsa tek bir toplu adım.
+        { id: "analyze", label: barkod ? `${currentIlaclar?.find((m) => m.barkod === barkod)?.ad || barkod} analiz ediliyor` : "İlaçlar analiz ediliyor", kind: barkod ? "medicine" : "step", status: "pending" },
       ],
     }));
 

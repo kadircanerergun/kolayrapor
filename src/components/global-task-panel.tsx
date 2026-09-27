@@ -72,6 +72,15 @@ function GroupSection({
   ).length;
   const total = group.items.length;
   const allGroupDone = doneCount === total;
+
+  // Rozette adım sayısı değil ilaç sayısı gösteriliyor: 2 ilaçlı bir reçetede
+  // 1'i kontrol edilmişse "1/2". "Reçete verileri toplanıyor" gibi hazırlık
+  // adımları sayıma girmiyor — kullanıcı için anlamlı olan kontrol edilen ilaç.
+  // İlaçlar henüz bilinmiyorken (reçete çekiliyor) rozet hiç gösterilmiyor.
+  const ilacItems = group.items.filter((i) => i.kind === "medicine");
+  const ilacDoneCount = ilacItems.filter(
+    (i) => i.status === "done" || i.status === "error",
+  ).length;
   const hasError = group.items.some((i) => i.status === "error");
   const isRunning = group.items.some((i) => i.status === "running");
   const [expanded, setExpanded] = useState(false);
@@ -124,9 +133,11 @@ function GroupSection({
               <TooltipContent side="top">{group.title}</TooltipContent>
             </Tooltip>
           )}
-          <span className="text-[10px] text-muted-foreground shrink-0">
-            {doneCount}/{total}
-          </span>
+          {ilacItems.length > 0 && (
+            <span className="text-[10px] text-muted-foreground shrink-0">
+              {ilacDoneCount}/{ilacItems.length}
+            </span>
+          )}
           {isRunning && onRemove && (
             <button
               className="p-0.5 rounded hover:bg-destructive/10 shrink-0"

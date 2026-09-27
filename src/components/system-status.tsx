@@ -218,7 +218,7 @@ export function SystemStatus({ maxRetries = 5 }: SystemStatusProps) {
   };
 
   return (
-    <Card className={`${getStatusColor()} transition-colors duration-300`}>
+    <Card className={`${getStatusColor()} h-full transition-colors duration-300`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Server className="h-4 w-4" />

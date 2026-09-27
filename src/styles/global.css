@@ -212,6 +212,11 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* The task panel is a frameless, transparent overlay window: the opaque body
+     background would otherwise show as a white edge around the rounded card. */
+  body.task-panel-window {
+    @apply bg-transparent;
+  }
 }
 
 .product-description {

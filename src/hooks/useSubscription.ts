@@ -7,6 +7,7 @@ export function useSubscription() {
     isPending,
     ipAddress,
     subscription: currentSubscription,
+    pendingChange,
     creditBalance,
     products: availableProducts,
     creditPackages,
@@ -35,36 +36,20 @@ export function useSubscription() {
       );
     };
 
-  const getUpgradeOptions = (): SubscriptionProduct[] => {
-    if (!currentSubscription || currentSubscription.status !== "active") {
-      return availableProducts;
-    }
-
-    const currentProduct = getCurrentProduct();
-    if (!currentProduct) return availableProducts;
-
-    const currentIndex = availableProducts.findIndex(
-      (p) => p.id === currentProduct.id,
-    );
-    return availableProducts.slice(currentIndex + 1);
-  };
-
   const currentProduct = getCurrentProduct();
   const currentVariant = getCurrentVariant();
-  const upgradeOptions = getUpgradeOptions();
 
   return {
     pharmacy,
     isPending,
     ipAddress,
     currentSubscription,
+    pendingChange,
     creditBalance,
     currentProduct,
     currentVariant,
     availableProducts,
     creditPackages,
-    upgradeOptions,
-    hasUpgradeOptions: upgradeOptions.length > 0,
     loading,
     error,
     refresh,

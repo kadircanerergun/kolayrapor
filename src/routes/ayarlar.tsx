@@ -42,6 +42,7 @@ import { useModal } from "@/hooks/useModal";
 import { useDialogContext } from "@/contexts/dialog-context";
 import { toast } from "sonner";
 import { ModalProvider } from "@/components/modal-provider";
+import { PendingPlanChangeBanner } from "@/components/pending-plan-change-banner";
 import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import {
@@ -1128,6 +1129,9 @@ function SettingsPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Scheduled downgrade — applied at the next renewal */}
+              <PendingPlanChangeBanner />
 
               {/* Pending cancellation banner */}
               {(currentSubscription.cancelAtPeriodEnd ||

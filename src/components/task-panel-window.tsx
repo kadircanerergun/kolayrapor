@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/tailwind";
+import logoSrc from "../../images/logo-transparent.svg";
 
 interface DeeplinkNotificationResult {
   barkod: string;
@@ -37,10 +38,13 @@ function sendAction(action: { type: string; payload?: any }) {
   taskPanelAPI?.sendAction(action);
 }
 
-/** The "kontrol başladı" phase is only informational — hide it after this long
- *  so a long-running check doesn't leave a spinner floating over other apps.
- *  The window reappears by itself when the results land. */
-const RUNNING_HIDE_MS = 4000;
+/** The running phase stays on screen for the whole check — it shrinks to a
+ *  compact pill so it doesn't cover other apps, but hiding it made failures
+ *  hard to notice, so it now lives until the results replace it. */
+const RUNNING_WIDTH = 84;
+
+/** Full width for the result panel, which lists one row per medicine. */
+const DONE_WIDTH = 340;
 
 /** When every medicine came back "Uygun" there is nothing to act on, so the
  *  result popup closes itself. Anything else waits to be dismissed. */
@@ -80,6 +84,9 @@ export function TaskPanelWindow() {
   );
 
   useEffect(() => {
+    // Drop the opaque app background so the transparent window shows only the
+    // rounded card, with no white edge around it.
+    document.body.classList.add("task-panel-window");
     taskPanelAPI?.onState((newState: TaskPanelState) => {
       setNotification(newState?.notification ?? null);
     });
@@ -108,15 +115,11 @@ export function TaskPanelWindow() {
   // show/hide cycle, while each real phase change does.
   const phaseKey = notification ? `${notification.id}:${status}` : null;
 
-  // Show the running phase, then hide it again while the check finishes in
-  // the background.
+  // Show the running pill and leave it up until the check finishes — a hidden
+  // panel meant a failed automated check went unnoticed.
   useEffect(() => {
     if (!phaseKey || status !== "running") return;
     sendAction({ type: "showPanel" });
-    const timer = setTimeout(() => {
-      sendAction({ type: "hidePanel" });
-    }, RUNNING_HIDE_MS);
-    return () => clearTimeout(timer);
   }, [phaseKey, status]);
 
   // Bring the panel back for the results — this is what the user actually
@@ -131,12 +134,18 @@ export function TaskPanelWindow() {
     return () => clearTimeout(timer);
   }, [phaseKey, status, allClear]);
 
-  // Auto-resize the window to fit the content.
+  // Auto-resize the window to fit the content. The running pill is narrow and
+  // the result panel is full width, so the width is driven by the phase.
   const contentRef = useRef<HTMLDivElement>(null);
+  const width = status === "running" ? RUNNING_WIDTH : DONE_WIDTH;
   const resizeToFit = useCallback(() => {
     if (!contentRef.current) return;
-    taskPanelAPI?.resize(Math.ceil(contentRef.current.scrollHeight) + 2);
-  }, []);
+    // Exact content height — any slack becomes a visible strip under the card.
+    taskPanelAPI?.resize({
+      width,
+      height: Math.ceil(contentRef.current.getBoundingClientRect().height),
+    });
+  }, [width]);
   useEffect(() => {
     resizeToFit();
   }, [notification, resizeToFit]);
@@ -160,8 +169,36 @@ export function TaskPanelWindow() {
             ? "border-green-500 bg-green-50 dark:bg-green-950/30"
             : "border-brand bg-brand/10";
 
+  // Compact pill for the whole running phase: logo, spinner and a short label.
+  // It stays on screen until the results replace it, so a check that fails or
+  // stalls is visible instead of silently disappearing.
+  if (status === "running") {
+    return (
+      <div ref={contentRef} className="bg-background rounded-lg">
+        <div
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-lg border-2 px-1.5 py-1.5 shadow-xl select-none",
+            borderClass,
+          )}
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <img src={logoSrc} alt="" className="h-5 w-5" />
+          <Loader2 className="text-primary h-3 w-3 animate-spin" />
+          <p className="text-center text-[10px] leading-tight font-semibold">
+            İnceleniyor
+          </p>
+          {notification.patientName && (
+            <p className="text-muted-foreground w-full truncate text-center text-[9px] leading-tight">
+              {notification.patientName}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div ref={contentRef} className="bg-transparent">
+    <div ref={contentRef} className="bg-background rounded-lg">
       <div
         className={cn(
           "rounded-lg border-2 px-3 py-2.5 shadow-xl select-none",
@@ -170,35 +207,25 @@ export function TaskPanelWindow() {
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         <div className="flex items-start gap-2">
-          {status === "running" ? (
-            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
-          ) : (
-            <div className="mt-0.5">
-              <TierIcon tier={worstTier} />
-            </div>
-          )}
+          <div className="mt-0.5">
+            <TierIcon tier={worstTier} />
+          </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold">
-              {status === "running"
-                ? "KolayRapor Otomatik Kontrol Başladı"
-                : "KolayRapor Kontrol Sonucu"}
-            </p>
+            <p className="text-xs font-semibold">KolayRapor Kontrol Sonucu</p>
             {notification.patientName && (
               <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
                 {notification.patientName}
               </p>
             )}
           </div>
-          {status === "done" && (
-            <button
-              onClick={() => sendAction({ type: "closePanel" })}
-              className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 shrink-0 p-1"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              aria-label="Kapat"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <button
+            onClick={() => sendAction({ type: "closePanel" })}
+            className="text-muted-foreground hover:text-foreground -mr-1 -mt-1 shrink-0 p-1"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            aria-label="Kapat"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
 
         {status === "done" && (
@@ -227,9 +254,7 @@ export function TaskPanelWindow() {
                         !tier && "text-muted-foreground",
                       )}
                     >
-                      {r.failed || !tier
-                        ? "Kontrol edilemedi"
-                        : `%${Math.round(r.validityScore ?? 0)} ${tierLabel(tier)}`}
+                      {r.failed || !tier ? "Kontrol edilemedi" : tierLabel(tier)}
                     </span>
                   </div>
                 );

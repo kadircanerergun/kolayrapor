@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   ArrowUpDown,
   ChevronLeft,
@@ -21,6 +22,8 @@ import {
   FlaskConical,
   Loader2,
   RefreshCw,
+  Search,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -86,6 +89,8 @@ export interface ReceteTableProps {
   getLastActionAt?: (receteNo: string, cachedAt: number) => number;
   compact?: boolean;
   showFilters?: boolean;
+  /** Reçete no / hasta / ilaç üzerinde anlık arama kutusu. */
+  showQuickSearch?: boolean;
   onReAnalyze?: (receteNo: string, barkod?: string) => void;
   isReAnalyzing?: (receteNo: string) => boolean;
   onSortedOrderChange?: (receteNos: string[]) => void;
@@ -149,6 +154,23 @@ const statusTooltip: Record<AnalysisStatus, string> = {
   red: "Uygun Değil — Analiz sonuçlarını görüntüle",
 };
 
+/**
+ * Aramayı Türkçe'ye karşı toleranslı hâle getirir: hem küçük harfe indirir hem
+ * de aksanlı harfleri sadeleştirir. Böylece "sasmaz" → "Şaşmaz", "ilac" →
+ * "İLAÇ" eşleşiyor; ayrıca I/ı-İ/i ikilisi iki tarafta da aynı yere düştüğü
+ * için tr locale'in klasik "i aramak ı'yı bulmuyor" tuzağı oluşmuyor.
+ */
+function normalizeTr(value: string): string {
+  return value
+    .toLocaleLowerCase("tr")
+    .replace(/ı/g, "i")
+    .replace(/ş/g, "s")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c");
+}
+
 const FILTER_OPTIONS: FilterStatus[] = [
   "all",
   "unchecked",
@@ -182,6 +204,7 @@ export function ReceteTable({
                               getLastActionAt,
                               compact = false,
                               showFilters = false,
+                              showQuickSearch = false,
                               onReAnalyze,
                               isReAnalyzing,
                               onSortedOrderChange,
@@ -191,6 +214,7 @@ export function ReceteTable({
   );
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
+  const [query, setQuery] = useState("");
   const [analizSheetReceteNo, setAnalizSheetReceteNo] = useState<
     string | null
   >(null);
@@ -292,10 +316,31 @@ export function ReceteTable({
     });
   }, [rows, activeFilter, getIlaclar, getAnalysisInfo]);
 
+  // Quick search — durum filtresinin üstüne biner, yani ikisi birlikte çalışır.
+  // Reçete no ve hasta adının yanında ilaç adı/barkodu da taranıyor: "hangi
+  // reçetelerde bu ilaç vardı" eczanede en sık sorulan soru.
+  const visibleRows = useMemo(() => {
+    const q = normalizeTr(query.trim());
+    if (!q) return filteredRows;
+    return filteredRows.filter((row) => {
+      const ilaclar = getIlaclar(row);
+      const haystack = [
+        row.receteNo,
+        row.ad,
+        row.soyad,
+        `${row.ad ?? ""} ${row.soyad ?? ""}`,
+        ...(ilaclar?.flatMap((i) => [i.ad, i.barkod]) ?? []),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return normalizeTr(haystack).includes(q);
+    });
+  }, [filteredRows, query, getIlaclar]);
+
   // Sort rows
   const sortedRows = useMemo(() => {
-    if (!sortKey) return filteredRows;
-    return [...filteredRows].sort((a, b) => {
+    if (!sortKey) return visibleRows;
+    return [...visibleRows].sort((a, b) => {
       let aVal: string | number;
       let bVal: string | number;
 
@@ -343,7 +388,7 @@ export function ReceteTable({
       return 0;
     });
   }, [
-    filteredRows,
+    visibleRows,
     sortKey,
     sortDir,
     parseDateStr,
@@ -367,9 +412,11 @@ export function ReceteTable({
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, currentPage, pageSize]);
 
+  // Başlıktaki "tümünü seç" ekranda görüneni seçmeli — arama da filtre gibi
+  // davrandığı için buraya visibleRows giriyor.
   const filteredReceteNos = useMemo(
-    () => filteredRows.map((r) => r.receteNo),
-    [filteredRows],
+    () => visibleRows.map((r) => r.receteNo),
+    [visibleRows],
   );
   const filteredSelectedCount = selectedRecetes.filter((r) =>
     filteredReceteNos.includes(r),
@@ -415,11 +462,20 @@ export function ReceteTable({
     ? "[&_td]:py-2 [&_td]:px-3 [&_th]:py-2 [&_th]:px-3 [&_th]:h-auto"
     : "";
 
+  // Sabit sütunlar: Reçete No, Reçete Tarihi, İlaç Sayısı, Kontrol Sonucu,
+  // İşlemler. Boş durum satırının colSpan'i için gerekiyor.
+  const columnCount =
+    5 +
+    (selectable ? 1 : 0) +
+    (showHasta ? 1 : 0) +
+    (showSonIslemTarihi ? 1 : 0) +
+    (showKayitTarihi ? 1 : 0);
+
   return (
     <>
-      {showFilters && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {FILTER_OPTIONS.map((filter) => {
+      {(showFilters || showQuickSearch) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {showFilters && FILTER_OPTIONS.map((filter) => {
             const isActive = activeFilter === filter;
             let className = "h-7 text-xs";
             let variant: "default" | "outline" = isActive ? "default" : "outline";
@@ -456,6 +512,43 @@ export function ReceteTable({
               </Button>
             );
           })}
+
+          {showQuickSearch && (
+            <div className="relative ml-auto w-full sm:w-72">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+              <Input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  // Filtre butonlarıyla aynı davranış: sonuç kümesi değişince
+                  // kullanıcı 3. sayfada boşluğa bakmasın.
+                  onPageChange(1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && query) {
+                    setQuery("");
+                    onPageChange(1);
+                  }
+                }}
+                placeholder="Reçete no, hasta veya ilaç ara"
+                aria-label="Reçetelerde ara"
+                className="h-7 pr-7 pl-8 text-xs"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    onPageChange(1);
+                  }}
+                  aria-label="Aramayı temizle"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -702,14 +795,26 @@ export function ReceteTable({
               </TableRow>
             );
           })}
+          {paginatedRows.length === 0 && (
+            <TableRow>
+              <TableCell
+                colSpan={columnCount}
+                className="text-muted-foreground py-10 text-center text-sm"
+              >
+                {query.trim()
+                  ? `"${query.trim()}" için sonuç bulunamadı.`
+                  : "Bu filtreye uyan reçete yok."}
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
 
       {totalPages > 1 && (
         <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
           <span className="text-muted-foreground text-sm">
-            {filteredRows.length} kayıttan {(currentPage - 1) * pageSize + 1}-
-            {Math.min(currentPage * pageSize, filteredRows.length)} arası
+            {visibleRows.length} kayıttan {(currentPage - 1) * pageSize + 1}-
+            {Math.min(currentPage * pageSize, visibleRows.length)} arası
           </span>
           <div className="flex items-center gap-2">
             <Button

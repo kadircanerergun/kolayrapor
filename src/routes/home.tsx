@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -9,59 +8,23 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Database,
-  FlaskConical,
-  Search,
   CalendarIcon,
   ClipboardList,
-  ShieldCheck,
-  ShieldX,
   AlertTriangle,
   Building2,
   Clock,
 } from "lucide-react";
-import { SonIslemlerTable } from "@/components/son-islemler-table";
 import { SystemStatus } from "@/components/system-status";
+import { AccountStats } from "@/components/account-stats";
 import { SearchByRecipe } from "@/blocks/search-by-recipe";
+import { Announcements } from "@/components/announcements";
+import { InfoVideos } from "@/components/info-videos";
 import { SuggestionCard } from "@/components/suggestion-card";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Spinner } from "@/components/ui/spinner";
-import type { CachedRecete } from "@/lib/db";
-import type { ReceteReportResponse } from "@/services/report-api";
 
 function KontrolMerkezi() {
   const { pharmacy, isPending, ipAddress, loading } = useSubscription();
-
-  const [stats, setStats] = useState({
-    totalCached: 0,
-    totalAnalyzed: 0,
-    validCount: 0,
-    invalidCount: 0,
-  });
-
-  const handleDataLoaded = (data: {
-    cachedReceteler: CachedRecete[];
-    analizSonuclari: Record<string, Record<string, ReceteReportResponse>>;
-  }) => {
-    const totalCached = data.cachedReceteler.length;
-
-    let totalAnalyzed = 0;
-    let validCount = 0;
-    let invalidCount = 0;
-
-    for (const sonuclar of Object.values(data.analizSonuclari)) {
-      for (const report of Object.values(sonuclar)) {
-        totalAnalyzed++;
-        if (report.isValid) {
-          validCount++;
-        } else {
-          invalidCount++;
-        }
-      }
-    }
-
-    setStats({ totalCached, totalAnalyzed, validCount, invalidCount });
-  };
 
   if (loading) {
     return (
@@ -164,89 +127,34 @@ function KontrolMerkezi() {
           </p>
         </div>
 
-        {/* System Status */}
-        <div className="mb-6">
+        {/* System status + prescription search, side by side */}
+        {/* items-stretch (varsayılan) + kartlarda h-full → iki kart eşit boy */}
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
           <SystemStatus />
+          <SearchByRecipe />
         </div>
 
-        {/* Quick Actions */}
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Hızlı İşlemler
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            <SearchByRecipe />
-            <div className="flex flex-col gap-2">
-              <Link to="/search-report">
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <CalendarIcon className="h-4 w-4" />
-                  Toplu Kontrol
-                </Button>
-              </Link>
-              <Link to="/son-islemler">
-                <Button variant="outline" size="sm" className="w-full justify-start">
-                  <ClipboardList className="h-4 w-4" />
-                  Tüm İşlemler
-                </Button>
-              </Link>
-            </div>
+        {/* İstatistikler ve duyurular yan yana. items-stretch (varsayılan) +
+            sütunlarda h-full → duyuru kartı istatistiklerle aynı boya uzar,
+            taşan içerik kendi içinde kayar. */}
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <div className="flex h-full flex-col">
+            <AccountStats />
+          </div>
+          <div className="flex h-full flex-col">
+            <Announcements />
           </div>
         </div>
 
-        {/* Action Descriptions */}
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            İşlem Türleri
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Database className="h-4 w-4 text-muted-foreground" />
-                  Sorgula
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Reçeteyi ve İlaç Raporlarını okur, inceler, analiz eder ama
-                  Rapor Uygunluğunu Kontrol Etmez (kredi harcamaz).
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="bg-brand text-brand-foreground">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2 text-brand-foreground">
-                  <FlaskConical className="h-4 w-4" />
-                  Kontrol Et
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-brand-foreground/80">
-                  İlaç Raporlarını Yapay Zeka ile inceler ve SUT uygunluğunu
-                  kontrol eder.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
 
         {/* Suggestion */}
         <div className="mb-6">
           <SuggestionCard />
         </div>
 
+        {/* Bilgilendirme videoları (sunucudan) */}
         <div className="mb-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="aspect-video overflow-hidden rounded-lg border bg-muted">
-              <iframe
-                src="https://www.youtube.com/embed/yqJZ07sFaX8"
-                title="Tanıtım Videosu"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className="h-full w-full"
-              />
-            </div>
-          </div>
+          <InfoVideos />
         </div>
       </div>
     </div>

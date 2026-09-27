@@ -59,7 +59,7 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
       id: groupId,
       title: `Reçete ${prescriptionData.receteNo}`,
       receteNo: prescriptionData.receteNo,
-      items: [{ id: medicine.barkod, label: medicine.ad || medicine.barkod, status: "running" }],
+      items: [{ id: medicine.barkod, label: medicine.ad || medicine.barkod, kind: "medicine", status: "running" }],
     }));
 
     try {
@@ -187,7 +187,11 @@ const PrescriptionMedicinesModal: React.FC<PrescriptionMedicinesModalProps> = ({
                               onClick={() => handleViewResult(medicine)}
                             >
                               <CircleCheck className="h-3 w-3 mr-0.5" />
-                              {cached.validityScore}%
+                              {cached.validityScore >= 80
+                                ? "Uygun"
+                                : cached.validityScore >= 60
+                                  ? "Şüpheli"
+                                  : "Uygun Değil"}
                             </Badge>
                           )}
                         </TableCell>

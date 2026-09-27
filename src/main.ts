@@ -47,6 +47,11 @@ let pendingDeeplinkUrl: string | null = null;
 let tray: Tray | null = null;
 let taskPanelWindow: BrowserWindow | null = null;
 
+/** Gap kept between the panel and the edges of the screen work area. */
+const TASK_PANEL_MARGIN = 16;
+/** Width of the compact "İnceleniyor" pill, also the window's start size. */
+const TASK_PANEL_MIN_WIDTH = 84;
+
 function getIconPath() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "images", "icon.ico");
@@ -108,17 +113,22 @@ function createTaskPanelWindow() {
   }
 
   const preload = path.join(__dirname, "preload.js");
-  const { width: screenWidth, height: screenHeight } =
-    screen.getPrimaryDisplay().workAreaSize;
+  const { x: areaX, y: areaY, width: areaWidth } =
+    screen.getPrimaryDisplay().workArea;
 
+  // Starts at the compact "İnceleniyor" pill size — the renderer resizes
+  // it to the full result width once the check finishes.
   taskPanelWindow = new BrowserWindow({
-    width: 340,
+    width: TASK_PANEL_MIN_WIDTH,
     height: 80,
-    x: screenWidth - 340 - 16,
-    y: 16,
+    x: areaX + areaWidth - TASK_PANEL_MIN_WIDTH - TASK_PANEL_MARGIN,
+    y: areaY + TASK_PANEL_MARGIN,
     show: false,
     alwaysOnTop: true,
-    resizable: true,
+    // Must stay false: Windows enforces its own minimum width on resizable
+    // frameless windows, which made the narrow pill wider than requested and
+    // pushed it off the right edge. The renderer sizes it via setBounds.
+    resizable: false,
     minimizable: false,
     maximizable: false,
     skipTaskbar: true,
@@ -177,16 +187,48 @@ ipcMain.on(IPC_CHANNELS.TASK_PANEL_STATE, (_event, state) => {
 });
 
 // IPC: task panel requests resize to fit content
-ipcMain.on(IPC_CHANNELS.TASK_PANEL_RESIZE, (_event, height: number) => {
-  if (!taskPanelWindow || taskPanelWindow.isDestroyed()) return;
-  const [width] = taskPanelWindow.getSize();
-  const { height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-  const clampedHeight = Math.min(Math.max(height, 50), screenHeight - 32);
-  taskPanelWindow.setSize(width, clampedHeight);
-  // Reposition to stay at top-right
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
-  taskPanelWindow.setPosition(screenWidth - width - 16, 16);
-});
+ipcMain.on(
+  IPC_CHANNELS.TASK_PANEL_RESIZE,
+  (_event, size: number | { width?: number; height: number }) => {
+    if (!taskPanelWindow || taskPanelWindow.isDestroyed()) return;
+    // The panel switches between a narrow "İnceleniyor" pill and the wider
+    // result list, so width is requested alongside height.
+    const height = typeof size === 'number' ? size : size.height;
+    const [currentWidth] = taskPanelWindow.getSize();
+    const width =
+      typeof size === 'number' ? currentWidth : (size.width ?? currentWidth);
+
+    // Anchor to the work area of the display the panel is on (workArea carries
+    // the x/y offset that workAreaSize drops — a left/top taskbar or a
+    // secondary monitor would otherwise place it off screen).
+    const display = screen.getDisplayMatching(taskPanelWindow.getBounds());
+    const { x: areaX, y: areaY, width: areaWidth, height: areaHeight } =
+      display.workArea;
+    const clampedHeight = Math.min(
+      Math.max(height, 40),
+      areaHeight - TASK_PANEL_MARGIN * 2,
+    );
+
+    // setBounds is atomic — sizing and moving separately leaves a frame where
+    // the wider window still sits at the narrow window's x, overflowing right.
+    taskPanelWindow.setBounds({
+      x: areaX + areaWidth - width - TASK_PANEL_MARGIN,
+      y: areaY + TASK_PANEL_MARGIN,
+      width,
+      height: clampedHeight,
+    });
+
+    // The OS can refuse the exact width; re-anchor against what it actually
+    // gave us so the right edge always lands inside the work area.
+    const actual = taskPanelWindow.getBounds();
+    if (actual.width !== width) {
+      taskPanelWindow.setPosition(
+        areaX + areaWidth - actual.width - TASK_PANEL_MARGIN,
+        areaY + TASK_PANEL_MARGIN,
+      );
+    }
+  },
+);
 
 // IPC: task panel sends actions back (retry, cancel, etc.), relay to main window
 ipcMain.on(IPC_CHANNELS.TASK_PANEL_ACTION, (_event, action) => {

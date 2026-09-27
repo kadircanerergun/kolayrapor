@@ -166,7 +166,7 @@ export function KontrolSonucPanel({
                         getBadgeClasses(tier),
                       )}
                     >
-                      {score}% {label}
+                      {label}
                     </span>
                     <ChevronDown
                       className={cn(

@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Lightbulb, Send, Loader2, CheckCircle } from "lucide-react";
+import { ArrowRight, Lightbulb, Send, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import {
@@ -92,18 +91,33 @@ export function SuggestionCard() {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Card className="cursor-pointer transition-colors hover:bg-muted/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Lightbulb className="h-4 w-4 text-yellow-500" />
-              Öneriniz mi var?
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription>
-              Uygulamamızı geliştirmemize yardımcı olun. Önerilerinizi ve geri
-              bildirimlerinizi bize iletin.
-            </CardDescription>
+        {/* Sayfa sonundaki bu kart gözden kaçıyordu: marka rengine çalan bir
+            zemin, kenarlık ve sağdaki eylem düğmesi tıklanabilir olduğunu
+            açıkça gösteriyor. */}
+        <Card className="group relative cursor-pointer overflow-hidden border-yellow-500/30 bg-gradient-to-r from-yellow-500/10 via-yellow-500/5 to-transparent transition-all hover:border-yellow-500/60 hover:shadow-md">
+          {/* Sağ üstte yumuşak bir ışıltı — sadece dekoratif. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-yellow-500/10 blur-2xl"
+          />
+          <CardContent className="flex items-center gap-4 p-4">
+            <div className="shrink-0 rounded-xl bg-yellow-500/15 p-2.5 text-yellow-500 ring-1 ring-yellow-500/30 transition-transform group-hover:scale-110">
+              <Lightbulb className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-base">Öneriniz mi var?</CardTitle>
+              <CardDescription className="mt-1">
+                Uygulamamızı geliştirmemize yardımcı olun. Önerilerinizi ve geri
+                bildirimlerinizi bize iletin.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 bg-yellow-500 text-yellow-950 hover:bg-yellow-400"
+            >
+              Öneri Gönder
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Button>
           </CardContent>
         </Card>
       </DialogTrigger>

@@ -11,8 +11,9 @@
 //                   {"id":"<n>","success":false,"error":"..."}
 //   on ready, it emits ONE line:  {"ready":true}
 //
-// The model loads once (~3-6s); after that each solve is ~0.3s. Solving is
-// LOCAL-FIRST: callers fall back to the remote API when this isn't ready.
+// The model loads once (~3-6s); after that each solve is ~0.3s. Uzak API
+// fallback'i kaldırıldı: captcha çözümünün TEK yolu burası, dolayısıyla
+// kurulum/başlatma her çözüm isteğinde gerekirse yeniden deneniyor.
 
 import { app } from "electron";
 import path from "path";
@@ -20,7 +21,6 @@ import fs from "fs";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { createRequire } from "module";
 import {
-  API_BASE_URL,
   CAPTCHA_SOLVER_VERSION,
   CAPTCHA_SOLVER_DOWNLOAD_URL,
   CAPTCHA_SOLVER_EXE_RELPATH,
@@ -161,14 +161,14 @@ class CaptchaSolverService {
   private reqCounter = 0;
 
   // A healthy solve is ~0.3s, so an 8s ceiling bounds the worst case (a wedged
-  // but still-alive process) before the caller falls back to the remote API.
+  // but still-alive process) before the caller gives up on this attempt.
   private static readonly SOLVE_TIMEOUT_MS = 8_000;
   private static readonly READY_TIMEOUT_MS = 60_000;
 
   /** Best-effort liveness check. True only when the process is spawned, hasn't
    *  exited or been killed, still has a writable stdin, and has emitted
-   *  {"ready":true}. A wrong `true` is safe — solve() re-checks and every
-   *  failure path falls back to the remote API. */
+   *  {"ready":true}. A wrong `true` is safe — solve() re-checks and reports the
+   *  failure back to the caller. */
   isReady(): boolean {
     return (
       this.proc !== null &&
@@ -182,8 +182,8 @@ class CaptchaSolverService {
   private readyResolved = false;
 
   /** Wait up to timeoutMs for the solver to finish warming up. Returns true if
-   *  it's ready. Returns false immediately if it isn't even starting (e.g. the
-   *  feature is off), so callers fall straight through to the remote API. */
+   *  it's ready. Returns false immediately if it isn't even starting, so the
+   *  caller can (re)install/spawn it instead of blocking. */
   async waitUntilReady(timeoutMs: number): Promise<boolean> {
     if (this.isReady()) return true;
     if (!this.readyPromise) return false; // not spawned / not starting
@@ -347,53 +347,94 @@ export const captchaSolverService = new CaptchaSolverService();
 export interface CaptchaSolveOutcome {
   success: boolean;
   code: string | null;
-  /** Which path produced the result — handy for verifying the local solver. */
-  via: "local" | "remote" | "none";
+  /** Which path produced the result. Uzak API kaldırıldı; "none" = çözücü
+   *  hazır değildi, yani hiç denenemedi. */
+  via: "local" | "none";
   error?: string;
 }
 
-/**
- * Solve a captcha LOCAL-FIRST, falling back to the remote API.
- * `base64Image` may be raw base64 or a `data:image/...` URL. Single source of
- * truth for both the webview `captcha:solve` IPC handler and the Playwright
- * login flow, so they behave identically.
- */
-export async function solveCaptcha(base64Image: string): Promise<CaptchaSolveOutcome> {
-  // If the solver is mid-warmup (model loads in ~3-6s), wait briefly so the
-  // first captcha after launch still uses the local solver instead of racing
-  // past it to the remote API. Returns false instantly if it isn't starting.
-  await captchaSolverService.waitUntilReady(7000);
+/** Model ısınırken (tipik 3-6 sn) beklenecek üst sınır. */
+const WARMUP_WAIT_MS = 30_000;
 
-  if (captchaSolverService.isReady()) {
-    try {
-      const local = await captchaSolverService.solve(base64Image);
-      if (local.success && local.digits) {
-        return { success: true, code: local.digits, via: "local" };
+/** Aynı anda gelen çözüm isteklerinin kurulumu/başlatmayı çoğaltmasını önler. */
+let bootstrapPromise: Promise<void> | null = null;
+
+function bootstrapSolver(): Promise<void> {
+  if (!bootstrapPromise) {
+    bootstrapPromise = (async () => {
+      if (!isSolverInstalled()) {
+        await ensureSolverInstalled();
       }
-    } catch {
-      // fall through to the remote API
-    }
+      await captchaSolverService.start();
+    })().finally(() => {
+      bootstrapPromise = null;
+    });
+  }
+  return bootstrapPromise;
+}
+
+/**
+ * Çözücünün ayakta olduğundan emin olur.
+ *
+ * Uzak API fallback'i kaldırıldığı için bu tek yol: açılıştaki kurulum ya da
+ * spawn patladıysa captcha çözümü kalıcı olarak ölmesin diye burada bir kez
+ * daha deneniyor.
+ */
+async function ensureSolverRunning(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  if (captchaSolverService.isReady()) return { ok: true };
+
+  // Zaten ısınıyorsa bekle; başlamamışsa anında false döner.
+  if (await captchaSolverService.waitUntilReady(WARMUP_WAIT_MS)) {
+    return { ok: true };
   }
 
-  // Remote fallback.
   try {
-    const response = await fetch(`${API_BASE_URL}/medula/numbers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ image: base64Image }),
-    });
-    if (!response.ok) {
-      return { success: false, code: null, via: "remote", error: `API request failed: ${response.status}` };
+    await bootstrapSolver();
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Güvenlik kodu çözücü başlatılamadı: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+
+  return captchaSolverService.isReady()
+    ? { ok: true }
+    : { ok: false, error: "Güvenlik kodu çözücü hazır değil" };
+}
+
+/**
+ * Captcha'yı yalnızca yerel (bundled EasyOCR) çözücüyle çözer.
+ * `base64Image` ham base64 ya da `data:image/...` URL'i olabilir. Hem webview'ın
+ * `captcha:solve` IPC handler'ı hem de Playwright login akışı buradan geçiyor,
+ * böylece ikisi de aynı davranıyor.
+ */
+export async function solveCaptcha(base64Image: string): Promise<CaptchaSolveOutcome> {
+  const running = await ensureSolverRunning();
+  if (!running.ok) {
+    return { success: false, code: null, via: "none", error: running.error };
+  }
+
+  try {
+    const local = await captchaSolverService.solve(base64Image);
+    if (local.success && local.digits) {
+      return { success: true, code: local.digits, via: "local" };
     }
-    const result = await response.json();
-    const code = result.code || null;
-    return { success: !!code, code, via: "remote" };
+    return {
+      success: false,
+      code: null,
+      via: "local",
+      error: local.error || "Güvenlik kodu okunamadı",
+    };
   } catch (err) {
     return {
       success: false,
       code: null,
-      via: "remote",
-      error: err instanceof Error ? err.message : "Remote captcha request failed",
+      via: "local",
+      error: err instanceof Error ? err.message : "Güvenlik kodu çözülemedi",
     };
   }
 }

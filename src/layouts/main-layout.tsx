@@ -32,7 +32,7 @@ import { toast } from "sonner";
 import { usePlaywright } from "@/hooks/usePlaywright";
 import { useCredentials } from "@/contexts/credentials-context";
 import { usePharmacy } from "@/contexts/pharmacy-context";
-import { useAppDispatch, useAppSelector } from "@/store";
+import { store, useAppDispatch, useAppSelector } from "@/store";
 import { BrowserView } from "@/components/browser-view";
 import { PharmacyRequired } from "@/components/pharmacy-required";
 import { useTaskPanelSync } from "@/hooks/useTaskPanelSync";
@@ -92,10 +92,17 @@ export default function MainLayout({
   const resultIlaclar = resultSheetReceteNo ? detaylar[resultSheetReceteNo]?.ilaclar : undefined;
 
   useEffect(() => {
-    if (showResultReceteNo) {
-      setResultSheetReceteNo(showResultReceteNo);
-      dispatch(setShowResultReceteNo(null));
+    if (!showResultReceteNo) return;
+    // This sheet is only a fallback. A page-level ReceteTable that owns the
+    // prescription claims the request first — child effects run before parent
+    // ones, so by the time we get here it has already cleared the flag. Read
+    // the live store instead of the value captured in this closure, otherwise
+    // both sheets open and stack on top of each other.
+    if (store.getState().taskQueue.showResultReceteNo !== showResultReceteNo) {
+      return;
     }
+    setResultSheetReceteNo(showResultReceteNo);
+    dispatch(setShowResultReceteNo(null));
   }, [showResultReceteNo, dispatch]);
 
   // Re-run the check from the layout-level result sheet (used by the automated

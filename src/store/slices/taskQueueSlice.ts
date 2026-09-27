@@ -3,6 +3,13 @@ import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 export interface TaskItem {
   id: string;
   label: string;
+  /**
+   * `medicine` = tek bir ilacın kontrolü (id barkoddur), `step` = hazırlık
+   * adımı ("Reçete verileri toplanıyor"). Panelde ilerleme ilaç sayısı
+   * üzerinden gösterildiği için adımlar sayıma girmiyor; işaretlenmemiş
+   * item'lar adım sayılır.
+   */
+  kind?: "step" | "medicine";
   status: "pending" | "running" | "done" | "error";
   errorMessage?: string;
   isValid?: boolean;

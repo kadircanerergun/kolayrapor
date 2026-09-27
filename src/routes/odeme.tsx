@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { subscriptionApiService } from "@/services/subscription-api";
 import type {
   CardInfo,
+  PlanChangeOption,
   SubscriptionProduct,
   SubscriptionVariant,
   CreditPackage,
@@ -64,7 +65,6 @@ function OdemePage() {
     pharmacy,
     isPending,
     refresh,
-    currentSubscription,
     creditBalance,
     currentVariant,
   } = useSubscription();
@@ -88,6 +88,13 @@ function OdemePage() {
   const [creditPackage, setCreditPackage] = useState<CreditPackage | null>(
     null,
   );
+
+  // Plan change — the server's offer for this plan. Every figure on the screen
+  // comes from here; the client does no proration arithmetic of its own.
+  const [planChangeOption, setPlanChangeOption] =
+    useState<PlanChangeOption | null>(null);
+  /** The 409 case: the offer was recalculated, nothing was charged. */
+  const [repriced, setRepriced] = useState(false);
 
   // Success modal
   const [successOpen, setSuccessOpen] = useState(false);
@@ -227,6 +234,15 @@ function OdemePage() {
           break;
         }
       }
+
+      // Re-price the change right before the card form is shown, so the amount
+      // the user is about to acknowledge is the one the server just computed.
+      if (type === "plan-change") {
+        // A null offer means the server has no change-plan endpoints; the
+        // screen then falls back to the plain full-price flow.
+        const { option } = await subscriptionApiService.previewPlanChange(id);
+        setPlanChangeOption(option);
+      }
     } else {
       const packages = await subscriptionApiService.getCreditPackages();
       const pkg = packages.find((p) => p.id === id);
@@ -243,12 +259,44 @@ function OdemePage() {
       let result: Awaited<ReturnType<typeof subscriptionApiService.subscribe>>;
 
       if (type === "plan-change" && variant) {
-        result =
-          paymentMode === "saved" && selectedCardId
-            ? await subscriptionApiService.changePlan(variant.id, undefined, {
-                savedCardId: selectedCardId,
-              })
-            : await subscriptionApiService.changePlan(variant.id, card);
+        const needsCard = planChangeOption
+          ? planChangeOption.requiresPayment
+          : true;
+        const changeResult = await subscriptionApiService.changePlan(
+          variant.id,
+          {
+            // Only sent when the server priced the change; an older server
+            // ignores the field and prices it the old way.
+            acknowledgedChargeAmount: planChangeOption?.chargeNowWithKdv,
+            ...(needsCard
+              ? paymentMode === "saved" && selectedCardId
+                ? { savedCardId: selectedCardId }
+                : { cardInfo: card }
+              : {}),
+          },
+        );
+
+        // 409 — the amount moved while this screen was open. Show the new
+        // offer and let the user confirm it; no money has changed hands.
+        if (changeResult.conflict) {
+          if (changeResult.freshOption) {
+            setPlanChangeOption(changeResult.freshOption);
+          } else {
+            const { option } = await subscriptionApiService.previewPlanChange(
+              variant.id,
+            );
+            if (option) setPlanChangeOption(option);
+          }
+          setRepriced(true);
+          setErrorMessage(
+            changeResult.error ??
+              "Ödenecek tutar güncellendi. Ödeme alınmadı — yeni tutarı onaylayarak tekrar deneyin.",
+          );
+          setErrorOpen(true);
+          return;
+        }
+
+        result = changeResult;
       } else if (type === "subscription" && variant) {
         result =
           paymentMode === "saved" && selectedCardId
@@ -339,6 +387,10 @@ function OdemePage() {
   };
 
   const getBaseAmount = (): number => {
+    // A plan change is charged at the prorated figure the server calculated,
+    // not the plan's list price.
+    if (type === "plan-change" && planChangeOption)
+      return planChangeOption.chargeNow;
     if ((type === "subscription" || type === "plan-change") && variant)
       return variant.price;
     if (type === "credit" && creditPackage) return Number(creditPackage.price);
@@ -346,8 +398,25 @@ function OdemePage() {
   };
 
   const getAmount = (): number => {
+    if (type === "plan-change" && planChangeOption)
+      return planChangeOption.chargeNowWithKdv;
     return priceWithKdv(getBaseAmount());
   };
+
+  /** A free upgrade — and every downgrade — takes no card at all. */
+  const isFreeChange =
+    type === "plan-change" &&
+    !!planChangeOption &&
+    !planChangeOption.requiresPayment;
+
+  /** Deep link to a downgrade: nothing is charged, it is queued instead. */
+  const isDeferredChange = planChangeOption?.effect === "period_end";
+
+  /** The server refuses this change (suspended licence, renewal window, …). */
+  const changeBlockedReason =
+    planChangeOption && !planChangeOption.available
+      ? (planChangeOption.reason ?? "Bu plana şu anda geçemezsiniz.")
+      : null;
 
   if (loading) {
     return (
@@ -422,22 +491,36 @@ function OdemePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {isPlanChange && repriced && (
+              <div className="rounded-lg border border-amber-300 bg-amber-100 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                <div className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-300">
+                  <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>
+                    Ödenecek tutar güncellendi ve ödeme alınmadı. Aşağıdaki yeni
+                    tutarı kontrol edip tekrar onaylayın.
+                  </span>
+                </div>
+              </div>
+            )}
+
             {isPlanChange && product && variant && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2 dark:border-amber-900 dark:bg-amber-950/20">
                 <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-amber-900 space-y-1.5">
+                  <Info className="h-4 w-4 text-amber-700 flex-shrink-0 mt-0.5 dark:text-amber-400" />
+                  <div className="text-sm text-amber-900 space-y-1.5 dark:text-amber-300">
                     <p className="font-semibold">Plan değişikliği bilgileri</p>
                     {currentVariant && (
                       <p>
-                        <span className="text-amber-800">Mevcut plan:</span>{" "}
+                        <span className="text-amber-800 dark:text-amber-400/90">
+                          Mevcut plan:
+                        </span>{" "}
                         <span className="font-medium">
                           {currentVariant.name} ({currentVariant.duration})
                         </span>
                       </p>
                     )}
                     <p>
-                      <span className="text-amber-800">
+                      <span className="text-amber-800 dark:text-amber-400/90">
                         Mevcut krediniz korunacak:
                       </span>{" "}
                       <span className="font-medium">
@@ -445,30 +528,69 @@ function OdemePage() {
                       </span>{" "}
                       mevcut geçerlilik süreleri içinde kullanılabilir.
                     </p>
-                    <p>
-                      <span className="text-amber-800">Yeni krediler:</span>{" "}
-                      <span className="font-medium">
-                        {variant.includedCreditAmount} kredi
-                      </span>{" "}
-                      hesabınıza eklenecek.
-                    </p>
-                    <p>
-                      <span className="text-amber-800">Yeni dönem:</span>{" "}
-                      bugünden itibaren {variant.duration} geçerli.
-                    </p>
-                    {currentSubscription?.endDate && (
-                      <p className="text-amber-700 text-xs">
-                        Not: Mevcut planın kalan süresi (
-                        {new Date(
-                          currentSubscription.endDate,
-                        ).toLocaleDateString("tr-TR")}
-                        'a kadar) iade edilmez.
-                      </p>
+                    {/* Credit and period wording come from the server's offer;
+                        the included amount is granted pro rata, not in full. */}
+                    {planChangeOption ? (
+                      <>
+                        {planChangeOption.proratedDiscount > 0 && (
+                          <p>
+                            <span className="text-amber-800 dark:text-amber-400/90">
+                              Mevcut planınızın kullanılmayan süresi:
+                            </span>{" "}
+                            <span className="font-medium">
+                              ₺{planChangeOption.proratedDiscount.toFixed(2)}
+                            </span>{" "}
+                            yeni ücretten düşüldü.
+                          </p>
+                        )}
+                        {planChangeOption.bonusCredits > 0 && (
+                          <p>
+                            <span className="text-amber-800 dark:text-amber-400/90">
+                              Ek krediler:
+                            </span>{" "}
+                            <span className="font-medium">
+                              {planChangeOption.bonusCredits} kredi
+                            </span>{" "}
+                            hesabınıza eklenecek.
+                          </p>
+                        )}
+                        <p>
+                          <span className="text-amber-800 dark:text-amber-400/90">
+                            Yeni dönem:
+                          </span>{" "}
+                          bugünden{" "}
+                          {planChangeOption.newEndDate
+                            ? new Date(
+                                planChangeOption.newEndDate,
+                              ).toLocaleDateString("tr-TR")
+                            : variant.duration}{" "}
+                          tarihine kadar geçerli.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p>
+                          <span className="text-amber-800 dark:text-amber-400/90">
+                            Yeni krediler:
+                          </span>{" "}
+                          <span className="font-medium">
+                            {variant.includedCreditAmount} kredi
+                          </span>{" "}
+                          hesabınıza eklenecek.
+                        </p>
+                        <p>
+                          <span className="text-amber-800 dark:text-amber-400/90">
+                            Yeni dönem:
+                          </span>{" "}
+                          bugünden itibaren {variant.duration} geçerli.
+                        </p>
+                      </>
                     )}
                   </div>
                 </div>
               </div>
             )}
+
             {(type === "subscription" || type === "plan-change") &&
               product &&
               variant && (
@@ -510,6 +632,57 @@ function OdemePage() {
 
 
                 {/* Price with KDV breakdown */}
+                {planChangeOption ? (
+                  // Prorated change: every line is a server figure, and KDV is
+                  // the difference between the two totals it sent rather than a
+                  // rate applied here — so the acknowledged amount matches to
+                  // the kuruş.
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Yeni plan</span>
+                      <span className="font-medium">
+                        ₺{planChangeOption.price.toFixed(2)}
+                      </span>
+                    </div>
+                    {planChangeOption.proratedDiscount > 0 && (
+                      <div className="flex justify-between text-sm text-green-700 dark:text-green-400">
+                        <span>Kullanılmayan süre indirimi</span>
+                        <span className="font-medium">
+                          −₺{planChangeOption.proratedDiscount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Ara Toplam</span>
+                      <span className="font-medium">
+                        ₺{planChangeOption.chargeNow.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">KDV (%20)</span>
+                      <span className="font-medium">
+                        ₺
+                        {(
+                          planChangeOption.chargeNowWithKdv -
+                          planChangeOption.chargeNow
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                    <Separator />
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm font-semibold">Toplam</span>
+                      <span className="text-2xl font-bold">
+                        ₺{planChangeOption.chargeNowWithKdv.toFixed(2)}
+                      </span>
+                    </div>
+                    {planChangeOption.chargeNowWithKdv === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Kullanılmayan süreniz yeni planın ücretini karşıladığı
+                        için ek ödeme alınmayacak.
+                      </p>
+                    )}
+                  </div>
+                ) : (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Ara Toplam</span>
@@ -545,6 +718,7 @@ function OdemePage() {
                     </span>
                   </div>
                 </div>
+                )}
               </>
             )}
 
@@ -610,20 +784,39 @@ function OdemePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Kart Bilgileri
+              {isFreeChange ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <CreditCard className="h-5 w-5" />
+              )}
+              {isFreeChange ? "Onay" : "Kart Bilgileri"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Amount badge */}
               <div className="rounded-lg bg-muted/50 p-4 text-center">
-                <p className="text-sm text-muted-foreground">Ödenecek Tutar</p>
+                <p className="text-sm text-muted-foreground">
+                  {isDeferredChange ? "Şimdi Ödenecek Tutar" : "Ödenecek Tutar"}
+                </p>
                 <p className="text-2xl font-bold">₺{getAmount().toFixed(2)}</p>
+                {isDeferredChange ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Değişiklik{" "}
+                    {new Date(
+                      planChangeOption!.effectiveAt,
+                    ).toLocaleDateString("tr-TR")}{" "}
+                    tarihinde uygulanır; bugün ücret alınmaz.
+                  </p>
+                ) : isFreeChange ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Bu değişiklik için kart bilgisi gerekmiyor.
+                  </p>
+                ) : null}
               </div>
 
-              {/* Saved Cards */}
-              {savedCards.length > 0 && (
+              {/* Saved Cards — a free change never asks for one */}
+              {!isFreeChange && savedCards.length > 0 && (
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Kayıtlı Kartlar</Label>
                   <div className="space-y-2">
@@ -705,7 +898,7 @@ function OdemePage() {
               )}
 
               {/* New card form */}
-              {paymentMode === "new" && (
+              {!isFreeChange && paymentMode === "new" && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="cardNumber">Kart Numarası</Label>
@@ -811,6 +1004,13 @@ function OdemePage() {
                 </>
               )}
 
+              {changeBlockedReason && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                  <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <span>{changeBlockedReason}</span>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-4">
                 <Button
                   type="button"
@@ -821,14 +1021,24 @@ function OdemePage() {
                 >
                   İptal
                 </Button>
-                <Button type="submit" className="flex-1" disabled={submitting}>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={submitting || !!changeBlockedReason}
+                >
                   {submitting ? (
                     <>
                       <Spinner size="sm" className="mr-2" />
                       İşleniyor...
                     </>
                   ) : type === "plan-change" ? (
-                    "Planı Değiştir"
+                    isDeferredChange ? (
+                      "Değişikliği Planla"
+                    ) : isFreeChange ? (
+                      "Planı Yükselt"
+                    ) : (
+                      "Planı Değiştir"
+                    )
                   ) : type === "subscription" ? (
                     "Lisans Al"
                   ) : (

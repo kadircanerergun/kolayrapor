@@ -5,7 +5,10 @@ import type {
   ApiSubscription,
   ApiCredit,
   CardInfo,
+  ChangePlanOptions,
   CreditPackage,
+  PlanChangeOption,
+  PlanChangeResult,
   StoreMySubscription,
   SubscriptionProduct,
   SubscriptionResponse,
@@ -18,6 +21,19 @@ const BILLING_CYCLE_LABELS: Record<string, { name: string; duration: string }> =
     monthly: { name: "Aylık", duration: "1 Ay" },
     yearly: { name: "Yıllık", duration: "12 Ay" },
   };
+
+/**
+ * The store endpoints already answer in Turkish ("Zaten bu plana abonesiniz",
+ * "Yenileme işlemi sürüyor…"), so prefer the server's own wording and only
+ * fall back when there is none.
+ */
+function apiErrorMessage(error: any, fallback: string): string {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    fallback
+  );
+}
 
 function mapPlanToVariant(
   plan: ApiProduct["plans"][number],
@@ -56,6 +72,7 @@ function mapProductToSubscriptionProduct(
     features: product.features || [],
     variants: visiblePlans.map(mapPlanToVariant),
     isRecommended: product.isRecommended,
+    tier: Number(product.tier ?? 0),
   };
 }
 
@@ -260,17 +277,76 @@ class SubscriptionApiService {
     }
   }
 
+  // ─── Plan change (upgrade / downgrade) ─────────────────
+
+  /**
+   * Everything the plan-change screen needs in one call: the current
+   * subscription, any scheduled downgrade, and every plan with its direction,
+   * prorated charge and bonus credits already worked out by the server.
+   *
+   * Plans that cannot be switched to are still in `options`, with
+   * `available: false` and a Turkish `reason` — grey them out, don't hide them.
+   */
+  async getChangePlanOptions(): Promise<ChangePlanOptions> {
+    const response = await apiClient.get<ChangePlanOptions>(
+      `${API_BASE_URL}/store/change-plan/options`,
+    );
+    return {
+      current: response.data?.current ?? null,
+      pendingChange: response.data?.pendingChange ?? null,
+      options: response.data?.options ?? [],
+    };
+  }
+
+  /**
+   * A freshly recalculated offer for one plan, asked for as the confirmation
+   * dialog opens — so payment is never taken against an offer made minutes ago.
+   */
+  async previewPlanChange(
+    planId: string,
+  ): Promise<{ option: PlanChangeOption | null; error?: string }> {
+    try {
+      const response = await apiClient.post<PlanChangeOption>(
+        `${API_BASE_URL}/store/change-plan/preview`,
+        { planId },
+      );
+      return { option: response.data ?? null };
+    } catch (error: any) {
+      return {
+        option: null,
+        error: apiErrorMessage(error, "Plan değişikliği hesaplanamadı"),
+      };
+    }
+  }
+
+  /**
+   * Apply a plan change. The server decides the direction — we never say
+   * "upgrade" or "downgrade".
+   *
+   * `acknowledgedChargeAmount` is the KDV-included figure the user was just
+   * shown. If the server recalculates a different one it answers 409 with a
+   * fresh offer instead of charging: `{ conflict: true, freshOption }`.
+   *
+   * A card is only needed when the offer said `requiresPayment` — a free
+   * upgrade and every downgrade go through without one.
+   */
   async changePlan(
     planId: string,
-    cardInfo?: CardInfo,
-    options?: { savedCardId?: string },
-  ): Promise<SubscriptionResponse> {
+    options?: {
+      acknowledgedChargeAmount?: number;
+      cardInfo?: CardInfo;
+      savedCardId?: string;
+    },
+  ): Promise<PlanChangeResult> {
     try {
       const body: Record<string, unknown> = { planId };
+      if (options?.acknowledgedChargeAmount !== undefined) {
+        body.acknowledgedChargeAmount = options.acknowledgedChargeAmount;
+      }
       if (options?.savedCardId) {
         body.savedCardId = options.savedCardId;
-      } else {
-        body.cardInfo = cardInfo;
+      } else if (options?.cardInfo) {
+        body.cardInfo = options.cardInfo;
       }
 
       const response = await apiClient.post(
@@ -290,8 +366,20 @@ class SubscriptionApiService {
         };
       }
 
+      // Downgrade — nothing charged, queued for the end of the period.
+      if (data.scheduled) {
+        return {
+          success: true,
+          scheduled: true,
+          effectiveAt: data.effectiveAt,
+          message: "Plan değişikliği dönem sonunda uygulanacak.",
+        };
+      }
+
       return {
         success: true,
+        applied: true,
+        charged: Number(data.charged ?? 0),
         message: "Lisans planı başarıyla değiştirildi!",
         data: {
           subscriptionId: data.subscription?.id,
@@ -299,12 +387,42 @@ class SubscriptionApiService {
         },
       };
     } catch (error: any) {
+      // 409 — the offer moved under us. Hand the fresh one back so the caller
+      // can redraw; the user is never charged an amount they did not see.
+      if (error.response?.status === 409) {
+        const body = error.response.data ?? {};
+        const freshOption: PlanChangeOption | undefined =
+          body.option ?? body.freshOption ?? body.preview ?? undefined;
+        return {
+          success: false,
+          conflict: true,
+          freshOption,
+          error: apiErrorMessage(
+            error,
+            "Tutar güncellendi. Lütfen yeni tutarı onaylayın.",
+          ),
+        };
+      }
+
       return {
         success: false,
-        error:
-          error.response?.data?.message ||
-          error.message ||
-          "Plan değişikliği başarısız oldu",
+        error: apiErrorMessage(error, "Plan değişikliği başarısız oldu"),
+      };
+    }
+  }
+
+  /** Cancels a downgrade that was queued for the end of the period. */
+  async cancelPendingPlanChange(): Promise<SubscriptionResponse> {
+    try {
+      await apiClient.delete(`${API_BASE_URL}/store/change-plan/pending`);
+      return {
+        success: true,
+        message: "Planlanmış değişiklik iptal edildi.",
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: apiErrorMessage(error, "Planlanmış değişiklik iptal edilemedi"),
       };
     }
   }

@@ -21,6 +21,8 @@ export default defineConfig({
         "playwright-core",
         /^playwright.*/,
         "module",
+        "async_hooks",
+        "node:async_hooks",
       ],
     },
   },

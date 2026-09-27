@@ -95,20 +95,24 @@ const SearchByRecipe = () => {
   };
   return (
     <>
-      <Card className={"flex-1"}>
+      <Card className={"flex h-full flex-1 flex-col"}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Search className="h-5 w-5" />
           Reçete Numarası Sorgulama
         </CardTitle>
         <CardDescription>
-          Aramak istediğiniz reçete numarasını girin
+          Aramak istediğiniz reçete numarasını girin.{" "}
+          <span className="font-medium text-foreground">
+            e-Reçete numarası değil
+          </span>
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="receteNumarasi">Reçete Numarası</Label>
+      <CardContent className="flex flex-1 flex-col justify-center">
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <Label htmlFor="receteNumarasi">Reçete Numarası</Label>
+          {/* Alan ve buton yan yana; buton kendi genişliğinde kalır. */}
+          <div className="flex items-center gap-2">
             <Input
               id="receteNumarasi"
               type="text"
@@ -116,25 +120,26 @@ const SearchByRecipe = () => {
               onChange={(e) => setRecipeCode(e.target.value)}
               placeholder="Reçete numarasını girin"
               required
+              className="flex-1"
             />
+            <Button
+              type="submit"
+              className="shrink-0"
+              disabled={playwright.isLoading || !recipeCode.trim()}
+            >
+              {playwright.isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {playwright.isReady ? "Aranıyor..." : "Başlatılıyor..."}
+                </>
+              ) : (
+                <>
+                  <Search className="mr-2 h-4 w-4" />
+                  Ara
+                </>
+              )}
+            </Button>
           </div>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={playwright.isLoading || !recipeCode.trim()}
-          >
-            {playwright.isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {playwright.isReady ? "Aranıyor..." : "Başlatılıyor..."}
-              </>
-            ) : (
-              <>
-                <Search className="mr-2 h-4 w-4" />
-                Ara
-              </>
-            )}
-          </Button>
         </form>
       </CardContent>
     </Card>

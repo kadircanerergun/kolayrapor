@@ -2,7 +2,7 @@ import { apiClient } from "@/lib/axios";
 import { API_BASE_URL } from "@/lib/constants";
 import { encryptJson, decryptJson } from "@/lib/crypto";
 import { Recete } from "@/types/recete";
-import { maskName } from "@/utils/mask-name";
+import { maskSurname } from "@/utils/mask-name";
 export interface GenerateReportRequest {
   barkod: string;
   recete: Recete;
@@ -35,9 +35,10 @@ export interface SyncedReport {
   reportIssues: string[] | null;
   processedAt: string;
   /**
-   * Patient name for cross-computer synced records. Sent to the server already
-   * masked (see generateReport); the client masks again on the way in so older
-   * records stored before masking never surface a full name.
+   * Patient name for cross-computer synced records. The surname is sent to the
+   * server already masked (see generateReport); the client masks it again on
+   * the way in so older records stored before masking never surface a full
+   * surname.
    */
   hastaAd?: string | null;
   hastaSoyad?: string | null;
@@ -63,16 +64,30 @@ class ReportApiService {
     recete: Recete,
     signal?: AbortSignal,
   ): Promise<ReportResult> {
+    // Son kapı: eksik toplanmış reçete analize GÖNDERİLMEZ. Scraper
+    // katmanındaki bir gerileme yüzünden doz/rapor gibi alanlar eksik kalsa
+    // bile kontrol eksik veriyle yapılmasın diye burada durduruluyor.
+    if (recete.eksikVeriler?.length) {
+      const alanlar = recete.eksikVeriler.map((g) => g.alan).join(", ");
+      console.error(
+        `[report/generate] ${recete.receteNo} eksik veriyle gönderilmedi: ${alanlar}`,
+      );
+      return {
+        success: false,
+        error:
+          "Reçetenin bazı bilgileri Medula'dan okunamadı, bu yüzden kontrol yapılmadı. Lütfen reçeteyi tekrar sorgulayın.",
+      };
+    }
+
     try {
-      // Hasta adı/soyadı sunucuya hiçbir zaman açık gitmez: ilk iki harf hariç
-      // maskelenir ("AHMET SELAMİ" → "AH*** SE***"). Uygulama içinde tam ad
+      // Hasta soyadı sunucuya açık gitmez: ilk harf dışında maskelenir
+      // ("Ahmet Selami" → "Ahmet S*****"). Uygulama içinde tam ad soyad
       // görünmeye devam eder; maskeleme yalnızca bu istek gövdesine uygulanır.
       const requestData: GenerateReportRequest = {
         barkod,
         recete: {
           ...recete,
-          ad: recete.ad ? maskName(recete.ad) : recete.ad,
-          soyad: recete.soyad ? maskName(recete.soyad) : recete.soyad,
+          soyad: recete.soyad ? maskSurname(recete.soyad) : recete.soyad,
         },
       };
 

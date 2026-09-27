@@ -38,7 +38,14 @@
       "Bash(git -C /c/Users/kadir/kolayrapor status --short)",
       "Bash(git -C /c/Users/kadir/kolayrapor diff --stat)",
       "PowerShell(npx vite build --config vite.renderer.config.mts 2>&1)",
-      "Bash(reg query *)"
+      "Bash(reg query *)",
+      "Bash(awk 'NR>=1385 && NR<=1520' src/services/playwright-automation.ts)",
+      "Bash(grep -n \"f\\\\\\\\\\\\\\\\:t29\\\\|f\\\\\\\\\\\\\\\\:t31\\\\|sonIslemTarihi\\\\|receteTarihi\" src/services/playwright-automation.ts)",
+      "Bash(curl *)",
+      "PowerShell($out = npx tsc --noEmit -p tsconfig.json; $out | Out-String -Stream | Where-Object { $_ -match \"account-stats|home.tsx\" }; \"---total---\"; \\($out | Measure-Object\\).Count)",
+      "PowerShell($out = npx tsc --noEmit -p tsconfig.json; $out | Out-String -Stream | Where-Object { $_ -match \"announcements\" }; \"---total---\"; \\($out | Measure-Object\\).Count)",
+      "PowerShell(npm install *)",
+      "PowerShell(npx prettier --write src/components/account-stats.tsx src/components/announcements.tsx src/components/announcement-content.tsx src/routes/duyurular.tsx src/hooks/useAnnouncements.ts src/routes/home.tsx)"
     ]
   }
 }

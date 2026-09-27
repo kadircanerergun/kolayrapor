@@ -10,12 +10,18 @@ import {
 import { subscriptionApiService } from "@/services/subscription-api";
 import { reportApiService } from "@/services/report-api";
 import { syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_INTERVAL_MS, SYNC_OVERLAP_MS } from "@/lib/constants";
+import {
+  PENDING_RECHECK_INTERVAL_MS,
+  SYNC_DEFAULT_LOOKBACK_DAYS,
+  SYNC_INTERVAL_MS,
+  SYNC_OVERLAP_MS,
+} from "@/lib/constants";
 import type { ApiPharmacy } from "@/services/subscription-api";
 import type {
   ApiSubscription,
   ApiCredit,
   CreditPackage,
+  PendingPlanChange,
   SubscriptionProduct,
 } from "@/types/subscription";
 
@@ -24,6 +30,8 @@ interface PharmacyContextType {
   isPending: boolean;
   ipAddress: string | null;
   subscription: ApiSubscription | null;
+  /** A downgrade queued for the end of the period, if one is scheduled. */
+  pendingChange: PendingPlanChange | null;
   creditBalance: ApiCredit | null;
   products: SubscriptionProduct[];
   creditPackages: CreditPackage[];
@@ -39,6 +47,9 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
   const [isPending, setIsPending] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<ApiSubscription | null>(
+    null,
+  );
+  const [pendingChange, setPendingChange] = useState<PendingPlanChange | null>(
     null,
   );
   const [creditBalance, setCreditBalance] = useState<ApiCredit | null>(null);
@@ -75,6 +86,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
           const mySubData = await subscriptionApiService.getMySubscription();
           setSubscription(mySubData.subscription);
           setCreditBalance(mySubData.credit);
+          setPendingChange(mySubData.pendingChange ?? null);
         } catch {
           // Fallback to separate calls
           try {
@@ -97,6 +109,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
       } else {
         setSubscription(null);
         setCreditBalance(null);
+        setPendingChange(null);
       }
     } catch (err) {
       console.error("Failed to load pharmacy data:", err);
@@ -109,6 +122,39 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // The pharmacy is identified by IP once at startup, so an account that gets
+  // activated afterwards — the usual case, since registering through the
+  // KolayAsistan form activates immediately — would keep showing "onay
+  // bekliyor" until the app was restarted. While it still looks pending,
+  // re-check quietly (no `loading` flip, so the pending screens don't flicker)
+  // and pull the full data as soon as the server reports it active.
+  const recheckRegistration = useCallback(async () => {
+    try {
+      const statusData = await subscriptionApiService.getRegistrationStatus();
+      const pharmacyData = statusData.registered
+        ? statusData.pharmacy ?? null
+        : null;
+      if (pharmacyData?.isActive) await loadData();
+    } catch {
+      // Offline or a transient failure — the next tick tries again.
+    }
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!isPending) return;
+    // Also on focus: the user typically finishes activation in a browser and
+    // comes back to the app expecting it to know.
+    window.addEventListener("focus", recheckRegistration);
+    const timer = setInterval(
+      recheckRegistration,
+      PENDING_RECHECK_INTERVAL_MS,
+    );
+    return () => {
+      window.removeEventListener("focus", recheckRegistration);
+      clearInterval(timer);
+    };
+  }, [isPending, recheckRegistration]);
 
   // Sync reports from server after pharmacy loads, then every SYNC_INTERVAL_MS
   useEffect(() => {
@@ -174,6 +220,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
         isPending,
         ipAddress,
         subscription,
+        pendingChange,
         creditBalance,
         products,
         creditPackages,

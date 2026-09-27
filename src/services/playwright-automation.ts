@@ -1,5 +1,5 @@
 // Lazy import of Playwright to avoid Electron startup issues
-import type { ChromiumBrowser, Page } from "playwright";
+import type { ChromiumBrowser, Locator, Page } from "playwright";
 import { ELEMENT_SELECTORS } from "@/constants";
 import dayjs from "dayjs";
 import { WrongIpException } from "@/exceptions/wrong-ip.exception";
@@ -18,6 +18,9 @@ import { createRequire } from "module";
 import { AsyncLocalStorage } from "async_hooks";
 import * as Sentry from "@sentry/electron/main";
 import {
+  RECETE_VERI_SURUMU,
+  DataGap,
+  DataGapSebep,
   EReceteBaslik,
   EReceteBilgi,
   EReceteIlac,
@@ -51,6 +54,18 @@ interface NavigationResult {
   redirectedToLogin?: boolean;
   error?: string;
 }
+
+/**
+ * Tek bir reçete toplama turunda biriken eksik alanlar — bkz.
+ * withGapCollection(). Yalnızca OKUMA HATALARI birikir; sayfada gerçekten
+ * olmayan alanlar (anchor doğrulandıktan sonra) eksik sayılmaz.
+ */
+type GapCollector = {
+  receteNo?: string;
+  gaps: DataGap[];
+  /** O an hangi ilacın alt sayfası okunuyor; eksik kaydına barkod eklenir. */
+  aktifBarkod?: string;
+};
 
 /** "Sorgula" sonrası sayfanın vardığı durum — bkz. waitForSearchOutcome(). */
 type SearchOutcome =
@@ -394,6 +409,8 @@ export class PlaywrightAutomationService {
   private readonly lockContext = new AsyncLocalStorage<true>();
   /** captureIssue()'nun aynı hatayı iki kez Sentry'ye göndermesini engeller. */
   private readonly capturedErrors = new WeakSet<Error>();
+  /** Aktif reçete toplama turunun eksik alanları; bkz. withGapCollection(). */
+  private readonly gapContext = new AsyncLocalStorage<GapCollector>();
 
   private static readonly KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
   /** "Sorgula" sonrası detay sayfası / uyarı / login için toplam bekleme. */
@@ -406,6 +423,54 @@ export class PlaywrightAutomationService {
   private static readonly PORTAL_MENU_ATTEMPTS = 3;
   /** Tek denemede sol menünün render olması için beklenen süre. */
   private static readonly PORTAL_MENU_TIMEOUT_MS = 20000;
+  /** Tek bir alan okunamazsa kaç kez daha denenecek; bkz. readField(). */
+  private static readonly FIELD_RETRIES = 2;
+  /** Alan retry'ları arasında JSF'in DOM'u tamamlaması için verilen ara. */
+  private static readonly FIELD_RETRY_DELAY_MS = 300;
+  /**
+   * Tek bir alan okuması için üst sınır. Playwright'ın 30 sn'lik varsayılanı
+   * retry'larla çarpılınca reçete başına dakikalara çıkıyor; alan zaten
+   * sayfadaysa bu süre fazlasıyla yeter.
+   */
+  private static readonly FIELD_READ_TIMEOUT_MS = 4000;
+  /** Bir alanın "sayfada yok" sayılabilmesi için sayfa doğrulama süresi. */
+  private static readonly ANCHOR_TIMEOUT_MS = 15000;
+  /**
+   * Eksik alan kalırsa reçetenin baştan sorgulanma sayısı (ilk tur dahil).
+   * İkinci tur da eksik dönerse reçete bloke edilir.
+   */
+  private static readonly RECETE_ATTEMPTS = 2;
+  /**
+   * Teknik alan yolunu kullanıcıya gösterilecek etikete çevirir; en uzun
+   * eşleşen önek kazanır.
+   */
+  private static readonly GAP_ETIKETLERI: ReadonlyArray<[string, string]> = [
+    ["ilaclar", "ilaç listesi"],
+    ["ilac.rapor", "ilaç raporu"],
+    ["ilac.detay", "ilaç bilgisi"],
+    ["ilacBilgi.ayaktanMaksKullanimDoz", "doz bilgisi"],
+    ["ilacBilgi.yatanMaksKullanimDoz", "doz bilgisi"],
+    ["ilacBilgi.tekDoz", "doz bilgisi"],
+    ["ilacBilgi", "ilaç bilgisi"],
+    ["rapor", "rapor bilgileri"],
+    ["eRecete", "e-Reçete bilgisi"],
+    ["receteUyariKodlari", "uyarı kodları"],
+    ["tanilar", "tanılar"],
+    ["hasta", "hasta bilgisi"],
+    ["recete", "reçete bilgileri"],
+  ];
+  /**
+   * Hangi sayfada olduğumuzu kanıtlayan seçiciler. Bir alanın yokluğuna ancak
+   * ilgili anchor doğrulandıktan SONRA karar verilebilir — yüklenmemiş sayfada
+   * `count() === 0` yokluk değil, okuma hatasıdır.
+   */
+  private static readonly ANCHORS = {
+    receteDetay: "#f\\:t13",
+    ilacBilgi: 'td.menuHeader:has-text("İlaç Bilgileri")',
+    rapor: 'td.menuHeader:has-text("Rapor Görme")',
+    /** e-Reçete sayfasının kendi "Geri Dön" butonu (`form1:` prefix'li). */
+    erecete: "input#form1\\:buttonGeriDon",
+  } as const;
 
   private get operationInProgress(): boolean {
     return this.operationDepth > 0;
@@ -596,6 +661,225 @@ export class PlaywrightAutomationService {
       );
     } catch (err) {
       console.warn("[Playwright] Sentry capture failed:", err);
+    }
+  }
+
+  /**
+   * Bir reçete toplama turunu sarmalar ve tur boyunca okunamayan alanları
+   * biriktirir. Amaç, hata anında sessizce boş değere düşüp reçeteyi "tamam"
+   * saymayı imkânsız kılmak: turun sonunda `gaps` doluysa reçete eksiktir.
+   */
+  private async withGapCollection<T>(
+    receteNo: string,
+    fn: () => Promise<T>,
+  ): Promise<{ value: T; gaps: DataGap[] }> {
+    const collector: GapCollector = { receteNo, gaps: [] };
+    const value = await this.gapContext.run(collector, fn);
+    return { value, gaps: collector.gaps };
+  }
+
+  /**
+   * Okunamayan bir alanı kaydeder. Buraya YALNIZCA okuma/gezinme hataları
+   * düşer; sayfada gerçekten bulunmayan alanlar (anchor doğrulandıktan sonra)
+   * kaydedilmez, aksi halde her opsiyonel alan reçeteyi bloke ederdi.
+   */
+  private recordGap(gap: DataGap): void {
+    const collector = this.gapContext.getStore();
+    if (collector) {
+      // İlaç alt sayfalarındaki alanlar hangi ilaca ait olduğunu bilmiyor;
+      // barkodu turu başlatan ilaclaraRaporEkle bırakıyor.
+      const kayit: DataGap = {
+        ...gap,
+        barkod: gap.barkod ?? collector.aktifBarkod,
+      };
+      // Aynı alan hem satır hem üst katmandan düşebiliyor; ilk kayıt yeterli.
+      const zatenVar = collector.gaps.some(
+        (g) => g.alan === kayit.alan && g.barkod === kayit.barkod,
+      );
+      if (!zatenVar) collector.gaps.push(kayit);
+    }
+    console.warn(
+      `[Playwright] Eksik veri: ${gap.alan} (${gap.sebep})${gap.detay ? ` — ${gap.detay}` : ""}`,
+    );
+  }
+
+  /** Eksik alanları kullanıcıya gösterilecek kısa bir özete çevirir. */
+  private gapOzeti(gaps: DataGap[]): string {
+    const etiketler: string[] = [];
+    for (const gap of gaps) {
+      const eslesme = PlaywrightAutomationService.GAP_ETIKETLERI.filter(
+        ([onek]) => gap.alan.startsWith(onek),
+      ).sort((a, b) => b[0].length - a[0].length)[0];
+      const etiket = eslesme ? eslesme[1] : gap.alan;
+      if (!etiketler.includes(etiket)) etiketler.push(etiket);
+    }
+    const gosterilen = etiketler.slice(0, 3).join(", ");
+    return etiketler.length > 3
+      ? `${gosterilen} ve ${etiketler.length - 3} alan daha`
+      : gosterilen;
+  }
+
+  private gapReason(error: unknown): DataGapSebep {
+    const message = error instanceof Error ? error.message : String(error);
+    return /timeout/i.test(message) ? "timeout" : "read-failed";
+  }
+
+  /**
+   * Tek bir alanı okur; okuma patlarsa {@link FIELD_RETRIES} kez daha dener.
+   * Hepsi başarısızsa alan eksik olarak kaydedilir ve fallback döner — eski
+   * `catch { return "" }` davranışının aksine bu sessiz kalmaz, reçete
+   * eksik işaretlenir. Fallback yalnızca akışın devam edip kalan alanları da
+   * toplayabilmesi için var; sonuç yine de gönderilmeyecek.
+   */
+  private async readField<T>(
+    alan: string,
+    read: () => Promise<T>,
+    opts: { fallback: T; barkod?: string; retries?: number },
+  ): Promise<T> {
+    const retries = opts.retries ?? PlaywrightAutomationService.FIELD_RETRIES;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await read();
+      } catch (err) {
+        lastError = err;
+        if (attempt < retries) {
+          await this.page
+            ?.waitForTimeout(PlaywrightAutomationService.FIELD_RETRY_DELAY_MS)
+            .catch(() => undefined);
+        }
+      }
+    }
+    this.recordGap({
+      alan,
+      sebep: this.gapReason(lastError),
+      detay:
+        lastError instanceof Error
+          ? lastError.message.split("\n")[0]
+          : String(lastError),
+      barkod: opts.barkod,
+    });
+    return opts.fallback;
+  }
+
+  /**
+   * readField üzerinden metin okur. Sayfa anchor'ı doğrulandıktan sonra
+   * elemanın hiç bulunmaması gerçek yokluktur; eleman varken okuma patlarsa
+   * alan eksik kaydedilir.
+   */
+  private readText(alan: string, locator: Locator, barkod?: string) {
+    return this.readField(
+      alan,
+      async () => {
+        if ((await locator.count()) === 0) return "";
+        return (
+          (await locator.textContent({
+            timeout: PlaywrightAutomationService.FIELD_READ_TIMEOUT_MS,
+          })) ?? ""
+        );
+      },
+      { fallback: "", barkod },
+    );
+  }
+
+  /**
+   * Yokluğu olağan olan metin alanları için: okunamazsa eksik KAYDETMEZ, boş
+   * döner. Yalnızca reçetenin klinik geçerliliğini etkilemeyen ve Medula'nın
+   * bazı sayfalarda hiç basmadığı alanlarda kullanılır.
+   */
+  private async readOptionalText(locator: Locator): Promise<string> {
+    try {
+      return (
+        (await locator.textContent({
+          timeout: PlaywrightAutomationService.FIELD_READ_TIMEOUT_MS,
+        })) ?? ""
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  /** readField üzerinden input değeri okur; okunamazsa alan eksik kaydedilir. */
+  private readInput(alan: string, locator: Locator, barkod?: string) {
+    return this.readField(
+      alan,
+      async () => {
+        if ((await locator.count()) === 0) return "";
+        return await locator.inputValue({
+          timeout: PlaywrightAutomationService.FIELD_READ_TIMEOUT_MS,
+        });
+      },
+      { fallback: "", barkod },
+    );
+  }
+
+  /**
+   * Beklenen sayfada olduğumuzu doğrular. `false` dönerse o sayfadan okunacak
+   * hiçbir şeyin yokluğuna güvenilemez, bu yüzden eksik olarak kaydedilir.
+   */
+  private async ensureAnchor(
+    anchor: string,
+    alan: string,
+    timeout = PlaywrightAutomationService.ANCHOR_TIMEOUT_MS,
+  ): Promise<boolean> {
+    if (!this.page) return false;
+    try {
+      await this.page.waitForSelector(anchor, { state: "attached", timeout });
+      return true;
+    } catch {
+      this.recordGap({ alan, sebep: "wrong-page", detay: anchor });
+      return false;
+    }
+  }
+
+  /** Reçete detay sayfasında mıyız? Alt sayfa turlarından dönüşü doğrular. */
+  private async isOnDetailPage(timeout = 5000): Promise<boolean> {
+    if (!this.page) return false;
+    return await this.page
+      .waitForSelector(PlaywrightAutomationService.ANCHORS.receteDetay, {
+        state: "attached",
+        timeout,
+      })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  /**
+   * Alt sayfada (Rapor / İlaç Bilgi / e-Reçete) takılı kaldıysak detay
+   * sayfasına dönmeye çalışır. Dönemezse `false` — o durumda tek çıkış yolu
+   * reçeteyi baştan sorgulamaktır, bunu searchPrescription üstleniyor.
+   */
+  private async recoverToDetailPage(operation: string): Promise<boolean> {
+    if (!this.page) return false;
+    try {
+      if (await this.isOnDetailPage()) return true;
+      const back = this.page.locator(
+        'input[id$=":buttonGeriDon"], input[type="submit"][value="Geri Dön"]',
+      );
+      if ((await back.count()) === 0) return false;
+      await back.first().click();
+      return await this.isOnDetailPage();
+    } catch (err) {
+      this.captureIssue(err, { operation, outcome: "recover-failed" });
+      return false;
+    }
+  }
+
+  /**
+   * Detay sayfasından ayrılıp geri dönen alt sayfa turlarını sarmalar. Tur
+   * yarıda kalırsa detay sayfasına dönülüp bir kez daha denenir; ikinci deneme
+   * de olmazsa hata yukarı verilir — çağıran alanı eksik kaydeder.
+   */
+  private async withSubPageRetry<T>(
+    operation: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (err) {
+      this.captureIssue(err, { operation, outcome: "subpage-retry" });
+      if (!(await this.recoverToDetailPage(operation))) throw err;
+      return await run();
     }
   }
 
@@ -1355,10 +1639,20 @@ export class PlaywrightAutomationService {
     });
   }
 
+  /**
+   * Reçeteyi Medula'da sorgular ve detaylarını toplar. Alanlardan biri
+   * okunamazsa (alan ve alt sayfa retry'ları da yetmediyse) reçete BAŞTAN
+   * sorgulanır; ikinci turda da eksik kalırsa `success: false` döner —
+   * eksik veriyle "başarılı" sonuç dönmez, çünkü o sonuç doğrudan analize
+   * gidiyor.
+   */
   async searchPrescription(
     prescriptionNumber: string,
     retryOnSessionLoss = true,
-  ): Promise<NavigationResult & { prescriptionData?: Recete }> {
+    attempt = 1,
+  ): Promise<
+    NavigationResult & { prescriptionData?: Recete; eksikVeriler?: DataGap[] }
+  > {
     return this.withOperation(async () => {
       try {
         if (!this.page) {
@@ -1437,7 +1731,7 @@ export class PlaywrightAutomationService {
               error: login.error ?? "Medula oturumu yenilenemedi.",
             };
           }
-          return this.searchPrescription(prescriptionNumber, false);
+          return this.searchPrescription(prescriptionNumber, false, attempt);
         }
 
         if (outcome.type === "message") {
@@ -1465,15 +1759,57 @@ export class PlaywrightAutomationService {
           };
         }
 
-        // Parse recete from current page
-        const recete = await this.parseReceteFromCurrentPage(prescriptionNumber);
-        await this.ilaclaraRaporEkle(recete);
-        // e-Reçete sayfası ve uyarı kodları dialogu en sona bırakıldı: ikisi de
-        // detay sayfasından ayrılıp geri döndüğü için burada bir aksilik
-        // çıkarsa reçetenin geri kalanı (rapor, ilaç bilgisi) zaten toplanmış
-        // olur ve kontrol yine de yapılabilir.
-        recete.eRecete = await this.getEReceteBilgiFromDetailPage();
-        recete.receteUyariKodlari = await this.getReceteUyariKodlari();
+        // Reçetenin bütün alanları tek bir toplama turunda okunuyor;
+        // okunamayan her alan collector'a düşüyor (bkz. withGapCollection).
+        const { value: recete, gaps } = await this.withGapCollection(
+          prescriptionNumber,
+          async () => {
+            const parsed =
+              await this.parseReceteFromCurrentPage(prescriptionNumber);
+            await this.ilaclaraRaporEkle(parsed);
+            // e-Reçete sayfası ve uyarı kodları dialogu en sona bırakıldı:
+            // ikisi de detay sayfasından ayrılıp geri döndüğü için burada bir
+            // aksilik çıksa bile reçetenin geri kalanı (rapor, ilaç bilgisi)
+            // çoktan toplanmış olur.
+            parsed.eRecete = await this.getEReceteBilgiFromDetailPage();
+            parsed.receteUyariKodlari = await this.getReceteUyariKodlari();
+            return parsed;
+          },
+        );
+
+        if (gaps.length > 0) {
+          // Alan ve alt sayfa retry'ları yetmedi: sayfa/oturum durumu bozulmuş
+          // olabilir, tek çıkış yolu reçeteyi baştan sorgulamak.
+          if (attempt < PlaywrightAutomationService.RECETE_ATTEMPTS) {
+            console.warn(
+              `[Playwright] ${gaps.length} alan okunamadı, reçete baştan sorgulanıyor (${prescriptionNumber})`,
+            );
+            return this.searchPrescription(
+              prescriptionNumber,
+              retryOnSessionLoss,
+              attempt + 1,
+            );
+          }
+
+          this.captureIssue(
+            new Error("Reçete eksik veriyle toplandı"),
+            {
+              operation: "searchPrescription",
+              outcome: "eksik-veri",
+              receteNo: prescriptionNumber,
+              detail: gaps.map((g) => `${g.alan}:${g.sebep}`).join(", "),
+            },
+          );
+          recete.eksikVeriler = gaps;
+          return {
+            success: false,
+            currentUrl: this.page.url(),
+            prescriptionData: recete,
+            eksikVeriler: gaps,
+            error: `Reçetenin bazı bilgileri Medula'dan okunamadı (${this.gapOzeti(gaps)}). Eksik veriyle kontrol yapılmaması için işlem durduruldu; lütfen tekrar deneyin.`,
+          };
+        }
+
         return {
           success: true,
           currentUrl: this.page.url(),
@@ -1484,7 +1820,11 @@ export class PlaywrightAutomationService {
         if (msg.includes("Cannot find context") || msg.includes("Target page, context or browser has been closed")) {
           console.warn("[Playwright] Context/page lost during prescription search, retrying...");
           try {
-            return await this.searchPrescription(prescriptionNumber);
+            return await this.searchPrescription(
+              prescriptionNumber,
+              retryOnSessionLoss,
+              attempt + 1,
+            );
           } catch {
             // fall through to error return below
           }
@@ -1515,9 +1855,50 @@ export class PlaywrightAutomationService {
       throw new Error("Page is not available");
     }
 
+    // Butonun yokluğuna ancak detay sayfasında olduğumuz doğrulandıktan sonra
+    // güvenilebilir.
+    if (
+      !(await this.ensureAnchor(
+        PlaywrightAutomationService.ANCHORS.receteDetay,
+        "receteUyariKodlari.detaySayfasi",
+      ))
+    ) {
+      return undefined;
+    }
+
     const button = this.page.locator("input#f\\:buttonReceteTeshis");
+    // Buton gerçekten yok: bu reçetede uyarı kodu sorgulanamıyor.
     if ((await button.count()) === 0) return undefined;
 
+    try {
+      return await this.withSubPageRetry("receteUyariKodlari", () =>
+        this.readUyariKodlari(),
+      );
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "receteUyariKodlari",
+        outcome: "dialog-failed",
+      });
+      this.recordGap({
+        alan: "receteUyariKodlari",
+        sebep: this.gapReason(error),
+        detay:
+          error instanceof Error ? error.message.split("\n")[0] : undefined,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Uyarı kodu dialogunu açıp okur ve Vazgeç ile kapatır. Okunamazsa hatayı
+   * yukarı verir; `[]` = dialog açıldı, kod yok.
+   */
+  private async readUyariKodlari(): Promise<ReceteUyariKodu[]> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const button = this.page.locator("input#f\\:buttonReceteTeshis");
     let kodlar: ReceteUyariKodu[] | undefined;
     try {
       await button.first().click();
@@ -1552,16 +1933,13 @@ export class PlaywrightAutomationService {
           })
           .filter((r) => r.ilacAdi || r.secilenUyariKodu);
       });
-    } catch (error) {
-      this.captureIssue(error, {
-        operation: "receteUyariKodlari",
-        outcome: "dialog-failed",
-      });
-      kodlar = undefined;
     } finally {
       await this.closeUyariDialog();
     }
 
+    if (!kodlar) {
+      throw new Error("Uyarı kodu dialogu okunamadı");
+    }
     return kodlar;
   }
 
@@ -1602,21 +1980,28 @@ export class PlaywrightAutomationService {
     if (!this.page) {
       throw new Error("Page is not available");
     }
+    const page = this.page;
 
-    const sertifika = await this.page
-      .evaluate(() => {
-        const select = document.getElementById(
-          "f:m7",
-        ) as HTMLSelectElement | null;
-        if (!select) return null;
-        const option =
-          select.selectedOptions?.[0] ?? select.options[select.selectedIndex];
-        return {
-          kod: select.value ?? "",
-          ad: (option?.textContent ?? "").replace(/\s+/g, " ").trim(),
-        };
-      })
-      .catch(() => null);
+    // evaluate patlarsa (sayfa değişti / context düştü) alan eksik kaydedilir;
+    // `null` dönmesi ise sertifika alanı olmayan reçete demektir — o sessizce
+    // undefined'a düşebilir, çünkü sayfada gerçekten yok.
+    const sertifika = await this.readField(
+      "recete.sertifika",
+      () =>
+        page.evaluate(() => {
+          const select = document.getElementById(
+            "f:m7",
+          ) as HTMLSelectElement | null;
+          if (!select) return null;
+          const option =
+            select.selectedOptions?.[0] ?? select.options[select.selectedIndex];
+          return {
+            kod: select.value ?? "",
+            ad: (option?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          };
+        }),
+      { fallback: null as ReceteSertifika | null },
+    );
 
     if (!sertifika || (!sertifika.kod && !sertifika.ad)) return undefined;
     return sertifika;
@@ -1694,19 +2079,60 @@ export class PlaywrightAutomationService {
     if (!this.page) {
       throw new Error("Page is not available");
     }
+    const collector = this.gapContext.getStore();
     for (let i = 0; i < (recete.ilaclar?.length || 0); i++) {
       const ilac = recete.ilaclar![i];
-      if (ilac.raporluMu) {
-        // Use the real Medula JSF row index captured during scraping, not the
-        // array position — they diverge when rows are skipped (empty name) or
-        // Medula renders non-contiguous row indices, which would otherwise
-        // scrape the wrong medicine's report/info. Fall back to the array
-        // index for safety if rowIndex is somehow missing.
-        const rowIndex = ilac.rowIndex ?? i;
-        ilac.rapor = await this.getReportForMedicine(rowIndex);
-        ilac.detay = await this.getIlacBilgiForMedicine(rowIndex);
+      if (!ilac.raporluMu) continue;
+
+      // Use the real Medula JSF row index captured during scraping, not the
+      // array position — they diverge when rows are skipped (empty name) or
+      // Medula renders non-contiguous row indices, which would otherwise
+      // scrape the wrong medicine's report/info. Fall back to the array
+      // index for safety if rowIndex is somehow missing.
+      const rowIndex = ilac.rowIndex ?? i;
+      if (collector) collector.aktifBarkod = ilac.barkod;
+
+      // Rapor ve ilaç bilgisi ayrı sayfalara gidip geri dönüyor. Tur yarıda
+      // kalırsa detay sayfasına dönülüp bir kez daha denenir; yine olmazsa
+      // ilaç eksik kaydedilip KALAN ilaçlara devam edilir, böylece kullanıcı
+      // eksiklerin tamamını tek seferde görür.
+      try {
+        ilac.rapor = await this.withSubPageRetry("raporGoruntule", () =>
+          this.getReportForMedicine(rowIndex),
+        );
+      } catch (error) {
+        this.captureIssue(error, {
+          operation: "raporGoruntule",
+          receteNo: recete.receteNo,
+        });
+        this.recordGap({
+          alan: "ilac.rapor",
+          sebep: this.gapReason(error),
+          detay:
+            error instanceof Error ? error.message.split("\n")[0] : undefined,
+          barkod: ilac.barkod,
+        });
+      }
+
+      try {
+        ilac.detay = await this.withSubPageRetry("ilacBilgi", () =>
+          this.getIlacBilgiForMedicine(rowIndex),
+        );
+      } catch (error) {
+        this.captureIssue(error, {
+          operation: "ilacBilgi",
+          receteNo: recete.receteNo,
+        });
+        this.recordGap({
+          alan: "ilac.detay",
+          sebep: this.gapReason(error),
+          detay:
+            error instanceof Error ? error.message.split("\n")[0] : undefined,
+          barkod: ilac.barkod,
+        });
       }
     }
+    if (collector) collector.aktifBarkod = undefined;
   }
 
   async parseReceteFromCurrentPage(
@@ -1727,14 +2153,31 @@ export class PlaywrightAutomationService {
     const ilacAlimTarihiElement = this.page.locator("#f\\:t31");
     const doktorBransElement = this.page.locator("#f\\:t45");
 
+    // Alanlar tek tek readField ile okunuyor: biri okunamazsa reçete "eksik"
+    // işaretlenir; eskiden sessizce boş string kalıyor ve reçete eksik veriyle
+    // analize gidiyordu.
     const receteNo =
-      (await receteNoElement.textContent()) || prescriptionNumber;
-    const ad = (await hastaAdElement.textContent().catch(() => "")) || "";
-    const soyad = (await hastaSoyadElement.textContent().catch(() => "")) || "";
-    const tesisKodu = (await tesisKoduElement.inputValue()) || "";
-    const receteTarihi = (await receteTarihiElement.inputValue()) || "";
-    const ilacAlimTarihi = (await ilacAlimTarihiElement.inputValue()) || "";
-    const doktorBrans = (await doktorBransElement.textContent()) || "";
+      (await this.readText("recete.receteNo", receteNoElement)) ||
+      prescriptionNumber;
+    // Hasta adı/soyadı bilinçli olarak "opsiyonel" okunuyor: kontrolün klinik
+    // sonucunu etkilemiyor, thunk gerekirse listeden (ReceteOzet) tamamlıyor
+    // ve eski kodun burada catch kullanması bu alanların bazı sayfalarda
+    // gelmeyebildiğine işaret ediyor — reçeteyi bu yüzden bloke etmiyoruz.
+    const ad = await this.readOptionalText(hastaAdElement);
+    const soyad = await this.readOptionalText(hastaSoyadElement);
+    const tesisKodu = await this.readInput("recete.tesisKodu", tesisKoduElement);
+    const receteTarihi = await this.readInput(
+      "recete.receteTarihi",
+      receteTarihiElement,
+    );
+    const ilacAlimTarihi = await this.readInput(
+      "recete.ilacAlimTarihi",
+      ilacAlimTarihiElement,
+    );
+    const doktorBrans = await this.readText(
+      "recete.doktorBrans",
+      doktorBransElement,
+    );
 
     // İlaç listesini getIlacOzetFromDetailPage kullanarak çıkar
     const ilaclar = (await this.getIlacOzetFromDetailPage()) as ReceteIlac[];
@@ -1754,6 +2197,7 @@ export class PlaywrightAutomationService {
       sertifika,
       ad: ad.trim(),
       soyad: soyad.trim(),
+      veriSurumu: RECETE_VERI_SURUMU,
     };
 
     return recete;
@@ -1775,16 +2219,22 @@ export class PlaywrightAutomationService {
       .all();
 
     const tanilar: ReceteTani[] = [];
-    for (const row of rows) {
-      const cells = await row.locator(":scope > td").all();
+    for (let i = 0; i < rows.length; i++) {
+      const cells = await rows[i].locator(":scope > td").all();
       const kodInput = cells?.[0]?.locator("input").first();
       const taniInput = cells?.[1]?.locator("input").first();
-      const icd10Kod = kodInput
-        ? await kodInput.inputValue().catch(() => "")
-        : "";
-      const taniAdi = taniInput
-        ? await taniInput.inputValue().catch(() => "")
-        : "";
+      // Okuma hatası artık boş string'e düşüp tanıyı yok saymıyor; readInput
+      // alanı eksik kaydediyor.
+      // Input elemanı olmayan satır (başlık/ayraç) eksik veri değildir; ancak
+      // eleman varken okunamazsa readInput bunu eksik olarak kaydeder.
+      const icd10Kod =
+        kodInput && (await kodInput.count())
+          ? await this.readInput(`tanilar[${i}].icd10Kod`, kodInput)
+          : "";
+      const taniAdi =
+        taniInput && (await taniInput.count())
+          ? await this.readInput(`tanilar[${i}].tani`, taniInput)
+          : "";
 
       // Medula yeni tanı girişi için boş satırlar da render ediyor; atla.
       if (!icd10Kod.trim() && !taniAdi.trim()) continue;
@@ -1814,9 +2264,52 @@ export class PlaywrightAutomationService {
       throw new Error("Page is not available");
     }
 
+    // "Buton yok" sonucuna ancak detay sayfasında olduğumuz kanıtlandıktan
+    // sonra varılabilir; yüklenmemiş sayfa aksi halde "bu reçetenin
+    // e-Reçetesi yok" gibi görünüyordu.
+    if (
+      !(await this.ensureAnchor(
+        PlaywrightAutomationService.ANCHORS.receteDetay,
+        "eRecete.detaySayfasi",
+      ))
+    ) {
+      return undefined;
+    }
+
     const button = this.page.locator("input#f\\:buttonEreceteGoruntule");
+    // Buton gerçekten yok: bu reçetenin e-Reçetesi yok — eksik veri değil.
     if ((await button.count()) === 0) return undefined;
 
+    try {
+      // Tur yarıda kalırsa detay sayfasına dönülüp bir kez daha denenir.
+      return await this.withSubPageRetry("ereceteGoruntule", () =>
+        this.readEReceteBilgi(),
+      );
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "ereceteGoruntule",
+        outcome: "page-failed",
+      });
+      this.recordGap({
+        alan: "eRecete",
+        sebep: this.gapReason(error),
+        detay:
+          error instanceof Error ? error.message.split("\n")[0] : undefined,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * e-Reçete sayfasını açar, okur ve detay sayfasına döner. Okunamazsa hatayı
+   * yukarı verir — sessizce undefined dönmediği için çağıran retry edebiliyor.
+   */
+  private async readEReceteBilgi(): Promise<EReceteBilgi> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+
+    const button = this.page.locator("input#f\\:buttonEreceteGoruntule");
     let bilgi: EReceteBilgi | undefined;
     try {
       await button.first().click();
@@ -2074,16 +2567,13 @@ export class PlaywrightAutomationService {
           })),
         };
       });
-    } catch (error) {
-      this.captureIssue(error, {
-        operation: "ereceteGoruntule",
-        outcome: "page-failed",
-      });
-      bilgi = undefined;
     } finally {
       await this.returnFromERecetePage();
     }
 
+    if (!bilgi) {
+      throw new Error("e-Reçete sayfası okunamadı");
+    }
     return bilgi;
   }
 
@@ -2276,8 +2766,13 @@ export class PlaywrightAutomationService {
     return receteler;
   }
 
+  /**
+   * Detay sayfasındaki ilaç tablosunu (`table#f:tbl1`) okur. Tablodaki her
+   * satır için bir ilaç dönmek zorunda: eskiden adı boş gelen satır sessizce
+   * atlanıyordu ve reçeteden ilaç düşüyordu. Artık okunamayan satır bir kez
+   * daha denenir, yine olmazsa eksik olarak kaydedilir.
+   */
   async getIlacOzetFromDetailPage(): Promise<IlacOzet[]> {
-    const ilaclar: IlacOzet[] = [];
     const page = this.page!;
 
     // The Medula JSF table can render multiple <tbody> sections (and sometimes nested tables),
@@ -2286,59 +2781,125 @@ export class PlaywrightAutomationService {
     await table.waitFor({ state: "visible" });
 
     // Data rows are marked with rowClass1/rowClass2.
-    const dataRows = table.locator("tr.rowClass1, tr.rowClass2");
-    const rowCount = await dataRows.count();
+    const rowsSelector = "tr.rowClass1, tr.rowClass2";
+    const rowCount = await table.locator(rowsSelector).count();
+
+    const ilaclar: IlacOzet[] = [];
+    let satirHatasi = false;
+    let bosSatir = 0;
 
     for (let r = 0; r < rowCount; r++) {
-      const row = dataRows.nth(r);
+      let sonuc = await this.parseIlacRow(table.locator(rowsSelector).nth(r));
+      if (sonuc === null) {
+        // JSF tabloyu POST sonrası yeniden basıyor; satır henüz hazır
+        // olmayabilir. Locator'ı tazeleyip bir kez daha dene.
+        await page
+          .waitForTimeout(PlaywrightAutomationService.FIELD_RETRY_DELAY_MS)
+          .catch(() => undefined);
+        sonuc = await this.parseIlacRow(table.locator(rowsSelector).nth(r));
+      }
+      if (sonuc === null) {
+        satirHatasi = true;
+        this.recordGap({
+          alan: `ilaclar[${r}]`,
+          sebep: "missing-row",
+          detay: `satır ${r + 1}/${rowCount} okunamadı`,
+        });
+        continue;
+      }
+      // Medula ilaç eklemek için boş satır da basıyor; o bir ilaç değil.
+      if (sonuc === "bos") {
+        bosSatir++;
+        continue;
+      }
+      ilaclar.push(sonuc);
+    }
 
+    // Boş satırlar dışında tabloda kaç satır varsa o kadar ilaç dönmeli.
+    // Satır bazında hata yakalanmadığı halde sayı tutmuyorsa yine de eksik.
+    if (!satirHatasi && ilaclar.length !== rowCount - bosSatir) {
+      this.recordGap({
+        alan: "ilaclar.satirSayisi",
+        sebep: "missing-row",
+        detay: `${ilaclar.length}/${rowCount - bosSatir}`,
+      });
+    }
+
+    return ilaclar;
+  }
+
+  /**
+   * Tek bir ilaç satırını okur. `null` = satır okunamadı (JSF henüz basmamış,
+   * barkod/ad alanı gelmemiş) — çağıran tekrar dener ve gerekirse eksik
+   * kaydeder. Boş değerler ile okunamayan alanlar burada ayrılıyor: alan
+   * elemanı varsa boş değer Medula'nın gerçek verisidir, elemanın hiç
+   * olmaması satırın hazır olmadığını gösterir.
+   */
+  private async parseIlacRow(
+    row: Locator,
+  ): Promise<IlacOzet | "bos" | null> {
+    try {
       // Locate barkod input within the row (ends with :t1)
       const barkodInput = row.locator('input[id$=":t1"]');
-      if ((await barkodInput.count()) === 0) continue;
+      if ((await barkodInput.count()) === 0) return null;
 
       // Extract the JSF row index from the element id: f:tbl1:<idx>:t1
       const barkodId = (await barkodInput.first().getAttribute("id")) ?? "";
       const m = barkodId.match(/^f:tbl1:(\d+):t1$/);
-      if (!m) continue;
+      if (!m) return null;
       const i = Number(m[1]);
 
-      const checkbox = row.locator(`input[id="f:tbl1:${i}:checkbox7"]`);
+      const valueOf = async (selector: string): Promise<string> => {
+        const locator = row.locator(selector);
+        return (await locator.count()) ? await locator.inputValue() : "";
+      };
+      const textOf = async (selector: string): Promise<string> => {
+        const locator = row.locator(selector);
+        return (await locator.count())
+          ? ((await locator.textContent()) ?? "")
+          : "";
+      };
 
-      const adet = row.locator(`input[id="f:tbl1:${i}:t2"]`);
-      const periyotSayi = row.locator(`input[id="f:tbl1:${i}:t5"]`);
-      const periyotTipi = row.locator(`select[id="f:tbl1:${i}:m1"]`);
-      const doz = row.locator(`input[id="f:tbl1:${i}:t3"]`);
-      const doz2 = row.locator(`input[id="f:tbl1:${i}:t4"]`);
-
-      const adi = row.locator(`span[id="f:tbl1:${i}:t6"]`);
-      const tutar = row.locator(`span[id="f:tbl1:${i}:t7"]`);
-      const fark = row.locator(`span[id="f:tbl1:${i}:t8"]`);
-      const rapor = row.locator(`span[id="f:tbl1:${i}:t9"]`);
-      const verilebilecegi = row.locator(`span[id="f:tbl1:${i}:t10"]`);
-      const msj = row.locator(`span[id="f:tbl1:${i}:t11"]`);
-
-      const periyotValue = (await periyotTipi.count())
-        ? await periyotTipi.locator('option:checked').textContent()
-        : "";
-      const adValue = await adi.textContent();
-      const barkodValue = await barkodInput.first().inputValue();
-      const adetValue = Number(
-        (await adet.count()) ? await adet.inputValue() : "0",
+      const adValue = this.normalizeText(
+        await textOf(`span[id="f:tbl1:${i}:t6"]`),
       );
-      const periyotSayiValue = (await periyotSayi.count())
-        ? await periyotSayi.inputValue()
+      const barkodValue = this.normalizeText(
+        await barkodInput.first().inputValue(),
+      );
+
+      // Medula, ilaç eklemek için tabloya boş satır da basıyor: hem barkodu
+      // hem adı boş olan satır bir ilaç değildir, sessizce atlanır.
+      if (isEmpty(barkodValue) && isEmpty(adValue)) return "bos";
+
+      // Biri dolu diğeri boşsa satır henüz tam basılmamıştır. Eskiden adı boş
+      // olan satır sessizce düşürülüyor ve reçeteden ilaç eksiliyordu; artık
+      // null dönüp yeniden denenmesini sağlıyoruz.
+      if (isEmpty(adValue) || isEmpty(barkodValue)) return null;
+      const adetRaw = await valueOf(`input[id="f:tbl1:${i}:t2"]`);
+      const adetValue = Number(adetRaw || "0");
+      const periyotSayiValue = await valueOf(`input[id="f:tbl1:${i}:t5"]`);
+      const periyotTipi = row.locator(`select[id="f:tbl1:${i}:m1"]`);
+      // Periyot tipi seçili option'ın METNİ olmalı ("Günde", "Ayda").
+      // inputValue() option'ın value'sunu ("3") veriyor ve periyot "1 3" diye
+      // kaydedilip doz karşılaştırması çözümlenemez hâle geliyordu.
+      const seciliPeriyot = periyotTipi.locator("option:checked").first();
+      const periyotValue = (await periyotTipi.count())
+        ? (await seciliPeriyot.count())
+          ? this.normalizeText(await seciliPeriyot.textContent()) ||
+            (await periyotTipi.inputValue())
+          : await periyotTipi.inputValue()
         : "";
-      const dozValue = (await doz.count()) ? await doz.inputValue() : "";
-      const doz2Value = (await doz2.count()) ? await doz2.inputValue() : "";
-      const verilebilecegiText = (await verilebilecegi.count())
-        ? await verilebilecegi.textContent()
-        : "";
-      const raportText = (await rapor.count())
-        ? this.normalizeText(await rapor.textContent())
+      const dozValue = await valueOf(`input[id="f:tbl1:${i}:t3"]`);
+      const doz2Value = await valueOf(`input[id="f:tbl1:${i}:t4"]`);
+      const verilebilecegiText = await textOf(`span[id="f:tbl1:${i}:t10"]`);
+      const raporSpan = row.locator(`span[id="f:tbl1:${i}:t9"]`);
+      const raportText = (await raporSpan.count())
+        ? this.normalizeText(await raporSpan.textContent())
         : undefined;
-      const ilac: IlacOzet = {
-        ad: this.normalizeText(adValue),
-        barkod: this.normalizeText(barkodValue),
+
+      return {
+        ad: adValue,
+        barkod: barkodValue,
         adet: isNaN(adetValue) ? 0 : adetValue,
         periyot:
           periyotSayiValue && periyotValue
@@ -2350,11 +2911,11 @@ export class PlaywrightAutomationService {
         raporluMu: !isEmpty(raportText?.trim()),
         rowIndex: i,
       };
-      if (!isEmpty(ilac.ad)) {
-        ilaclar.push(ilac);
-      }
+    } catch {
+      // Satır okunurken sayfa değiştiyse/DOM tazelendiyse null dönüp tekrar
+      // denenmesini sağla; sessizce eksik ilaç listesi dönme.
+      return null;
     }
-    return ilaclar;
   }
   async close(): Promise<void> {
     this.stopKeepAlive();
@@ -2378,83 +2939,13 @@ export class PlaywrightAutomationService {
     return this.page?.url() || null;
   }
 
-  async scrapeIlacListesi(page: Page): Promise<IlacOzet[]> {
-    // The Medula JSF table can render multiple <tbody> sections (and sometimes nested tables),
-    // so don't assume a single tbody. Instead, select the actual data rows by their rowClass.
-    const table = page.locator("table#f\\:tbl1");
-    await table.waitFor({ state: "visible" });
-
-    // Data rows are marked with rowClass1/rowClass2.
-    const dataRows = table.locator("tr.rowClass1, tr.rowClass2");
-    const rowCount = await dataRows.count();
-
-    const result: IlacOzet[] = [];
-
-    for (let r = 0; r < rowCount; r++) {
-      const row = dataRows.nth(r);
-
-      // Locate barkod input within the row (ends with :t1)
-      const barkodInput = row.locator('input[id$=":t1"]');
-      if ((await barkodInput.count()) === 0) continue;
-
-      // Extract the JSF row index from the element id: f:tbl1:<idx>:t1
-      const barkodId = (await barkodInput.first().getAttribute("id")) ?? "";
-      const m = barkodId.match(/^f:tbl1:(\d+):t1$/);
-      if (!m) continue;
-      const i = Number(m[1]);
-
-      const checkbox = row.locator(`input[id="f:tbl1:${i}:checkbox7"]`);
-
-      const adet = row.locator(`input[id="f:tbl1:${i}:t2"]`);
-      const periyotSayi = row.locator(`input[id="f:tbl1:${i}:t5"]`);
-      const periyotTipi = row.locator(`select[id="f:tbl1:${i}:m1"]`);
-      const doz = row.locator(`input[id="f:tbl1:${i}:t3"]`);
-      const doz2 = row.locator(`input[id="f:tbl1:${i}:t4"]`);
-
-      const adi = row.locator(`span[id="f:tbl1:${i}:t6"]`);
-      const tutar = row.locator(`span[id="f:tbl1:${i}:t7"]`);
-      const fark = row.locator(`span[id="f:tbl1:${i}:t8"]`);
-      const rapor = row.locator(`span[id="f:tbl1:${i}:t9"]`);
-      const verilebilecegi = row.locator(`span[id="f:tbl1:${i}:t10"]`);
-      const msj = row.locator(`span[id="f:tbl1:${i}:t11"]`);
-
-      const periyotValue = (await periyotTipi.count())
-        ? await periyotTipi.inputValue()
-        : "";
-      const adValue = await adi.textContent();
-      const barkodValue = await barkodInput.first().inputValue();
-      const adetValue = Number(
-        (await adet.count()) ? await adet.inputValue() : "0",
-      );
-      const periyotSayiValue = (await periyotSayi.count())
-        ? await periyotSayi.inputValue()
-        : "";
-      const dozValue = (await doz.count()) ? await doz.inputValue() : "";
-      const doz2Value = (await doz2.count()) ? await doz2.inputValue() : "";
-      const verilebilecegiText = (await verilebilecegi.count())
-        ? await verilebilecegi.textContent()
-        : "";
-
-      const raportText = (await rapor.count())
-        ? this.normalizeText(await rapor.textContent())
-        : undefined;
-      const ilac: IlacOzet = {
-        ad: this.normalizeText(adValue),
-        barkod: this.normalizeText(barkodValue),
-        adet: isNaN(adetValue) ? 0 : adetValue,
-        periyot:
-          periyotSayiValue && periyotValue
-            ? `${periyotSayiValue} ${periyotValue}`
-            : "",
-        doz: dozValue && doz2Value ? `${dozValue} x ${doz2Value}` : "",
-        verilebilecegiTarih: this.normalizeText(verilebilecegiText),
-        rapor: raportText,
-        raporluMu: !isEmpty(raportText?.trim()),
-        rowIndex: i,
-      };
-      result.push(ilac);
-    }
-    return result;
+  /**
+   * getIlacOzetFromDetailPage ile aynı tabloyu okur. Tek bir uygulama
+   * kalsın diye ona delege ediyor: iki ayrı kopya varken satır atlama hatası
+   * yalnızca birinde düzeltilebiliyordu.
+   */
+  async scrapeIlacListesi(_page: Page): Promise<IlacOzet[]> {
+    return this.getIlacOzetFromDetailPage();
   }
 
   async addReportsToMedicines(medicines: IlacRow[]) {
@@ -2513,39 +3004,78 @@ export class PlaywrightAutomationService {
   }
 
   async scrapeIlacBilgiPage(page: Page): Promise<IlacBilgi> {
-    // İlaç Bilgileri başlığının geldiğinden emin ol
-    await page.waitForSelector('td.menuHeader:has-text("İlaç Bilgileri")', {
-      timeout: 15000,
+    // İlaç Bilgileri başlığının geldiğinden emin ol. Sayfa açılmadıysa
+    // buradan okunacak hiçbir boş değere güvenilemez; hata yukarı verilir ve
+    // tur (withSubPageRetry) yeniden denenir.
+    await page.waitForSelector(PlaywrightAutomationService.ANCHORS.ilacBilgi, {
+      timeout: PlaywrightAutomationService.ANCHOR_TIMEOUT_MS,
     });
 
-    // Helper fonksiyonlar
-    const getTextContent = async (selector: string): Promise<string> => {
-      try {
-        const element = page.locator(selector).first();
-        return (await element.textContent()) || "";
-      } catch {
-        return "";
-      }
-    };
+    // Helper fonksiyon. Başlık doğrulandığına göre sayfa tam gelmiştir: eleman
+    // hiç yoksa Medula o alanı basmamıştır (gerçek yokluk, eksik veri değil).
+    // Eleman varken okuma patlarsa (context düştü, DOM tazelendi) readField
+    // alanı eksik kaydeder ve tur yeniden denenir.
+    const getTextContent = (alan: string, selector: string): Promise<string> =>
+      this.readField(
+        alan,
+        async () => {
+          const locator = page.locator(selector).first();
+          if ((await locator.count()) === 0) return "";
+          return (
+            (await locator.textContent({
+              timeout: PlaywrightAutomationService.FIELD_READ_TIMEOUT_MS,
+            })) || ""
+          );
+        },
+        { fallback: "" },
+      );
+
 
     // Temel ilaç bilgilerini çıkar
-    const ilacAdi = await getTextContent("#form1\\:text13");
+    const ilacAdi = await getTextContent(
+      "ilacBilgi.ilacAdi",
+      "#form1\\:text13",
+    );
     const ambalajMiktari =
-      (await getTextContent("#form1\\:text14")) +
+      (await getTextContent(
+        "ilacBilgi.ambalajMiktari",
+        "#form1\\:text14",
+      )) +
       " " +
-      (await getTextContent("#form1\\:text25"));
+      (await getTextContent(
+        "ilacBilgi.ambalajBirimi",
+        "#form1\\:text25",
+      ));
     const tekDozMiktari =
-      (await getTextContent("#form1\\:text79")) +
+      (await getTextContent(
+        "ilacBilgi.tekDozMiktari",
+        "#form1\\:text79",
+      )) +
       " " +
-      (await getTextContent("#form1\\:text80"));
-    const cinsiyeti = await getTextContent("#form1\\:text40");
-    const etkinMaddeKod = await getTextContent("#form1\\:text2");
-    const etkinMaddeAd = await getTextContent("#form1\\:text35");
+      (await getTextContent(
+        "ilacBilgi.tekDozBirimi",
+        "#form1\\:text80",
+      ));
+    const cinsiyeti = await getTextContent(
+      "ilacBilgi.cinsiyeti",
+      "#form1\\:text40",
+    );
+    const etkinMaddeKod = await getTextContent(
+      "ilacBilgi.etkinMaddeKod",
+      "#form1\\:text2",
+    );
+    const etkinMaddeAd = await getTextContent(
+      "ilacBilgi.etkinMaddeAd",
+      "#form1\\:text35",
+    );
     const etkinMadde =
       etkinMaddeKod && etkinMaddeAd ? `${etkinMaddeKod} - ${etkinMaddeAd}` : "";
 
-    // Raporlu maksimum kullanım dozu (form1:box9 text content)
-    const raporluMaksKullanimDoz = await getTextContent("#form1\\:box9");
+    // Raporlu maksimum kullanım dozu (form1:box9 text content). Yalnızca
+    // raporlu ilaçlarda basıldığı için yokluğu eksik veri sayılmaz.
+    const raporluMaksKullanimDoz = await this.readOptionalText(
+      page.locator("#form1\\:box9").first(),
+    );
 
     /**
      * Doz kutuları ("1 Günde 1 x 1.0") her parçayı ayrı bir <span>'de tutuyor
@@ -2553,20 +3083,31 @@ export class PlaywrightAutomationService {
      * "1Günde1x1.0" veriyor. Bu yüzden span'ler tek tek okunup boşlukla
      * birleştiriliyor.
      */
-    const getDozText = async (selector: string): Promise<string> => {
-      try {
-        const parts = await page.locator(`${selector} span`).allTextContents();
-        return parts
-          .map((p) => this.normalizeText(p))
-          .filter(Boolean)
-          .join(" ");
-      } catch {
-        return "";
-      }
-    };
+    const getDozText = (alan: string, selector: string): Promise<string> =>
+      this.readField(
+        alan,
+        async () => {
+          // Kutu sayfada hiç yoksa Medula bu ilaç için doz basmamıştır —
+          // gerçek yokluk. Kutu varken span'leri okumak patlarsa eksik
+          // kaydedilir ve tur yeniden denenir.
+          if ((await page.locator(selector).count()) === 0) return "";
+          const parts = await page.locator(`${selector} span`).allTextContents();
+          return parts
+            .map((p) => this.normalizeText(p))
+            .filter(Boolean)
+            .join(" ");
+        },
+        { fallback: "" },
+      );
 
-    const ayaktanMaksKullanimDoz = await getDozText("#form1\\:box2");
-    const yatanMaksKullanimDoz = await getDozText("#form1\\:box10");
+    const ayaktanMaksKullanimDoz = await getDozText(
+      "ilacBilgi.ayaktanMaksKullanimDoz",
+      "#form1\\:box2",
+    );
+    const yatanMaksKullanimDoz = await getDozText(
+      "ilacBilgi.yatanMaksKullanimDoz",
+      "#form1\\:box10",
+    );
 
     // SUT bilgilerini çıkar
     // const sutElements = await page
@@ -2666,34 +3207,73 @@ export class PlaywrightAutomationService {
   }
 
   async scrapeRaporPage(page: Page): Promise<ReceteRapor> {
-    // Page header "Rapor Görme" gelene kadar bekleyelim
-    await page.waitForSelector('td.menuHeader:has-text("Rapor Görme")', {
-      timeout: 15000,
+    // Page header "Rapor Görme" gelene kadar bekleyelim. Sayfa gelmediyse
+    // hata yukarı verilir; buradan okunacak boş değerler rapora güvenilmez
+    // veri yazardı.
+    await page.waitForSelector(PlaywrightAutomationService.ANCHORS.rapor, {
+      timeout: PlaywrightAutomationService.ANCHOR_TIMEOUT_MS,
     });
 
-    const getTextContent = async (selector: string): Promise<string> => {
-      try {
-        const element = page.locator(selector).first();
-        return (await element.textContent()) || "";
-      } catch {
-        return "";
-      }
-    };
+    // Başlık doğrulandığına göre sayfa tam gelmiştir: eleman hiç yoksa o alan
+    // bu raporda basılmamıştır. Eleman varken okuma patlarsa eksik kaydedilir.
+    const getTextContent = (alan: string, selector: string): Promise<string> =>
+      this.readField(
+        alan,
+        async () => {
+          const locator = page.locator(selector).first();
+          if ((await locator.count()) === 0) return "";
+          return (
+            (await locator.textContent({
+              timeout: PlaywrightAutomationService.FIELD_READ_TIMEOUT_MS,
+            })) || ""
+          );
+        },
+        { fallback: "" },
+      );
 
-    const raporNo = await getTextContent("#form1\\:text2");
-    const raporTarihi = await getTextContent("#form1\\:text10");
-    const protokolNo = await getTextContent("#form1\\:text4");
-    const duzenlemeTuru = await getTextContent("#form1\\:text12");
-    const kayitSekli = await getTextContent("#form1\\:text15");
-    const aciklama = await getTextContent("#form1\\:text8");
-    const tesisKodu = await getTextContent("#form1\\:text9");
-    const raporTakipNo = await getTextContent("#form1\\:text74");
-    const tesisUnvan = await getTextContent("#form1\\:text92");
+    const raporNo = await getTextContent("rapor.raporNo", "#form1\\:text2");
+    const raporTarihi = await getTextContent(
+      "rapor.raporTarihi",
+      "#form1\\:text10",
+    );
+    const protokolNo = await getTextContent(
+      "rapor.protokolNo",
+      "#form1\\:text4",
+    );
+    const duzenlemeTuru = await getTextContent(
+      "rapor.duzenlemeTuru",
+      "#form1\\:text12",
+    );
+    const kayitSekli = await getTextContent(
+      "rapor.kayitSekli",
+      "#form1\\:text15",
+    );
+    // Açıklama, takip no ve tesis unvanı her raporda basılmıyor (özellikle
+    // eski raporlarda); yoklukları eksik veri sayılmaz.
+    const aciklama = await this.readOptionalText(
+      page.locator("#form1\\:text8").first(),
+    );
+    const tesisKodu = await getTextContent(
+      "rapor.tesisKodu",
+      "#form1\\:text9",
+    );
+    const raporTakipNo = await this.readOptionalText(
+      page.locator("#form1\\:text74").first(),
+    );
+    const tesisUnvan = await this.readOptionalText(
+      page.locator("#form1\\:text92").first(),
+    );
 
     // Hak sahibi (hasta) bilgilerini çıkar
     const hastaBilgileri: RaporHasta = {
-      cinsiyet: await getTextContent("#form1\\:text3"),
-      dogumTarihi: await getTextContent("#form1\\:text1"),
+      cinsiyet: await getTextContent(
+        "rapor.hasta.cinsiyet",
+        "#form1\\:text3",
+      ),
+      dogumTarihi: await getTextContent(
+        "rapor.hasta.dogumTarihi",
+        "#form1\\:text1",
+      ),
     };
 
     // Doktor bilgilerini çıkar

@@ -1,9 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { CAPTCHA_SOLVER_FORCE_ENABLED, FEATURE_FLAG_LOCAL_CAPTCHA_SOLVER } from '@/lib/constants';
 import { ipcContext } from '@/ipc/context';
 import { playwrightService, ensureBrowsersInstalled, BrowserInstallProgress } from '../../services/playwright-automation';
 import { captchaSolverService, ensureSolverInstalled, solveCaptcha } from '../../services/captcha-solver';
-import { isFeatureEnabled } from '../../services/feature-flags-main';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function createHandler(channel: string, handler: Function) {
@@ -42,26 +40,22 @@ export function setupPlaywrightIPC() {
       }
     });
 
-    // Local captcha solver is gated by the per-pharmacy server feature flag
-    // (with a build-time override for dev) and is OPTIONAL — the remote API is
-    // the fallback — so its download/launch must never block or fail startup.
-    const solverEnabled =
-      CAPTCHA_SOLVER_FORCE_ENABLED ||
-      (await isFeatureEnabled(FEATURE_FLAG_LOCAL_CAPTCHA_SOLVER));
-    if (solverEnabled) {
-      try {
-        await ensureSolverInstalled((progress) => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('playwright:browserInstallProgress', progress);
-          }
-        });
-        // Warm up the model in the background; don't await (it takes a few seconds).
-        captchaSolverService.start().catch((err) => {
-          console.warn('[CaptchaSolver] start failed, will use remote fallback:', err);
-        });
-      } catch (err) {
-        console.warn('[CaptchaSolver] install failed, will use remote fallback:', err);
-      }
+    // Yerel captcha çözücü artık tek yol (uzak API fallback'i kaldırıldı), bu
+    // yüzden koşulsuz kuruluyor. Yine de burada patlamak uygulamayı açtırmamak
+    // anlamına gelirdi; hata durumunda solveCaptcha() ilk captcha'da kurulumu
+    // ve başlatmayı tekrar deniyor.
+    try {
+      await ensureSolverInstalled((progress) => {
+        if (window && !window.isDestroyed()) {
+          window.webContents.send('playwright:browserInstallProgress', progress);
+        }
+      });
+      // Warm up the model in the background; don't await (it takes a few seconds).
+      captchaSolverService.start().catch((err) => {
+        console.warn('[CaptchaSolver] start failed, will retry on first solve:', err);
+      });
+    } catch (err) {
+      console.warn('[CaptchaSolver] install failed, will retry on first solve:', err);
     }
 
     return { success: true };
@@ -170,11 +164,9 @@ export function setupPlaywrightIPC() {
   });
 
   // Solve captcha (used by webview-based browse mode).
-  // Local-first: use the bundled offline EasyOCR solver when it's ready, and
-  // fall back to the remote API if it isn't installed/ready or fails.
+  // Yalnızca bundled offline EasyOCR çözücü kullanılıyor; Playwright login
+  // akışıyla aynı solveCaptcha() fonksiyonundan geçiyor.
   createHandler('captcha:solve', async (base64Image: string) => {
-    // Shared local-first (bundled solver) → remote-fallback path. isReady()
-    // inside solveCaptcha implies the feature flag enabled it at startup.
     const outcome = await solveCaptcha(base64Image);
     return { success: outcome.success, code: outcome.code, error: outcome.error };
   });

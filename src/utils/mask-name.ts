@@ -1,23 +1,22 @@
 /**
- * Mask a patient name to its first two characters for privacy, e.g.
- * "AHMET" -> "AH***", "SELAMİ" -> "SE***". Multi-word values are masked
- * token by token ("AHMET SELAMİ" -> "AH*** SE***").
+ * Mask a patient's surname to its first character, e.g. "Selami" -> "S*****".
+ * The first name is never masked, so a patient reads as "Name S*****".
  *
+ * - The number of asterisks follows the length of the hidden part.
  * - Empty / whitespace input returns "".
  * - Values that already contain "*" are assumed masked and returned unchanged,
  *   so masking is safe to apply more than once (e.g. across repeated syncs).
+ * - Multi-word surnames are masked token by token ("Demir Kaya" -> "D**** K***").
  *
- * Used for cross-computer (synced) history records where the full patient name
- * must not be shown.
+ * Applied on the way out to the server and again on the way in for
+ * cross-computer (synced) history records.
  */
-export function maskName(name?: string | null): string {
-  const clean = (name ?? "").trim();
+export function maskSurname(surname?: string | null): string {
+  const clean = (surname ?? "").trim();
   if (!clean) return "";
   if (clean.includes("*")) return clean;
   return clean
     .split(/\s+/)
-    .map((token) =>
-      token.length <= 2 ? `${token}***` : `${token.slice(0, 2)}***`,
-    )
+    .map((token) => token[0] + "*".repeat(Math.max(token.length - 1, 1)))
     .join(" ");
 }

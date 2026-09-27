@@ -24,6 +24,7 @@ import {
 } from "@/lib/db";
 import { ReceteTable } from "@/components/recete-table";
 import { toast } from "sonner";
+import { toUserFriendlyError } from "@/utils/error-messages";
 
 interface SonIslemlerTableProps {
   showHeader?: boolean;
@@ -208,6 +209,7 @@ export function SonIslemlerTable({
           ...raporluIlaclar.map((m: any, idx: number) => ({
             id: m.barkod,
             label: m.ad || m.barkod,
+            kind: "medicine" as const,
             status: (idx === 0 ? "running" : "pending") as "running" | "pending",
           })),
         ],
@@ -236,7 +238,14 @@ export function SonIslemlerTable({
       setAnalysisTimestamps(updatedTimestamps);
     } catch (err: any) {
       dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "İşlem başarısız" }));
-      toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      // Eksik veri hatası hangi alanların okunamadığını söylüyor;
+      // genel mesajla değiştirilmesin.
+      toast.error(
+        toUserFriendlyError(
+          err?.message,
+          "Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.",
+        ),
+      );
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -272,7 +281,7 @@ export function SonIslemlerTable({
         receteNo,
         items: [
           { id: "fetch", label: "Reçete verileri toplanıyor", status: "done" },
-          { id: barkod, label: ilac.ad || barkod, status: "running" },
+          { id: barkod, label: ilac.ad || barkod, kind: "medicine", status: "running" },
         ],
       }));
 
@@ -295,7 +304,14 @@ export function SonIslemlerTable({
       setAnalysisTimestamps(updatedTimestamps);
     } catch (err: any) {
       dispatch(updateTask({ groupId, taskId: "fetch", status: "error", errorMessage: "İşlem başarısız" }));
-      toast.error("Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.");
+      // Eksik veri hatası hangi alanların okunamadığını söylüyor;
+      // genel mesajla değiştirilmesin.
+      toast.error(
+        toUserFriendlyError(
+          err?.message,
+          "Analiz sırasında bir hata oluştu. Lütfen tekrar deneyin.",
+        ),
+      );
     } finally {
       dispatch(setAnalyzingRecete(null));
     }
@@ -384,6 +400,7 @@ export function SonIslemlerTable({
             showHasta
             showKayitTarihi
             showFilters
+            showQuickSearch
             onSorgula={handleSorgula}
             onAnalizEt={handleAnalizEt}
             onDetay={handleDetay}

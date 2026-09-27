@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { subscriptionApiService } from "@/services/subscription-api";
-import type { SubscriptionProduct } from "@/types/subscription";
+import type {
+  PendingPlanChange,
+  PlanChangeOption,
+  SubscriptionProduct,
+} from "@/types/subscription";
+import { PlanChangeDialog } from "@/components/plan-change-dialog";
+import { PendingPlanChangeBanner } from "@/components/pending-plan-change-banner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,9 +80,50 @@ export function SubscriptionProducts() {
   const currentPlanId = currentSubscription?.planId;
   const navigate = useNavigate();
 
+  // Direction, prorated price and availability per plan — all decided by the
+  // server. Keyed by planId.
+  const [planOptions, setPlanOptions] = useState<
+    Record<string, PlanChangeOption>
+  >({});
+  const [pendingChange, setPendingChange] = useState<PendingPlanChange | null>(
+    null,
+  );
+  /** The endpoint is missing or unreachable — fall back to the plain flow. */
+  const [optionsUnavailable, setOptionsUnavailable] = useState(false);
+  const [changePlanId, setChangePlanId] = useState<string | null>(null);
+
   useEffect(() => {
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (!hasActiveSubscription) {
+      setPlanOptions({});
+      setPendingChange(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await subscriptionApiService.getChangePlanOptions();
+        if (cancelled) return;
+        setPlanOptions(
+          Object.fromEntries(data.options.map((o) => [o.planId, o])),
+        );
+        setPendingChange(data.pendingChange);
+        setOptionsUnavailable(false);
+      } catch {
+        // Older server without the change-plan endpoints: keep the cards
+        // usable instead of blocking every plan.
+        if (!cancelled) setOptionsUnavailable(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasActiveSubscription, currentPlanId, changePlanId]);
 
   const loadProducts = async () => {
     try {
@@ -111,6 +158,14 @@ export function SubscriptionProducts() {
     const isPlanChange =
       hasActiveSubscription && currentSubscription?.planId !== variantId;
 
+    // Changing an existing licence is never a plain purchase: the amount is
+    // prorated, a downgrade takes no payment at all, and both need confirming
+    // against a freshly calculated offer.
+    if (isPlanChange && !optionsUnavailable) {
+      setChangePlanId(variantId);
+      return;
+    }
+
     navigate({
       to: "/odeme",
       search: {
@@ -129,12 +184,38 @@ export function SubscriptionProducts() {
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="space-y-4">
+      {pendingChange && (
+        <PendingPlanChangeBanner
+          pendingChange={pendingChange}
+          onCancelled={() => setPendingChange(null)}
+        />
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {products.map((product) => {
         const selectedVariantId = selectedVariants[product.id];
         const selectedVariant = product.variants.find(
           (v) => v.id === selectedVariantId,
         );
+        // What the server says about switching to this exact plan.
+        const changeOption = selectedVariantId
+          ? planOptions[selectedVariantId]
+          : undefined;
+        const isCurrentPlan =
+          hasActiveSubscription && currentPlanId === selectedVariantId;
+        const isPendingTarget =
+          !!selectedVariantId && pendingChange?.planId === selectedVariantId;
+        const blockedReason =
+          changeOption && !changeOption.available
+            ? (changeOption.reason ?? "Bu plana şu anda geçemezsiniz.")
+            : null;
+        const changeLabel =
+          changeOption?.direction === "upgrade"
+            ? "Planı Yükselt"
+            : changeOption?.direction === "downgrade"
+              ? "Bu Plana Geç"
+              : "Planı Değiştir";
 
         return (
           <Card
@@ -247,9 +328,8 @@ export function SubscriptionProducts() {
               )}
             </CardContent>
 
-            <CardFooter>
-              {hasActiveSubscription &&
-              currentPlanId === selectedVariantId ? (
+            <CardFooter className="flex-col items-stretch gap-2">
+              {isCurrentPlan ? (
                 <Button
                   className="w-full"
                   size="lg"
@@ -258,15 +338,41 @@ export function SubscriptionProducts() {
                 >
                   Mevcut Lisansınız Aktif
                 </Button>
-              ) : hasActiveSubscription ? (
+              ) : isPendingTarget ? (
                 <Button
                   className="w-full"
                   size="lg"
-                  variant={product.isRecommended ? "default" : "outline"}
-                  onClick={() => handleSubscribeClick(product.id)}
+                  variant="outline"
+                  disabled
                 >
-                  Planı Değiştir
+                  {new Date(pendingChange!.effectiveAt).toLocaleDateString(
+                    "tr-TR",
+                  )}{" "}
+                  tarihinde geçilecek
                 </Button>
+              ) : hasActiveSubscription ? (
+                <>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    variant={product.isRecommended ? "default" : "outline"}
+                    onClick={() => handleSubscribeClick(product.id)}
+                    disabled={!!blockedReason}
+                  >
+                    {changeLabel}
+                  </Button>
+                  {/* Unavailable plans stay visible with the server's reason
+                      rather than disappearing from the list. */}
+                  {blockedReason ? (
+                    <p className="text-center text-xs text-muted-foreground">
+                      {blockedReason}
+                    </p>
+                  ) : changeOption?.effect === "period_end" ? (
+                    <p className="text-center text-xs text-muted-foreground">
+                      Dönem sonunda uygulanır, şimdi ücret alınmaz
+                    </p>
+                  ) : null}
+                </>
               ) : (
                 <Button
                   className="w-full"
@@ -281,6 +387,15 @@ export function SubscriptionProducts() {
           </Card>
         );
       })}
+      </div>
+
+      <PlanChangeDialog
+        planId={changePlanId}
+        open={!!changePlanId}
+        onOpenChange={(open) => {
+          if (!open) setChangePlanId(null);
+        }}
+      />
     </div>
   );
 }

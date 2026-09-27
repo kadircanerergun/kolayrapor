@@ -36,6 +36,13 @@ export function toUserFriendlyError(error: unknown, fallback?: string): string {
     }
   }
 
+  // Eksik veri mesajları zaten kullanıcı diliyle yazılıyor ve hangi alanın
+  // okunamadığını söylüyor; genel bir mesajla değiştirilirlerse kullanıcı
+  // neyin eksik olduğunu göremez.
+  if (/okunamadı|eksik veri/i.test(message)) {
+    return message;
+  }
+
   // If the message looks technical (contains stack-like patterns), use fallback
   if (/at\s+\w|\.ts:|\.js:|page\.|frame\.|browser\.|context\./i.test(message)) {
     return fallback || "Beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.";

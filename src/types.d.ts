@@ -39,6 +39,16 @@ interface PlaywrightSearchResult {
   prescriptionData?: unknown;
   currentUrl?: string;
   error?: string;
+  /**
+   * Medula'dan okunamayan alanlar. Dolu ise reçete eksik toplanmıştır ve
+   * `success` false döner — analize gönderilmemelidir.
+   */
+  eksikVeriler?: {
+    alan: string;
+    sebep: string;
+    detay?: string;
+    barkod?: string;
+  }[];
 }
 
 interface PlaywrightDateRangeResult {
@@ -130,6 +140,7 @@ declare global {
       sendState: (state: any) => void;
       onState: (callback: (state: any) => void) => void;
       sendAction: (action: any) => void;
+      resize: (size: number | { width?: number; height: number }) => void;
       onAction: (callback: (action: any) => void) => void;
     };
   }
