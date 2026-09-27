@@ -47,6 +47,11 @@ export interface ApiSubscription {
   planId: string;
   plan: ApiSubscriptionPlan & { product?: ApiProduct };
   status: "active" | "expired" | "cancelled" | "suspended";
+  /**
+   * Granted from the admin panel rather than bought — true for the demo
+   * licence. Older servers omit it; rely on `plan.isDemo` for the demo.
+   */
+  isAdminGrant?: boolean;
   startDate: string;
   endDate: string | null;
   requestCount: number;

@@ -75,8 +75,16 @@ export function SubscriptionProducts() {
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
-  const { pharmacy, isPending, currentSubscription } = useSubscription();
-  const hasActiveSubscription = currentSubscription?.status === "active";
+  const {
+    pharmacy,
+    isPending,
+    currentSubscription,
+    isDemoSubscription,
+    hasPaidSubscription,
+  } = useSubscription();
+  // A demo licence is deliberately not part of the plan-change ladder: the
+  // server marks every plan unavailable for it. Such a user buys a plan the
+  // same way a pharmacy with no licence does.
   const currentPlanId = currentSubscription?.planId;
   const navigate = useNavigate();
 
@@ -97,7 +105,7 @@ export function SubscriptionProducts() {
   }, []);
 
   useEffect(() => {
-    if (!hasActiveSubscription) {
+    if (!hasPaidSubscription) {
       setPlanOptions({});
       setPendingChange(null);
       return;
@@ -123,7 +131,7 @@ export function SubscriptionProducts() {
     return () => {
       cancelled = true;
     };
-  }, [hasActiveSubscription, currentPlanId, changePlanId]);
+  }, [hasPaidSubscription, currentPlanId, changePlanId]);
 
   const loadProducts = async () => {
     try {
@@ -156,7 +164,7 @@ export function SubscriptionProducts() {
     }
 
     const isPlanChange =
-      hasActiveSubscription && currentSubscription?.planId !== variantId;
+      hasPaidSubscription && currentSubscription?.planId !== variantId;
 
     // Changing an existing licence is never a plain purchase: the amount is
     // prorated, a downgrade takes no payment at all, and both need confirming
@@ -203,7 +211,7 @@ export function SubscriptionProducts() {
           ? planOptions[selectedVariantId]
           : undefined;
         const isCurrentPlan =
-          hasActiveSubscription && currentPlanId === selectedVariantId;
+          hasPaidSubscription && currentPlanId === selectedVariantId;
         const isPendingTarget =
           !!selectedVariantId && pendingChange?.planId === selectedVariantId;
         const blockedReason =
@@ -350,7 +358,7 @@ export function SubscriptionProducts() {
                   )}{" "}
                   tarihinde geçilecek
                 </Button>
-              ) : hasActiveSubscription ? (
+              ) : hasPaidSubscription ? (
                 <>
                   <Button
                     className="w-full"
@@ -374,14 +382,22 @@ export function SubscriptionProducts() {
                   ) : null}
                 </>
               ) : (
-                <Button
-                  className="w-full"
-                  size="lg"
-                  variant={product.isRecommended ? "default" : "outline"}
-                  onClick={() => handleSubscribeClick(product.id)}
-                >
-                  Lisans Al
-                </Button>
+                <>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    variant={product.isRecommended ? "default" : "outline"}
+                    onClick={() => handleSubscribeClick(product.id)}
+                  >
+                    {isDemoSubscription ? "Lisans Satın Al" : "Lisans Al"}
+                  </Button>
+                  {isDemoSubscription && (
+                    <p className="text-center text-xs text-muted-foreground">
+                      Demo lisansınızın yerine geçer, kalan demo krediniz
+                      geçerlilik süresi boyunca korunur.
+                    </p>
+                  )}
+                </>
               )}
             </CardFooter>
           </Card>

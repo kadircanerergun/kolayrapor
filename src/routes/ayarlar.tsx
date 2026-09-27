@@ -127,10 +127,25 @@ function SettingsPage() {
     creditBalance,
     currentProduct,
     currentVariant,
+    isDemoSubscription,
     loading,
     error,
     refresh,
   } = useSubscription();
+
+  // Demo and other non-purchasable plans are filtered out of `products`, so
+  // `currentProduct` / `currentVariant` are null for them. The subscription
+  // carries its own plan, which is the only source for those names.
+  const activePlan = currentSubscription?.plan ?? null;
+  const activeProductName =
+    currentProduct?.name ?? activePlan?.product?.name ?? activePlan?.name ?? "—";
+  const activePlanName = currentVariant?.name ?? activePlan?.name ?? "—";
+  // The API sends plan prices as strings on some endpoints — normalise before
+  // rendering so a demo plan does not show up as "₺0.00".
+  const rawPlanPrice = currentVariant?.price ?? activePlan?.price ?? null;
+  const activePlanPrice = rawPlanPrice === null ? null : Number(rawPlanPrice);
+  const activePlanMaxRequests =
+    currentVariant?.maxRequests ?? activePlan?.maxRequests ?? 0;
 
   const { modal, openModal, closeModal } = useModal();
   const { showConfirmDialog } = useDialogContext();
@@ -1020,9 +1035,12 @@ function SettingsPage() {
                 {currentSubscription ? (
                   <div className="flex items-center gap-2">
                     <p className="text-lg font-semibold">
-                      {currentProduct?.name}
+                      {activeProductName}
                     </p>
                     {getStatusBadge(currentSubscription.status)}
+                    {isDemoSubscription && (
+                      <Badge variant="secondary">Demo</Badge>
+                    )}
                   </div>
                 ) : (
                   <p className="text-lg text-muted-foreground">
@@ -1030,8 +1048,12 @@ function SettingsPage() {
                   </p>
                 )}
               </div>
-              <Button variant="outline" size="sm" onClick={handleViewAllPlans}>
-                Planlar
+              <Button
+                variant={isDemoSubscription ? "default" : "outline"}
+                size="sm"
+                onClick={handleViewAllPlans}
+              >
+                {isDemoSubscription ? "Lisans Satın Al" : "Planlar"}
               </Button>
             </div>
           </CardContent>
@@ -1092,9 +1114,7 @@ function SettingsPage() {
               <div className="grid gap-4 sm:grid-cols-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Plan</p>
-                  <p className="text-sm font-medium">
-                    {currentVariant?.name}
-                  </p>
+                  <p className="text-sm font-medium">{activePlanName}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -1125,7 +1145,12 @@ function SettingsPage() {
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Ücret</p>
                   <p className="text-sm font-bold">
-                    {currentVariant ? `₺${currentVariant.price}` : "—"}{currentVariant && <span className="text-xs font-normal text-muted-foreground ml-1">+ KDV</span>}
+                    {activePlanPrice !== null ? `₺${activePlanPrice}` : "—"}
+                    {activePlanPrice ? (
+                      <span className="text-xs font-normal text-muted-foreground ml-1">
+                        + KDV
+                      </span>
+                    ) : null}
                   </p>
                 </div>
               </div>
@@ -1266,14 +1291,14 @@ function SettingsPage() {
           
 
               {/* Request usage */}
-              {currentVariant && currentVariant.maxRequests > 0 && (
+              {activePlanMaxRequests > 0 && (
                 <>
                   <Separator />
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">Kullanım</p>
                     <p className="text-sm font-medium">
                       {currentSubscription.requestCount} /{" "}
-                      {currentVariant.maxRequests} sorgu
+                      {activePlanMaxRequests} sorgu
                     </p>
                   </div>
                 </>

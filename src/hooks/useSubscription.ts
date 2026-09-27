@@ -39,11 +39,26 @@ export function useSubscription() {
   const currentProduct = getCurrentProduct();
   const currentVariant = getCurrentVariant();
 
+  const isActive = currentSubscription?.status === "active";
+
+  /**
+   * The demo licence handed out from the admin panel. It is a real active
+   * subscription, but it is not a paid plan: the change-plan endpoints refuse
+   * it by design, so buying a plan on top of it is a plain purchase.
+   */
+  const isDemoSubscription =
+    isActive && currentSubscription?.plan?.isDemo === true;
+
+  /** An active, paid plan — the only case where plan change applies. */
+  const hasPaidSubscription = isActive && !isDemoSubscription;
+
   return {
     pharmacy,
     isPending,
     ipAddress,
     currentSubscription,
+    isDemoSubscription,
+    hasPaidSubscription,
     pendingChange,
     creditBalance,
     currentProduct,
