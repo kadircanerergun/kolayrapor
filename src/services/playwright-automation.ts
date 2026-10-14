@@ -26,6 +26,7 @@ import {
   EReceteIlac,
   EsdegerBilgi,
   IlacBilgi,
+  IlacGecmisiKaydi,
   IlacMesaj,
   IlacOzet,
   OzelDurum,
@@ -45,6 +46,8 @@ import {
 } from "@/types/recete";
 import { isEmpty } from "lodash";
 import { solveCaptcha } from "@/services/captcha-solver";
+import type { HistoryRequirements } from "@/services/history-requirements-api";
+import { isFeatureEnabled } from "@/services/feature-flags-main";
 
 let chromium: typeof import("playwright").chromium;
 
@@ -66,6 +69,10 @@ type GapCollector = {
   /** O an hangi ilacın alt sayfası okunuyor; eksik kaydına barkod eklenir. */
   aktifBarkod?: string;
 };
+
+/** Kullanılan İlaç Listesi'nin ham satırı; ilaca eşleştirilince barkod ve
+ *  eşdeğer bilgisi eklenip IlacGecmisiKaydi olur. */
+type IlacGecmisiSatiri = Omit<IlacGecmisiKaydi, "barkod" | "esdegerMi">;
 
 /** "Sorgula" sonrası sayfanın vardığı durum — bkz. waitForSearchOutcome(). */
 type SearchOutcome =
@@ -470,6 +477,7 @@ export class PlaywrightAutomationService {
     rapor: 'td.menuHeader:has-text("Rapor Görme")',
     /** e-Reçete sayfasının kendi "Geri Dön" butonu (`form1:` prefix'li). */
     erecete: "input#form1\\:buttonGeriDon",
+    ilacGecmisi: "table#form1\\:tableExKisiIlacList",
   } as const;
 
   private get operationInProgress(): boolean {
@@ -538,6 +546,28 @@ export class PlaywrightAutomationService {
 
   setCredentials(credentials: LoginCredentials): void {
     this.storedCredentials = credentials;
+  }
+
+  /** Renderer'ın sunucudan çektiği liste; her yüklemede baştan yazılır.
+   *  Ana barkod → eşdeğer barkodları. */
+  private ilacGecmisiGerekliBarkodlar = new Map<string, string[]>();
+
+  setHistoryRequirements(data: HistoryRequirements): void {
+    this.ilacGecmisiGerekliBarkodlar = new Map(
+      (data.ilacGecmisiGerekli ?? []).map((e) => [
+        e.barcode,
+        e.esdegerBarcodes ?? [],
+      ]),
+    );
+  }
+
+  /** Reçetedeki raporlu ilaçlardan biri ilaç geçmişi gerektiriyor mu?
+   *  Tetikleyici yalnızca ana `barcode`; eşdeğerler geçmiş satırlarını
+   *  eşleştirirken kullanılır (bkz. ilaclaraGecmisEkle). */
+  private ilacGecmisiGerekiyor(recete: Recete): boolean {
+    return (recete.ilaclar ?? []).some(
+      (ilac) => ilac.raporluMu && this.ilacGecmisiGerekliBarkodlar.has(ilac.barkod),
+    );
   }
 
   getStoredCredentials(): LoginCredentials | null {
@@ -1767,6 +1797,7 @@ export class PlaywrightAutomationService {
             const parsed =
               await this.parseReceteFromCurrentPage(prescriptionNumber);
             await this.ilaclaraRaporEkle(parsed);
+            await this.ilaclaraGecmisEkle(parsed);
             // e-Reçete sayfası ve uyarı kodları dialogu en sona bırakıldı:
             // ikisi de detay sayfasından ayrılıp geri döndüğü için burada bir
             // aksilik çıksa bile reçetenin geri kalanı (rapor, ilaç bilgisi)
@@ -2133,6 +2164,189 @@ export class PlaywrightAutomationService {
       }
     }
     if (collector) collector.aktifBarkod = undefined;
+  }
+
+  /** Kullanılan İlaç Listesi'nde en fazla bu kadar sayfa gezilir. */
+  private static readonly ILAC_GECMISI_MAX_SAYFA = 50;
+
+  /**
+   * `ilac_gecmisi` flag'i açıksa ve reçetedeki raporlu ilaçlardan biri
+   * ilacGecmisiGerekli listesindeyse "İlaç" butonuyla hastanın Kullanılan İlaç
+   * Listesi'ni açar, tabloyu okur ve her eşleşen ilaca adında `(barkod)`
+   * geçen satırları `ilacGecmisi` olarak ekler.
+   *
+   * Opsiyonel bir adım: sayfa açılmaz/okunamazsa reçete eksik SAYILMAZ, ilgili
+   * ilaçların `ilacGecmisi` alanı boş (`undefined`) kalır ve akış devam eder.
+   * Detay sayfasına geri dönülemezse sonraki adımlar (e-Reçete, uyarı kodları)
+   * zaten eksik düşer ve reçete baştan sorgulanır.
+   */
+  async ilaclaraGecmisEkle(recete: Recete): Promise<void> {
+    if (!this.page) {
+      throw new Error("Page is not available");
+    }
+    if (!this.ilacGecmisiGerekiyor(recete)) return;
+    if (!(await isFeatureEnabled("ilac_gecmisi"))) return;
+
+    let kayitlar: IlacGecmisiSatiri[] | undefined;
+    try {
+      await this.page
+        .locator("input#f\\:buttonIlacListesi")
+        .click({ timeout: 5000 });
+      await this.page.waitForSelector(
+        PlaywrightAutomationService.ANCHORS.ilacGecmisi,
+        { state: "attached", timeout: 15000 },
+      );
+      kayitlar = await this.readIlacGecmisiTumSayfalar();
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "ilacGecmisi",
+        receteNo: recete.receteNo,
+      });
+    } finally {
+      await this.returnFromIlacGecmisiPage();
+    }
+
+    if (!kayitlar) return;
+    for (const ilac of recete.ilaclar ?? []) {
+      if (!ilac.raporluMu) continue;
+      const esdegerler = this.ilacGecmisiGerekliBarkodlar.get(ilac.barkod);
+      if (!esdegerler) continue;
+      // Hasta aynı ilacın eşdeğerini de almış olabilir: ana barkod ya da
+      // eşdeğerlerinden biri adda parantez içinde geçiyorsa satır bu ilaca ait.
+      const barkodlar = [ilac.barkod, ...esdegerler];
+      ilac.ilacGecmisi = [];
+      for (const k of kayitlar) {
+        const eslesen = barkodlar.find((b) => k.ilacAdi.includes(`(${b})`));
+        if (!eslesen) continue;
+        ilac.ilacGecmisi.push({
+          ...k,
+          barkod: eslesen,
+          esdegerMi: eslesen !== ilac.barkod,
+        });
+      }
+    }
+  }
+
+  /**
+   * Tablonun tüm sayfalarını okur. Pager (`form1:tableExKisiIlacList:web1`)
+   * aktif sayfayı `<strong>` içinde, diğer sayfaları tıklanabilir numaralar
+   * olarak gösteriyor. Her turda aktif sayfa okunur, sonra "aktif + 1"
+   * numarasına — pager yalnızca bir sayfa penceresi gösteriyorsa ileri
+   * okuna — tıklanır ve aktif numaranın gerçekten değiştiği doğrulanır.
+   *
+   * Sayfalar arası geçiş başarısız olursa hata fırlatır: yarım liste sessizce
+   * "tüm geçmiş" diye dönmesin.
+   */
+  private async readIlacGecmisiTumSayfalar(): Promise<IlacGecmisiSatiri[]> {
+    if (!this.page) throw new Error("Page is not available");
+    const pager = "#form1\\:tableExKisiIlacList\\:web1";
+    const aktifSayfa = async (): Promise<number> => {
+      const strong = this.page!.locator(`${pager} strong`);
+      // Tek sayfalık listede pager boş olabilir.
+      if ((await strong.count()) === 0) return 1;
+      const n = parseInt((await strong.first().innerText()).trim(), 10);
+      if (Number.isNaN(n)) throw new Error("İlaç geçmişi aktif sayfa okunamadı");
+      return n;
+    };
+
+    const tumu: IlacGecmisiSatiri[] = [];
+    const okunan = new Set<number>();
+
+    for (;;) {
+      const sayfa = await aktifSayfa();
+      if (okunan.has(sayfa)) {
+        throw new Error(`İlaç geçmişi sayfa ${sayfa} ikinci kez açıldı`);
+      }
+      okunan.add(sayfa);
+      tumu.push(...(await this.readIlacGecmisiSayfasi()));
+
+      const hedef = sayfa + 1;
+      // Pager'daki tıklanabilir öğeler (a, onclick'li span vb.): önce
+      // doğrudan sonraki numara, yoksa ileri oku / "sonraki".
+      const tiklanabilir = this.page.locator(
+        `${pager} a, ${pager} [onclick], ${pager} input[type="submit"], ${pager} input[type="image"]`,
+      );
+      let sonraki = tiklanabilir.filter({
+        hasText: new RegExp(`^\\s*${hedef}\\s*$`),
+      });
+      if ((await sonraki.count()) === 0) {
+        sonraki = tiklanabilir.filter({
+          hasText: /^\s*(>|»|›|>>|Sonraki|İleri)\s*$/i,
+        });
+      }
+      if ((await sonraki.count()) === 0) break;
+
+      if (okunan.size >= PlaywrightAutomationService.ILAC_GECMISI_MAX_SAYFA) {
+        throw new Error(
+          `İlaç geçmişi ${PlaywrightAutomationService.ILAC_GECMISI_MAX_SAYFA} sayfadan uzun`,
+        );
+      }
+
+      await sonraki.first().click();
+      // JSF sayfayı yeniden yüklüyor; locator beklemesi navigasyondan
+      // etkilenmez. Aktif numara hedefe dönene kadar bekle.
+      await this.page
+        .locator(`${pager} strong`)
+        .filter({ hasText: new RegExp(`^\\s*${hedef}\\s*$`) })
+        .waitFor({ state: "attached", timeout: 15000 });
+      await this.page.waitForSelector(
+        PlaywrightAutomationService.ANCHORS.ilacGecmisi,
+        { state: "attached", timeout: 15000 },
+      );
+    }
+    return tumu;
+  }
+
+  private async readIlacGecmisiSayfasi(): Promise<IlacGecmisiSatiri[]> {
+    if (!this.page) throw new Error("Page is not available");
+    return this.page.$$eval(
+      'table#form1\\:tableExKisiIlacList > tbody > tr[id^="TR_parentof_form1:tableExKisiIlacList:"]',
+      (rows) =>
+        rows.map((row) => {
+          const cells = Array.from(row.querySelectorAll(":scope > td")).map(
+            (td) =>
+              (td.textContent ?? "")
+                .replace(/ /g, " ")
+                .replace(/\s+/g, " ")
+                .trim(),
+          );
+          // 0: satır aksiyonu, 1: reçete no, 2: ilaç adı, 3: reçete tar.,
+          // 4: ilaç alım tar., 5: verilebileceği tarih, 6: adet,
+          // 7: ilaç kullanımı, 8: rap. teşhisi / takip no, 9: UK
+          const [raporTeshisi = "", raporTakipNo = ""] = (cells[8] ?? "")
+            .split(" - ")
+            .map((s) => s.trim());
+          return {
+            receteNo: cells[1] ?? "",
+            ilacAdi: cells[2] ?? "",
+            receteTarihi: cells[3] ?? "",
+            ilacAlimTarihi: cells[4] ?? "",
+            verilebilecegiTarih: cells[5] ?? "",
+            adet: Number(cells[6]) || 0,
+            ilacKullanimi: cells[7] ?? "",
+            raporTeshisi,
+            raporTakipNo,
+            uyariKodu: cells[9] ?? "",
+          };
+        }),
+    );
+  }
+
+  private async returnFromIlacGecmisiPage(): Promise<void> {
+    if (!this.page) return;
+    if (await this.isOnDetailPage(1000)) return;
+    try {
+      await this.page
+        .locator("input#form1\\:buttonGeriDon")
+        .click({ timeout: 5000 });
+      if (await this.isOnDetailPage(15000)) return;
+    } catch (error) {
+      this.captureIssue(error, {
+        operation: "ilacGecmisi",
+        outcome: "geri-don-failed",
+      });
+    }
+    await this.recoverToDetailPage("ilacGecmisi");
   }
 
   async parseReceteFromCurrentPage(

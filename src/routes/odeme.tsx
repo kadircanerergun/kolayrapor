@@ -4,6 +4,7 @@ import { subscriptionApiService } from "@/services/subscription-api";
 import type {
   CardInfo,
   PlanChangeOption,
+  PlanQuote,
   SubscriptionProduct,
   SubscriptionVariant,
   CreditPackage,
@@ -42,10 +43,17 @@ import {
   Info,
 } from "lucide-react";
 import { calculateKdv, priceWithKdv } from "@/utils/kdv";
+import {
+  isDynamicPlan,
+  minCreditsOf,
+  snapCredits,
+} from "@/components/credit-quantity-picker";
 
 interface OdemeSearch {
   type: "subscription" | "credit" | "plan-change";
   id: string;
+  /** Monthly credit amount, when `id` is a dynamic plan. */
+  qty?: number;
 }
 
 const EMPTY_CARD: CardInfo = {
@@ -59,7 +67,7 @@ const EMPTY_CARD: CardInfo = {
 type PaymentMode = "saved" | "new";
 
 function OdemePage() {
-  const { type, id } = Route.useSearch();
+  const { type, id, qty } = Route.useSearch();
   const navigate = useNavigate();
   const {
     pharmacy,
@@ -96,6 +104,14 @@ function OdemePage() {
   /** The 409 case: the offer was recalculated, nothing was charged. */
   const [repriced, setRepriced] = useState(false);
 
+  // First purchase — the server's quote for this plan (and amount). On a
+  // dynamic plan it is the only price there is; `variant.price` is just the
+  // "starting from" figure.
+  const [quote, setQuote] = useState<PlanQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  /** The chosen monthly amount; null on a fixed plan. */
+  const [creditQuantity, setCreditQuantity] = useState<number | null>(null);
+
   // Success modal
   const [successOpen, setSuccessOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -115,7 +131,7 @@ function OdemePage() {
 
   useEffect(() => {
     loadData();
-  }, [type, id]);
+  }, [type, id, qty]);
 
   /** Close the 3D window and report the outcome — at most once. */
   const settleThreeD = useCallback(
@@ -226,22 +242,45 @@ function OdemePage() {
   const loadProductData = async () => {
     if (type === "subscription" || type === "plan-change") {
       const products = await subscriptionApiService.getProducts();
+      let found: SubscriptionVariant | null = null;
       for (const p of products) {
         const v = p.variants.find((v) => v.id === id);
         if (v) {
           setProduct(p);
           setVariant(v);
+          found = v;
           break;
         }
       }
+
+      // A dynamic plan is always priced for an amount; a link without one
+      // lands on the minimum.
+      const quantity =
+        found && isDynamicPlan(found)
+          ? snapCredits(found, qty ?? minCreditsOf(found))
+          : null;
+      setCreditQuantity(quantity);
+      setQuote(null);
+      setQuoteError(null);
+      setRepriced(false);
 
       // Re-price the change right before the card form is shown, so the amount
       // the user is about to acknowledge is the one the server just computed.
       if (type === "plan-change") {
         // A null offer means the server has no change-plan endpoints; the
         // screen then falls back to the plain full-price flow.
-        const { option } = await subscriptionApiService.previewPlanChange(id);
+        const { option } = await subscriptionApiService.previewPlanChange(
+          id,
+          quantity,
+        );
         setPlanChangeOption(option);
+      } else if (found) {
+        // The amount the user is about to acknowledge is the one the server
+        // just quoted. A fixed plan on a server without the quote endpoint
+        // falls back to its list price; a dynamic plan cannot.
+        const result = await subscriptionApiService.getQuote(id, quantity);
+        setQuote(result.quote);
+        setQuoteError(result.quote ? null : (result.error ?? null));
       }
     } else {
       const packages = await subscriptionApiService.getCreditPackages();
@@ -262,9 +301,12 @@ function OdemePage() {
         const needsCard = planChangeOption
           ? planChangeOption.requiresPayment
           : true;
+        const changeQuantity =
+          planChangeOption?.creditQuantity ?? creditQuantity;
         const changeResult = await subscriptionApiService.changePlan(
           variant.id,
           {
+            creditQuantity: changeQuantity,
             // Only sent when the server priced the change; an older server
             // ignores the field and prices it the old way.
             acknowledgedChargeAmount: planChangeOption?.chargeNowWithKdv,
@@ -284,6 +326,7 @@ function OdemePage() {
           } else {
             const { option } = await subscriptionApiService.previewPlanChange(
               variant.id,
+              changeQuantity,
             );
             if (option) setPlanChangeOption(option);
           }
@@ -298,12 +341,39 @@ function OdemePage() {
 
         result = changeResult;
       } else if (type === "subscription" && variant) {
-        result =
-          paymentMode === "saved" && selectedCardId
-            ? await subscriptionApiService.subscribe(variant.id, undefined, {
-                savedCardId: selectedCardId,
-              })
-            : await subscriptionApiService.subscribe(variant.id, card);
+        const useSavedCard = paymentMode === "saved" && !!selectedCardId;
+        result = await subscriptionApiService.subscribe(
+          variant.id,
+          useSavedCard ? undefined : card,
+          {
+            savedCardId: useSavedCard ? selectedCardId! : undefined,
+            creditQuantity,
+            // The KDV-included figure the user is looking at.
+            acknowledgedChargeAmount: quote?.priceWithKdv,
+          },
+        );
+
+        // 409 QUOTE_CHANGED — the price list moved while this screen was
+        // open. Show the new amount and let the user confirm it; no money has
+        // changed hands.
+        if (result.conflict) {
+          if (result.freshQuote) {
+            setQuote(result.freshQuote);
+          } else {
+            const fresh = await subscriptionApiService.getQuote(
+              variant.id,
+              creditQuantity,
+            );
+            if (fresh.quote) setQuote(fresh.quote);
+          }
+          setRepriced(true);
+          setErrorMessage(
+            result.error ??
+              "Ödenecek tutar güncellendi. Ödeme alınmadı — yeni tutarı onaylayarak tekrar deneyin.",
+          );
+          setErrorOpen(true);
+          return;
+        }
       } else if (type === "credit" && creditPackage) {
         result =
           paymentMode === "saved" && selectedCardId
@@ -400,8 +470,30 @@ function OdemePage() {
   const getAmount = (): number => {
     if (type === "plan-change" && planChangeOption)
       return planChangeOption.chargeNowWithKdv;
+    if (type === "subscription" && quote) return quote.priceWithKdv;
     return priceWithKdv(getBaseAmount());
   };
+
+  const isDynamic = isDynamicPlan(variant);
+
+  /**
+   * A dynamic plan has no price of its own — without the server's figure for
+   * the chosen amount there is nothing the user could agree to pay.
+   */
+  const dynamicUnpriced =
+    isDynamic &&
+    (type === "plan-change" ? !planChangeOption : type === "subscription" && !quote);
+  const dynamicBlockedReason = dynamicUnpriced
+    ? (quoteError ?? "Fiyat hesaplanamadı. Lütfen tekrar deneyin.")
+    : null;
+
+  /** Credits granted each month: the chosen amount on a dynamic plan. */
+  const includedCredits = isDynamic
+    ? (planChangeOption?.includedCreditAmount ??
+      quote?.includedCreditAmount ??
+      creditQuantity ??
+      0)
+    : (variant?.includedCreditAmount ?? 0);
 
   /** A free upgrade — and every downgrade — takes no card at all. */
   const isFreeChange =
@@ -491,7 +583,7 @@ function OdemePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isPlanChange && repriced && (
+            {repriced && (
               <div className="rounded-lg border border-amber-300 bg-amber-100 p-3 dark:border-amber-800 dark:bg-amber-950/40">
                 <div className="flex items-start gap-2 text-sm text-amber-900 dark:text-amber-300">
                   <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
@@ -618,13 +710,16 @@ function OdemePage() {
                     <span className="text-muted-foreground">Süre</span>
                     <span className="font-medium">{variant.duration}</span>
                   </div>
-                  {variant.includedCreditAmount > 0 && (
+                  {includedCredits > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
-                        Dahil Kredi
+                        {isDynamic ? "Aylık kredi miktarı" : "Dahil Kredi"}
                       </span>
                       <span className="font-medium">
-                        Aylık {variant.includedCreditAmount} kredi
+                        Aylık {includedCredits} kredi
+                        {isDynamic && variant.billingCycle === "yearly"
+                          ? " · 12 ay · 2 ay bedava"
+                          : ""}
                       </span>
                     </div>
                   )}
@@ -681,6 +776,54 @@ function OdemePage() {
                         için ek ödeme alınmayacak.
                       </p>
                     )}
+                  </div>
+                ) : dynamicUnpriced ? (
+                  <p className="text-sm text-muted-foreground">
+                    Bu miktar için fiyat alınamadı.
+                  </p>
+                ) : quote ? (
+                  // Every line is a server figure; KDV is the difference
+                  // between the two totals it quoted, not a rate applied here.
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Ara Toplam</span>
+                      <div className="flex items-baseline gap-2">
+                        {!isDynamic && variant.originalPrice && (
+                          <span className="text-sm text-muted-foreground line-through">
+                            ₺{variant.originalPrice.toFixed(2)}
+                          </span>
+                        )}
+                        <span className="font-medium">
+                          ₺{quote.price.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    {!isDynamic && variant.discount && (
+                      <div className="flex justify-end">
+                        <Badge variant="secondary" className="text-xs">
+                          %{variant.discount} İndirim
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">KDV (%20)</span>
+                      <span className="font-medium">
+                        ₺{(quote.priceWithKdv - quote.price).toFixed(2)}
+                      </span>
+                    </div>
+                    <Separator />
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-sm font-semibold">
+                        {!isDynamic
+                          ? "Toplam"
+                          : variant.billingCycle === "yearly"
+                            ? "Yıllık toplam (KDV dahil)"
+                            : "Aylık toplam (KDV dahil)"}
+                      </span>
+                      <span className="text-2xl font-bold">
+                        ₺{quote.priceWithKdv.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                 <div className="space-y-2">
@@ -1004,10 +1147,10 @@ function OdemePage() {
                 </>
               )}
 
-              {changeBlockedReason && (
+              {(changeBlockedReason || dynamicBlockedReason) && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
                   <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  <span>{changeBlockedReason}</span>
+                  <span>{changeBlockedReason ?? dynamicBlockedReason}</span>
                 </div>
               )}
 
@@ -1024,7 +1167,9 @@ function OdemePage() {
                 <Button
                   type="submit"
                   className="flex-1"
-                  disabled={submitting || !!changeBlockedReason}
+                  disabled={
+                    submitting || !!changeBlockedReason || !!dynamicBlockedReason
+                  }
                 >
                   {submitting ? (
                     <>
@@ -1172,9 +1317,11 @@ export const Route = createFileRoute("/odeme")({
     const t = search.type as string | undefined;
     const validType: OdemeSearch["type"] =
       t === "credit" || t === "plan-change" ? t : "subscription";
+    const qty = Number(search.qty);
     return {
       type: validType,
       id: (search.id as string) || "",
+      ...(Number.isFinite(qty) && qty > 0 ? { qty } : {}),
     };
   },
   component: OdemePage,

@@ -280,16 +280,16 @@ export function ReceteTable({
   );
 
   // Filter rows
-  const filteredRows = useMemo(() => {
-    if (activeFilter === "all") return rows;
-    return rows.filter((row) => {
+  const matchesFilter = useCallback(
+    (row: (typeof rows)[number], filter: FilterStatus): boolean => {
+      if (filter === "all") return true;
       const ilaclar = getIlaclar(row);
       const { hasAnalysis, analyzedBarkods } = getAnalysisInfo(
         row.receteNo,
         ilaclar,
       );
 
-      switch (activeFilter) {
+      switch (filter) {
         case "unchecked":
           return !hasAnalysis;
         case "checked":
@@ -313,8 +313,22 @@ export function ReceteTable({
         default:
           return true;
       }
-    });
-  }, [rows, activeFilter, getIlaclar, getAnalysisInfo]);
+    },
+    [getIlaclar, getAnalysisInfo],
+  );
+
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesFilter(row, activeFilter)),
+    [rows, activeFilter, matchesFilter],
+  );
+
+  const filterCounts = useMemo(() => {
+    const counts = {} as Record<FilterStatus, number>;
+    for (const filter of FILTER_OPTIONS) {
+      counts[filter] = rows.filter((row) => matchesFilter(row, filter)).length;
+    }
+    return counts;
+  }, [rows, matchesFilter]);
 
   // Quick search — durum filtresinin üstüne biner, yani ikisi birlikte çalışır.
   // Reçete no ve hasta adının yanında ilaç adı/barkodu da taranıyor: "hangi
@@ -509,13 +523,16 @@ export function ReceteTable({
                 className={className}
               >
                 {getFilterLabel(filter)}
+                <span className="ml-1 tabular-nums opacity-70">
+                  ({filterCounts[filter]})
+                </span>
               </Button>
             );
           })}
 
           {showQuickSearch && (
-            <div className="relative ml-auto w-full sm:w-72">
-              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+            <div className="relative ml-auto w-full sm:w-96">
+              <Search className="text-foreground/60 pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 value={query}
                 onChange={(e) => {
@@ -532,7 +549,7 @@ export function ReceteTable({
                 }}
                 placeholder="Reçete no, hasta veya ilaç ara"
                 aria-label="Reçetelerde ara"
-                className="h-7 pr-7 pl-8 text-xs"
+                className="border-foreground/25 bg-background focus-visible:border-brand focus-visible:ring-brand/30 h-9 pr-8 pl-9 text-sm shadow-sm"
               />
               {query && (
                 <button
@@ -542,9 +559,9 @@ export function ReceteTable({
                     onPageChange(1);
                   }}
                   aria-label="Aramayı temizle"
-                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </div>

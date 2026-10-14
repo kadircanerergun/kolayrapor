@@ -121,6 +121,7 @@ declare global {
       getDebugMode: () => Promise<PlaywrightDebugResult>;
       restart: () => Promise<void>;
       setCredentials: (credentials: PlaywrightCredentials) => Promise<void>;
+      setHistoryRequirements: (data: { ilacGecmisiGerekli: { barcode: string; esdegerBarcodes: string[] }[]; raporGecmisiGerekli: { barcode: string; esdegerBarcodes: string[] }[] }) => Promise<void>;
       getStoredCredentials: () => Promise<PlaywrightCredentialsResult>;
       hasCredentials: () => Promise<PlaywrightHasCredentialsResult>;
       autoLogin: () => Promise<PlaywrightLoginResult>;

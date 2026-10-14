@@ -374,46 +374,44 @@ function SearchReport() {
                 <h2 className="text-lg font-semibold">
                   Bulunan Reçeteler ({receteler.length})
                 </h2>
-                {selectedRecetes.length > 0 && (
-                  <TooltipProvider>
-                    <div className="flex items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            disabled={!!bulkProgress}
-                            onClick={handleBulkVerileriAl}
-                          >
-                            <Database className="h-4 w-4 shrink-0 text-blue-500" />
-                            Sorgula ({selectedRecetes.length})
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p className="max-w-[220px] text-xs">
-                            Reçeteleri ve İlaç Raporlarını okur, kredi harcamaz
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            className="bg-brand text-brand-foreground hover:bg-brand/90"
-                            disabled={!!bulkProgress}
-                            onClick={handleBulkAnalizEt}
-                          >
-                            <FlaskConical className="h-4 w-4 shrink-0" />
-                            Kontrol Et ({selectedRecetes.length})
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          <p className="max-w-[220px] text-xs">
-                            Yapay Zeka ile SUT uygunluğunu kontrol eder
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </TooltipProvider>
-                )}
+                <TooltipProvider>
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          disabled={!!bulkProgress || selectedRecetes.length === 0}
+                          onClick={handleBulkVerileriAl}
+                        >
+                          <Database className="h-4 w-4 shrink-0 text-blue-500" />
+                          Sorgula ({selectedRecetes.length})
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="max-w-[220px] text-xs">
+                          Reçeteleri ve İlaç Raporlarını okur, kredi harcamaz
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="bg-brand text-brand-foreground hover:bg-brand/90"
+                          disabled={!!bulkProgress || selectedRecetes.length === 0}
+                          onClick={handleBulkAnalizEt}
+                        >
+                          <FlaskConical className="h-4 w-4 shrink-0" />
+                          Kontrol Et ({selectedRecetes.length})
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="max-w-[220px] text-xs">
+                          Yapay Zeka ile SUT uygunluğunu kontrol eder
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
               </div>
 
               {/* Bulk progress is shown in the GlobalTaskPanel (bottom-right) */}

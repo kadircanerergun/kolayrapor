@@ -7,9 +7,6 @@ function SearchByRecipe() {
       <div className="mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Rapor Arama</h1>
-          <p className="text-muted-foreground">
-            SGK sisteminde reçete bilgilerini sorgulayın
-          </p>
         </div>
         <div className={"flex h-200 flex-row gap-3 overflow-y-hidden"}>
           <SearchByRecipeBlock />

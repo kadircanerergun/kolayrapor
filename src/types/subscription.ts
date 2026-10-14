@@ -20,12 +20,36 @@ export interface ApiProduct {
   updatedAt: string;
 }
 
-export interface ApiSubscriptionPlan {
+export type PricingModel = "fixed" | "dynamic";
+
+/**
+ * One row of a dynamic plan's price list. `unitPrice` is per credit, KDV
+ * excluded; `upTo` is inclusive and `null` means no upper limit. Display only —
+ * totals always come from the server's quote.
+ */
+export interface CreditTier {
+  upTo: number | null;
+  unitPrice: number;
+}
+
+/** The picker limits of a dynamic plan. `creditStep` counts from `minCredits`. */
+export interface DynamicPlanFields {
+  /** Older servers omit it; treat a missing value as "fixed". */
+  pricingModel?: PricingModel;
+  creditTiers?: CreditTier[] | null;
+  minCredits?: number | null;
+  maxCredits?: number | null;
+  creditStep?: number | null;
+}
+
+export interface ApiSubscriptionPlan extends DynamicPlanFields {
   id: string;
   name: string;
   productId: string;
   description: string | null;
+  /** On a dynamic plan: the figure for `minCredits` — "starting from" only. */
   price: number;
+  /** On a dynamic plan: the figure for `minCredits` — "starting from" only. */
   includedCreditAmount: number;
   creditValidityDays: number;
   billingCycle: "monthly" | "yearly";
@@ -75,10 +99,40 @@ export interface CardInfo {
   cvc: string;
 }
 
+/**
+ * What the pharmacy actually pays and receives each month. On a dynamic plan
+ * `subscription.plan.price` is only the "starting from" figure, so read these.
+ */
+export interface SubscriptionTerms {
+  price: number;
+  priceWithKdv: number;
+  includedCreditAmount: number;
+  /** The chosen monthly amount on a dynamic plan; null on a fixed one. */
+  creditQuantity: number | null;
+}
+
+/** `POST /store/quote` — the server's price for one plan at one amount. */
+export interface PlanQuote {
+  planId: string;
+  planName: string;
+  pricingModel: PricingModel;
+  billingCycle: "monthly" | "yearly";
+  creditQuantity: number | null;
+  includedCreditAmount: number;
+  /** Per credit, KDV excluded. */
+  unitPrice: number | null;
+  /** Monthly, KDV excluded. */
+  price: number;
+  /** Monthly, KDV included — the amount to show and to acknowledge. */
+  priceWithKdv: number;
+}
+
 // Store endpoint response for my-subscription
 export interface StoreMySubscription {
   subscription: ApiSubscription | null;
   credit: ApiCredit;
+  /** Older servers omit it. */
+  terms?: SubscriptionTerms | null;
   /** A downgrade waiting for the current period to end, if any. */
   pendingChange?: PendingPlanChange | null;
 }
@@ -94,7 +148,7 @@ export interface CreditPackage {
 }
 
 // Frontend display types (mapped from API)
-export interface SubscriptionVariant {
+export interface SubscriptionVariant extends DynamicPlanFields {
   id: string;
   name: string;
   description?: string;
@@ -137,6 +191,13 @@ export interface SubscriptionResponse {
   /** Hosted 3D page; preferred over threeDHtml (real https origin) */
   threeDUrl?: string;
   merchantOrderId?: string;
+  /**
+   * 409 `QUOTE_CHANGED`: the price moved since the user saw it. Nothing was
+   * charged — redraw with the fresh figures and ask again.
+   */
+  conflict?: boolean;
+  /** The fresh quote that came with a `conflict` on subscribe. */
+  freshQuote?: PlanQuote;
 }
 
 /** Server-side truth for a 3D payment, polled while the bank page is open. */
@@ -179,6 +240,10 @@ export interface PendingPlanChange {
   /** The `endDate` at the moment the change was scheduled. */
   effectiveAt: string;
   requestedAt: string;
+  /** Set when the scheduled change is to (or within) a dynamic plan. */
+  creditQuantity?: number | null;
+  priceWithKdv?: number | null;
+  includedCreditAmount?: number | null;
 }
 
 /** The subscription as the change-plan screen sees it. */
@@ -202,9 +267,11 @@ export interface PlanChangeCurrent {
   isAdminGrant: boolean;
   cancelAtPeriodEnd: boolean;
   creditBalance: number;
+  pricingModel?: PricingModel;
+  creditQuantity?: number | null;
 }
 
-export interface PlanChangeOption {
+export interface PlanChangeOption extends DynamicPlanFields {
   planId: string;
   planName: string;
   productId: string;
@@ -214,6 +281,12 @@ export interface PlanChangeOption {
   price: number;
   priceWithKdv: number;
   includedCreditAmount: number;
+  /** The amount this offer was priced for, on a dynamic plan. */
+  creditQuantity?: number | null;
+  /**
+   * The pharmacy's own dynamic plan comes back as `current` — still selectable,
+   * to change the credit amount.
+   */
   direction: PlanChangeDirection;
   effect: PlanChangeEffect;
   /** Unused value of the old plan, deducted from the new price. */
@@ -249,6 +322,7 @@ export interface PlanChangeResult extends SubscriptionResponse {
   /** Downgrade queued for the end of the current period. */
   scheduled?: boolean;
   effectiveAt?: string;
-  conflict?: boolean;
+  /** The server's ready Turkish sentence for a scheduled change, if it sent one. */
+  serverMessage?: string;
   freshOption?: PlanChangeOption;
 }

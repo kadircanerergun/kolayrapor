@@ -8,13 +8,11 @@ import {
   ReactNode,
 } from "react";
 import { subscriptionApiService } from "@/services/subscription-api";
-import { reportApiService } from "@/services/report-api";
-import { syncReportsFromServer } from "@/lib/db";
+import { runReportSync, type SyncMode } from "@/lib/report-sync";
+import { historyRequirementsApiService } from "@/services/history-requirements-api";
 import {
   PENDING_RECHECK_INTERVAL_MS,
-  SYNC_DEFAULT_LOOKBACK_DAYS,
   SYNC_INTERVAL_MS,
-  SYNC_OVERLAP_MS,
 } from "@/lib/constants";
 import type { ApiPharmacy } from "@/services/subscription-api";
 import type {
@@ -23,6 +21,7 @@ import type {
   CreditPackage,
   PendingPlanChange,
   SubscriptionProduct,
+  SubscriptionTerms,
 } from "@/types/subscription";
 
 interface PharmacyContextType {
@@ -30,6 +29,11 @@ interface PharmacyContextType {
   isPending: boolean;
   ipAddress: string | null;
   subscription: ApiSubscription | null;
+  /**
+   * What is actually paid and received each month. On a dynamic plan this, not
+   * `subscription.plan`, holds the real price and credit amount.
+   */
+  terms: SubscriptionTerms | null;
   /** A downgrade queued for the end of the period, if one is scheduled. */
   pendingChange: PendingPlanChange | null;
   creditBalance: ApiCredit | null;
@@ -49,6 +53,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<ApiSubscription | null>(
     null,
   );
+  const [terms, setTerms] = useState<SubscriptionTerms | null>(null);
   const [pendingChange, setPendingChange] = useState<PendingPlanChange | null>(
     null,
   );
@@ -81,14 +86,22 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
       setIpAddress(statusData.ipAddress ?? null);
 
       if (pharmacyData && pharmacyData.isActive) {
+        // Ilaç/rapor geçmişi gereken ilaçlar — her yüklemede baştan yazılır.
+        // Beklenmez; hata olursa önceki liste korunur.
+        historyRequirementsApiService.refresh().catch((err) => {
+          console.error("History requirements fetch failed:", err);
+        });
+
         // Use store endpoint for subscription + credit in one call
         try {
           const mySubData = await subscriptionApiService.getMySubscription();
           setSubscription(mySubData.subscription);
           setCreditBalance(mySubData.credit);
+          setTerms(mySubData.terms ?? null);
           setPendingChange(mySubData.pendingChange ?? null);
         } catch {
           // Fallback to separate calls
+          setTerms(null);
           try {
             const sub = await subscriptionApiService.getActiveSubscription(
               pharmacyData.id,
@@ -109,6 +122,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
       } else {
         setSubscription(null);
         setCreditBalance(null);
+        setTerms(null);
         setPendingChange(null);
       }
     } catch (err) {
@@ -141,6 +155,26 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     }
   }, [loadData]);
 
+  // Renewals and changes are applied by the server (scheduled downgrades,
+  // monthly renewals at the current price list) — pull them quietly when the
+  // user comes back to the app.
+  useEffect(() => {
+    if (!pharmacy?.isActive) return;
+    const refreshSubscription = async () => {
+      try {
+        const mySubData = await subscriptionApiService.getMySubscription();
+        setSubscription(mySubData.subscription);
+        setCreditBalance(mySubData.credit);
+        setTerms(mySubData.terms ?? null);
+        setPendingChange(mySubData.pendingChange ?? null);
+      } catch {
+        // Offline or a transient failure — keep what is on screen.
+      }
+    };
+    window.addEventListener("focus", refreshSubscription);
+    return () => window.removeEventListener("focus", refreshSubscription);
+  }, [pharmacy?.isActive]);
+
   useEffect(() => {
     if (!isPending) return;
     // Also on focus: the user typically finishes activation in a browser and
@@ -156,29 +190,28 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
     };
   }, [isPending, recheckRegistration]);
 
-  // Sync reports from server after pharmacy loads, then every SYNC_INTERVAL_MS
+  // Sync reports from server after pharmacy loads, then every SYNC_INTERVAL_MS.
+  // The first sync of an app launch pulls the full window; `pharmacy` is
+  // replaced on every loadData() refresh, so a ref keeps that to once.
+  const didStartupSyncRef = useRef(false);
   useEffect(() => {
     if (!pharmacy || !pharmacy.isActive) return;
 
-    const syncReports = async () => {
+    const syncReports = async (mode: SyncMode) => {
       try {
-        const SYNC_KEY = "kolayrapor_lastSyncedAt";
-        const lastSyncedAt = localStorage.getItem(SYNC_KEY);
-        const since = lastSyncedAt
-          ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
-          : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-        const reports = await reportApiService.getMyReports(since);
-        if (reports.length > 0) {
-          await syncReportsFromServer(reports);
-        }
-        localStorage.setItem(SYNC_KEY, new Date().toISOString());
+        await runReportSync(mode);
       } catch (err) {
         console.error("Report sync failed:", err);
       }
     };
 
-    syncReports();
-    const timer = setInterval(syncReports, SYNC_INTERVAL_MS);
+    if (!didStartupSyncRef.current) {
+      didStartupSyncRef.current = true;
+      syncReports("full");
+    } else {
+      syncReports("incremental");
+    }
+    const timer = setInterval(() => syncReports("incremental"), SYNC_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [pharmacy]);
 
@@ -220,6 +253,7 @@ export function PharmacyProvider({ children }: { children: ReactNode }) {
         isPending,
         ipAddress,
         subscription,
+        terms,
         pendingChange,
         creditBalance,
         products,

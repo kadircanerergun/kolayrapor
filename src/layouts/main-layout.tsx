@@ -149,9 +149,7 @@ export default function MainLayout({
     // Prefer the plan name embedded in the subscription (covers DEMO and other
     // non-purchasable plans that are filtered out of `products`).
     if (subscription.plan?.name) {
-      return subscription.plan.product?.name
-        ? `${subscription.plan.product.name} — ${subscription.plan.name}`
-        : subscription.plan.name;
+      return subscription.plan.product?.name ?? subscription.plan.name;
     }
     const matchedProduct = products.find((p) =>
       p.variants.some((v) => v.id === subscription.planId),

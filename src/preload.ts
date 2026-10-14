@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('playwrightAPI', {
   getDebugMode: () => ipcRenderer.invoke('playwright:getDebugMode'),
   restart: () => ipcRenderer.invoke('playwright:restart'),
   setCredentials: (credentials: { username: string; password: string }) => ipcRenderer.invoke('playwright:setCredentials', credentials),
+  setHistoryRequirements: (data: { ilacGecmisiGerekli: { barcode: string; esdegerBarcodes: string[] }[]; raporGecmisiGerekli: { barcode: string; esdegerBarcodes: string[] }[] }) =>
+    ipcRenderer.invoke('playwright:setHistoryRequirements', data),
   getStoredCredentials: () => ipcRenderer.invoke('playwright:getStoredCredentials'),
   hasCredentials: () => ipcRenderer.invoke('playwright:hasCredentials'),
   autoLogin: () => ipcRenderer.invoke('playwright:autoLogin')

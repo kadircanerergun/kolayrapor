@@ -22,11 +22,23 @@ export function PendingPlanChangeBanner({
   pendingChange,
   onCancelled,
 }: PendingPlanChangeBannerProps) {
-  const { pendingChange: contextPending, refresh } = useSubscription();
+  const {
+    pendingChange: contextPending,
+    availableProducts,
+    refresh,
+  } = useSubscription();
   const pending = pendingChange ?? contextPending;
   const [cancelling, setCancelling] = useState(false);
 
   if (!pending) return null;
+
+  const isYearly =
+    availableProducts
+      .flatMap((p) => p.variants)
+      .find((v) => v.id === pending.planId)?.billingCycle === "yearly";
+  const effectiveDate = new Date(pending.effectiveAt).toLocaleDateString(
+    "tr-TR",
+  );
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -54,10 +66,27 @@ export function PendingPlanChangeBanner({
               Planlanmış plan değişikliği
             </p>
             <p className="mt-1 text-blue-800/80 dark:text-blue-400/80">
-              {new Date(pending.effectiveAt).toLocaleDateString("tr-TR")}{" "}
-              tarihinde{" "}
-              <span className="font-medium">{pending.planName}</span> planına
-              geçilecek. O tarihe kadar mevcut planınız aynen devam eder.
+              {pending.creditQuantity != null ? (
+                <>
+                  {effectiveDate} tarihinden itibaren{" "}
+                  <span className="font-medium">
+                    aylık {pending.creditQuantity} kredi
+                    {pending.priceWithKdv != null
+                      ? ` / ₺${Number(pending.priceWithKdv).toFixed(2)}${
+                          isYearly ? " yıllık" : ""
+                        } (KDV dahil)`
+                      : ""}
+                  </span>{" "}
+                  ({pending.planName})
+                </>
+              ) : (
+                <>
+                  {effectiveDate} tarihinde{" "}
+                  <span className="font-medium">{pending.planName}</span>{" "}
+                  planına geçilecek
+                </>
+              )}
+              . O tarihe kadar mevcut planınız aynen devam eder.
             </p>
           </div>
         </div>

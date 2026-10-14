@@ -60,9 +60,7 @@ import { useCredentials } from "@/contexts/credentials-context";
 import { ipc } from "@/ipc/manager";
 import { version as appVersion } from "../../package.json";
 import type { SavedCard } from "@/types/subscription";
-import { reportApiService } from "@/services/report-api";
-import { syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_OVERLAP_MS } from "@/lib/constants";
+import { runReportSync, SYNC_KEY } from "@/lib/report-sync";
 
 type SettingsSection = "eczane" | "medula" | "abonelik" | "odeme" | "senkronizasyon" | "sozlesmeler" | "uygulama";
 
@@ -128,6 +126,7 @@ function SettingsPage() {
     currentProduct,
     currentVariant,
     isDemoSubscription,
+    terms,
     loading,
     error,
     refresh,
@@ -142,8 +141,13 @@ function SettingsPage() {
   const activePlanName = currentVariant?.name ?? activePlan?.name ?? "—";
   // The API sends plan prices as strings on some endpoints — normalise before
   // rendering so a demo plan does not show up as "₺0.00".
-  const rawPlanPrice = currentVariant?.price ?? activePlan?.price ?? null;
+  // `terms` is what is really paid: on a dynamic plan the plan's own price is
+  // only the "starting from" figure.
+  const rawPlanPrice =
+    terms?.price ?? currentVariant?.price ?? activePlan?.price ?? null;
   const activePlanPrice = rawPlanPrice === null ? null : Number(rawPlanPrice);
+  const activeBillingCycle =
+    currentVariant?.billingCycle ?? activePlan?.billingCycle ?? null;
   const activePlanMaxRequests =
     currentVariant?.maxRequests ?? activePlan?.maxRequests ?? 0;
 
@@ -212,7 +216,6 @@ function SettingsPage() {
   };
 
   // Sync state
-  const SYNC_KEY = "kolayrapor_lastSyncedAt";
   const [syncing, setSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(
     () => localStorage.getItem(SYNC_KEY),
@@ -223,17 +226,8 @@ function SettingsPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const since = lastSyncedAt
-        ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
-        : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      const reports = await reportApiService.getMyReports(since);
-      let synced = 0;
-      if (reports.length > 0) {
-        synced = await syncReportsFromServer(reports);
-      }
-      const now = new Date().toISOString();
-      localStorage.setItem(SYNC_KEY, now);
-      setLastSyncedAt(now);
+      const synced = await runReportSync("full");
+      setLastSyncedAt(localStorage.getItem(SYNC_KEY));
       setSyncResult(
         synced > 0
           ? `${synced} yeni rapor senkronize edildi.`
@@ -244,7 +238,7 @@ function SettingsPage() {
     } finally {
       setSyncing(false);
     }
-  }, [lastSyncedAt]);
+  }, []);
 
   // Saved cards
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
@@ -1115,6 +1109,11 @@ function SettingsPage() {
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Plan</p>
                   <p className="text-sm font-medium">{activePlanName}</p>
+                  {terms?.creditQuantity != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Aylık {terms.creditQuantity} kredi
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -1149,6 +1148,11 @@ function SettingsPage() {
                     {activePlanPrice ? (
                       <span className="text-xs font-normal text-muted-foreground ml-1">
                         + KDV
+                        {activeBillingCycle === "yearly"
+                          ? " / yıl"
+                          : activeBillingCycle === "monthly"
+                            ? " / ay"
+                            : ""}
                       </span>
                     ) : null}
                   </p>

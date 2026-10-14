@@ -278,9 +278,38 @@ type ReceteSertifika = {
   ad: string;
 };
 
+/** Reçete detayındaki "İlaç" butonuyla açılan Kullanılan İlaç Listesi'nin
+ *  bir satırı (`#form1:tableExKisiIlacList`). */
+type IlacGecmisiKaydi = {
+  receteNo: string;
+  /** Medula'daki ham ad, barkod parantez içinde: "NORVASC 10 MG 90 TAB(8699532014085)". */
+  ilacAdi: string;
+  receteTarihi: string;
+  ilacAlimTarihi: string;
+  verilebilecegiTarih: string;
+  adet: number;
+  /** "Günde 1 x 1.0" */
+  ilacKullanimi: string;
+  /** "04.05 - 573893245" sütununun ilk parçası. */
+  raporTeshisi: string;
+  /** "04.05 - 573893245" sütununun ikinci parçası. */
+  raporTakipNo: string;
+  uyariKodu: string;
+  /** Satırı bu ilaca bağlayan barkod: ilacın kendi barkodu ya da eşdeğeri. */
+  barkod: string;
+  /** `barkod` ilacın kendisi değil, ilacGecmisiGerekli'deki eşdeğerlerinden biri. */
+  esdegerMi: boolean;
+};
+
 type ReceteIlac = Omit<IlacOzet, 'rapor'> &{
   rapor?: ReceteRapor;
   detay?: IlacBilgi;
+  /**
+   * Hastanın bu ilacı daha önce aldığı kayıtlar. Yalnızca `ilac_gecmisi`
+   * flag'i açıkken ve barkod ilacGecmisiGerekli listesindeyse doldurulur.
+   * `[]` → sayfa okundu, kayıt yok. `undefined` → istenmedi ya da okunamadı.
+   */
+  ilacGecmisi?: IlacGecmisiKaydi[];
 };
 
 /**
@@ -358,6 +387,7 @@ export {
   DataGapSebep,
   Recete,
   ReceteIlac,
+  IlacGecmisiKaydi,
   ReceteOzet,
   RecipeByDateResponse,
   IlacOzet,

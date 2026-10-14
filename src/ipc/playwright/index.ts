@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { ipcContext } from '@/ipc/context';
 import { playwrightService, ensureBrowsersInstalled, BrowserInstallProgress } from '../../services/playwright-automation';
 import { captchaSolverService, ensureSolverInstalled, solveCaptcha } from '../../services/captcha-solver';
+import type { HistoryRequirements } from '../../services/history-requirements-api';
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function createHandler(channel: string, handler: Function) {
@@ -136,6 +137,12 @@ export function setupPlaywrightIPC() {
   // Set credentials
   createHandler('playwright:setCredentials', async (credentials: { username: string; password: string }) => {
     playwrightService.setCredentials(credentials);
+    return { success: true };
+  });
+
+  // İlaç/rapor geçmişi gereken ilaç listesi (renderer her yüklemede gönderir)
+  createHandler('playwright:setHistoryRequirements', async (data: HistoryRequirements) => {
+    playwrightService.setHistoryRequirements(data);
     return { success: true };
   });
 

@@ -12,8 +12,8 @@ import {
   searchPrescriptionDetail,
 } from "@/store/slices/playwrightSlice";
 import { reportApiService, type ReceteReportResponse } from "@/services/report-api";
-import { cacheAnalysis, syncReportsFromServer } from "@/lib/db";
-import { SYNC_DEFAULT_LOOKBACK_DAYS, SYNC_OVERLAP_MS } from "@/lib/constants";
+import { cacheAnalysis } from "@/lib/db";
+import { runReportSync } from "@/lib/report-sync";
 import { addGroup, updateTask } from "@/store/slices/taskQueueSlice";
 import {
   type CachedRecete,
@@ -61,16 +61,7 @@ export function SonIslemlerTable({
     try {
       // Sync reports from API first
       try {
-        const SYNC_KEY = "kolayrapor_lastSyncedAt";
-        const lastSyncedAt = localStorage.getItem(SYNC_KEY);
-        const since = lastSyncedAt
-          ? new Date(new Date(lastSyncedAt).getTime() - SYNC_OVERLAP_MS).toISOString()
-          : new Date(Date.now() - SYNC_DEFAULT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-        const reports = await reportApiService.getMyReports(since);
-        if (reports.length > 0) {
-          await syncReportsFromServer(reports);
-        }
-        localStorage.setItem(SYNC_KEY, new Date().toISOString());
+        await runReportSync("incremental");
       } catch {
         // Sync failure is non-blocking
       }

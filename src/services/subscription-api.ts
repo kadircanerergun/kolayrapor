@@ -3,12 +3,15 @@ import { API_BASE_URL } from "@/lib/constants";
 import type {
   ApiProduct,
   ApiSubscription,
+  ApiSubscriptionPlan,
   ApiCredit,
   CardInfo,
   ChangePlanOptions,
   CreditPackage,
+  DynamicPlanFields,
   PlanChangeOption,
   PlanChangeResult,
+  PlanQuote,
   StoreMySubscription,
   SubscriptionProduct,
   SubscriptionResponse,
@@ -55,6 +58,40 @@ function mapPlanToVariant(
     billingCycle: plan.billingCycle,
     maxRequests: plan.maxRequests,
     includedCreditAmount: Number(plan.includedCreditAmount),
+    ...mapDynamicFields(plan),
+  };
+}
+
+const numberOrNull = (value: unknown): number | null =>
+  value === null || value === undefined || value === ""
+    ? null
+    : Number(value);
+
+/** The API sends decimals as strings on some endpoints — normalise them. */
+function mapDynamicFields(plan: DynamicPlanFields): DynamicPlanFields {
+  return {
+    pricingModel: plan.pricingModel === "dynamic" ? "dynamic" : "fixed",
+    creditTiers: (plan.creditTiers ?? []).map((t) => ({
+      upTo: numberOrNull(t.upTo),
+      unitPrice: Number(t.unitPrice),
+    })),
+    minCredits: numberOrNull(plan.minCredits),
+    maxCredits: numberOrNull(plan.maxCredits),
+    creditStep: numberOrNull(plan.creditStep),
+  };
+}
+
+function mapQuote(data: any): PlanQuote {
+  return {
+    planId: data.planId,
+    planName: data.planName,
+    pricingModel: data.pricingModel === "dynamic" ? "dynamic" : "fixed",
+    billingCycle: data.billingCycle,
+    creditQuantity: numberOrNull(data.creditQuantity),
+    includedCreditAmount: Number(data.includedCreditAmount ?? 0),
+    unitPrice: numberOrNull(data.unitPrice),
+    price: Number(data.price),
+    priceWithKdv: Number(data.priceWithKdv),
   };
 }
 
@@ -175,10 +212,34 @@ class SubscriptionApiService {
   }
 
   async getProducts(): Promise<SubscriptionProduct[]> {
-    const response = await apiClient.get<ApiProduct[]>(
-      `${API_BASE_URL}/products`,
-    );
+    // `/store/plans` is where the dynamic pricing fields are documented; lay
+    // them over the product's plans in case `/products` does not carry them.
+    const [response, storePlans] = await Promise.all([
+      apiClient.get<ApiProduct[]>(`${API_BASE_URL}/products`),
+      apiClient
+        .get<ApiSubscriptionPlan[]>(`${API_BASE_URL}/store/plans`)
+        .then((r) => r.data ?? [])
+        .catch(() => [] as ApiSubscriptionPlan[]),
+    ]);
+    const storePlanById = new Map(storePlans.map((p) => [p.id, p]));
+
     return response.data
+      .map((product) => ({
+        ...product,
+        plans: (product.plans || []).map((plan) => {
+          const storePlan = storePlanById.get(plan.id);
+          return storePlan?.pricingModel
+            ? {
+                ...plan,
+                pricingModel: storePlan.pricingModel,
+                creditTiers: storePlan.creditTiers,
+                minCredits: storePlan.minCredits,
+                maxCredits: storePlan.maxCredits,
+                creditStep: storePlan.creditStep,
+              }
+            : plan;
+        }),
+      }))
       .filter((p) => p.type === "subscription")
       .map(mapProductToSubscriptionProduct)
       .filter((p) => p.variants.length > 0);
@@ -228,13 +289,54 @@ class SubscriptionApiService {
     return response.data;
   }
 
+  /**
+   * The server's price for a plan at a given credit amount. Public, and the
+   * only source of a dynamic plan's figures — the client never multiplies
+   * credits by a unit price itself.
+   *
+   * An amount outside the limits or off-step comes back as a 400 whose Turkish
+   * message is returned as `error`, to be shown as-is.
+   */
+  async getQuote(
+    planId: string,
+    creditQuantity?: number | null,
+  ): Promise<{ quote: PlanQuote | null; error?: string }> {
+    try {
+      const body: Record<string, unknown> = { planId };
+      if (creditQuantity != null) body.creditQuantity = creditQuantity;
+      const response = await apiClient.post(`${API_BASE_URL}/store/quote`, body);
+      return { quote: response.data ? mapQuote(response.data) : null };
+    } catch (error: any) {
+      return {
+        quote: null,
+        error: apiErrorMessage(error, "Fiyat hesaplanamadı"),
+      };
+    }
+  }
+
+  /**
+   * `acknowledgedChargeAmount` is the KDV-included figure from the quote the
+   * user saw. If the price has moved since, the server answers 409
+   * `QUOTE_CHANGED` with a fresh quote instead of charging:
+   * `{ conflict: true, freshQuote }`.
+   */
   async subscribe(
     planId: string,
     cardInfo?: CardInfo,
-    options?: { savedCardId?: string },
+    options?: {
+      savedCardId?: string;
+      creditQuantity?: number | null;
+      acknowledgedChargeAmount?: number;
+    },
   ): Promise<SubscriptionResponse> {
     try {
       const body: Record<string, unknown> = { planId };
+      if (options?.creditQuantity != null) {
+        body.creditQuantity = options.creditQuantity;
+      }
+      if (options?.acknowledgedChargeAmount !== undefined) {
+        body.acknowledgedChargeAmount = options.acknowledgedChargeAmount;
+      }
       if (options?.savedCardId) {
         body.savedCardId = options.savedCardId;
       } else {
@@ -267,6 +369,21 @@ class SubscriptionApiService {
         },
       };
     } catch (error: any) {
+      if (error.response?.status === 409) {
+        const body = error.response.data ?? {};
+        if (body.code === "QUOTE_CHANGED" || body.quote) {
+          return {
+            success: false,
+            conflict: true,
+            freshQuote: body.quote ? mapQuote(body.quote) : undefined,
+            error: apiErrorMessage(
+              error,
+              "Tutar güncellendi. Lütfen yeni tutarı onaylayın.",
+            ),
+          };
+        }
+      }
+
       return {
         success: false,
         error:
@@ -304,11 +421,12 @@ class SubscriptionApiService {
    */
   async previewPlanChange(
     planId: string,
+    creditQuantity?: number | null,
   ): Promise<{ option: PlanChangeOption | null; error?: string }> {
     try {
       const response = await apiClient.post<PlanChangeOption>(
         `${API_BASE_URL}/store/change-plan/preview`,
-        { planId },
+        creditQuantity != null ? { planId, creditQuantity } : { planId },
       );
       return { option: response.data ?? null };
     } catch (error: any) {
@@ -329,10 +447,14 @@ class SubscriptionApiService {
    *
    * A card is only needed when the offer said `requiresPayment` — a free
    * upgrade and every downgrade go through without one.
+   *
+   * `creditQuantity` goes along whenever the target is a dynamic plan —
+   * including the pharmacy's own, which is how the amount is raised or lowered.
    */
   async changePlan(
     planId: string,
     options?: {
+      creditQuantity?: number | null;
       acknowledgedChargeAmount?: number;
       cardInfo?: CardInfo;
       savedCardId?: string;
@@ -340,6 +462,9 @@ class SubscriptionApiService {
   ): Promise<PlanChangeResult> {
     try {
       const body: Record<string, unknown> = { planId };
+      if (options?.creditQuantity != null) {
+        body.creditQuantity = options.creditQuantity;
+      }
       if (options?.acknowledgedChargeAmount !== undefined) {
         body.acknowledgedChargeAmount = options.acknowledgedChargeAmount;
       }
@@ -372,7 +497,9 @@ class SubscriptionApiService {
           success: true,
           scheduled: true,
           effectiveAt: data.effectiveAt,
-          message: "Plan değişikliği dönem sonunda uygulanacak.",
+          message:
+            data.message || "Plan değişikliği dönem sonunda uygulanacak.",
+          serverMessage: data.message || undefined,
         };
       }
 
@@ -391,8 +518,13 @@ class SubscriptionApiService {
       // can redraw; the user is never charged an amount they did not see.
       if (error.response?.status === 409) {
         const body = error.response.data ?? {};
+        // `QUOTE_CHANGED` carries the fresh option as `quote`.
         const freshOption: PlanChangeOption | undefined =
-          body.option ?? body.freshOption ?? body.preview ?? undefined;
+          body.quote ??
+          body.option ??
+          body.freshOption ??
+          body.preview ??
+          undefined;
         return {
           success: false,
           conflict: true,

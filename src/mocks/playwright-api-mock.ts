@@ -68,6 +68,10 @@ export const mockPlaywrightAPI = {
     console.log('Mock credentials set:', credentials.username);
   },
 
+  setHistoryRequirements: async () => {
+    console.log('Mock history requirements set');
+  },
+
   getStoredCredentials: async () => ({
     credentials: {
       username: 'mock-user',

@@ -33,6 +33,8 @@ const trDate = (value?: string | null) =>
 interface PlanChangeDialogProps {
   /** Plan being switched to; the dialog prices it when it opens. */
   planId: string | null;
+  /** The chosen monthly amount, when the target is a dynamic plan. */
+  creditQuantity?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -47,11 +49,12 @@ interface PlanChangeDialogProps {
  */
 export function PlanChangeDialog({
   planId,
+  creditQuantity,
   open,
   onOpenChange,
 }: PlanChangeDialogProps) {
   const navigate = useNavigate();
-  const { refresh } = useSubscription();
+  const { refresh, currentSubscription } = useSubscription();
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,11 +63,11 @@ export function PlanChangeDialog({
   /** Set when the server answered 409 and we redrew with a new amount. */
   const [repriced, setRepriced] = useState(false);
 
-  const loadPreview = useCallback(async (id: string) => {
+  const loadPreview = useCallback(async (id: string, quantity?: number) => {
     setLoading(true);
     setError(null);
     const { option: fresh, error: previewError } =
-      await subscriptionApiService.previewPlanChange(id);
+      await subscriptionApiService.previewPlanChange(id, quantity);
     setOption(fresh);
     setError(fresh ? null : (previewError ?? "Plan bilgisi alınamadı."));
     setLoading(false);
@@ -74,8 +77,16 @@ export function PlanChangeDialog({
     if (!open || !planId) return;
     setOption(null);
     setRepriced(false);
-    void loadPreview(planId);
-  }, [open, planId, loadPreview]);
+    void loadPreview(planId, creditQuantity);
+  }, [open, planId, creditQuantity, loadPreview]);
+
+  /** The amount the offer on screen was priced for. */
+  const offerQuantity = option?.creditQuantity ?? creditQuantity;
+  /** Same plan, different amount — not a switch to another plan. */
+  const isQuantityChange =
+    !!option &&
+    offerQuantity != null &&
+    option.planId === currentSubscription?.planId;
 
   /** Applies changes that need no card: free upgrades and every downgrade. */
   const handleApply = async () => {
@@ -83,6 +94,7 @@ export function PlanChangeDialog({
     setSubmitting(true);
     try {
       const result = await subscriptionApiService.changePlan(option.planId, {
+        creditQuantity: offerQuantity,
         acknowledgedChargeAmount: option.chargeNowWithKdv,
       });
 
@@ -93,7 +105,7 @@ export function PlanChangeDialog({
         if (result.freshOption) {
           setOption(result.freshOption);
         } else {
-          await loadPreview(option.planId);
+          await loadPreview(option.planId, offerQuantity ?? undefined);
         }
         toast.warning(
           result.error ?? "Tutar güncellendi. Lütfen yeni tutarı onaylayın.",
@@ -109,8 +121,12 @@ export function PlanChangeDialog({
       await refresh();
       toast.success(
         result.scheduled
-          ? `Planınız ${trDate(result.effectiveAt ?? option.effectiveAt)} tarihinde ${option.planName} olarak değişecek.`
-          : `${option.planName} planına geçildi.`,
+          ? // Lowering the amount: the server words it, we only fall back.
+            (result.serverMessage ??
+              `Planınız ${trDate(result.effectiveAt ?? option.effectiveAt)} tarihinde ${option.planName} olarak değişecek.`)
+          : isQuantityChange
+            ? `Aylık kredi miktarınız ${offerQuantity} olarak güncellendi.`
+            : `${option.planName} planına geçildi.`,
       );
       onOpenChange(false);
     } finally {
@@ -123,7 +139,11 @@ export function PlanChangeDialog({
     onOpenChange(false);
     navigate({
       to: "/odeme",
-      search: { type: "plan-change", id: option.planId },
+      search: {
+        type: "plan-change",
+        id: option.planId,
+        qty: offerQuantity ?? undefined,
+      },
     });
   };
 
@@ -147,7 +167,9 @@ export function PlanChangeDialog({
               ? "Güncel tutar hesaplanıyor..."
               : isDowngrade
                 ? "Bu değişiklik mevcut döneminizin sonunda uygulanır."
-                : "Değişiklik onayladığınız anda geçerli olur."}
+                : isQuantityChange
+                  ? "Yeni miktar onayladığınız anda geçerli olur; fatura tarihiniz değişmez."
+                  : "Değişiklik onayladığınız anda geçerli olur."}
           </DialogDescription>
         </DialogHeader>
 
@@ -183,6 +205,15 @@ export function PlanChangeDialog({
               </div>
             )}
 
+            {offerQuantity != null && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Aylık kredi miktarı
+                </span>
+                <span className="font-medium">{offerQuantity} kredi</span>
+              </div>
+            )}
+
             {isDowngrade ? (
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
@@ -199,7 +230,8 @@ export function PlanChangeDialog({
                 </div>
                 <Separator />
                 <p className="text-muted-foreground">
-                  Bugün herhangi bir ücret alınmaz ve mevcut planınız{" "}
+                  Bugün herhangi bir ücret alınmaz ve mevcut{" "}
+                  {isQuantityChange ? "kredi miktarınız" : "planınız"}{" "}
                   {trDate(option.effectiveAt)} tarihine kadar aynen devam eder.
                   Yeni ücret ilk yenilemede tahsil edilir. Bu tarihe kadar
                   değişikliği iptal edebilirsiniz.
@@ -209,7 +241,11 @@ export function PlanChangeDialog({
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Yeni plan (KDV dahil)
+                    {!isQuantityChange
+                      ? "Yeni plan (KDV dahil)"
+                      : option.billingCycle === "yearly"
+                        ? "Yeni yıllık ücret (KDV dahil)"
+                        : "Yeni aylık ücret (KDV dahil)"}
                   </span>
                   <span className="font-medium">{tl(option.priceWithKdv)}</span>
                 </div>
@@ -240,11 +276,24 @@ export function PlanChangeDialog({
                   <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3">
                     <Coins className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="text-muted-foreground">
-                      Kalan kredi döneminiz için{" "}
-                      <span className="font-medium text-foreground">
-                        {option.bonusCredits} kredi
-                      </span>{" "}
-                      hesabınıza eklenecek. Mevcut krediniz korunur.
+                      {isQuantityChange ? (
+                        <>
+                          Şimdi {tl(option.chargeNowWithKdv)} ödenecek,
+                          hesabınıza{" "}
+                          <span className="font-medium text-foreground">
+                            {option.bonusCredits} kredi
+                          </span>{" "}
+                          eklenecek. Mevcut krediniz korunur.
+                        </>
+                      ) : (
+                        <>
+                          Kalan kredi döneminiz için{" "}
+                          <span className="font-medium text-foreground">
+                            {option.bonusCredits} kredi
+                          </span>{" "}
+                          hesabınıza eklenecek. Mevcut krediniz korunur.
+                        </>
+                      )}
                     </span>
                   </div>
                 )}
@@ -287,6 +336,8 @@ export function PlanChangeDialog({
                 </>
               ) : isDowngrade ? (
                 "Değişikliği Planla"
+              ) : isQuantityChange ? (
+                "Miktarı Artır"
               ) : (
                 "Planı Yükselt"
               )}
